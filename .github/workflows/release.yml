@@ -1,0 +1,57 @@
+# Cut a release from a version tag.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Builds the sdist and wheel, refuses a tag that disagrees with
+# pyproject.toml, and publishes a GitHub Release with the artifacts
+# attached. PyPI publishing is deliberately not wired up yet: when it is,
+# it should use Trusted Publishing (OIDC), not a long-lived token.
+
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # A tag that does not match the packaged version ships a lie; stop here.
+      - name: tag matches pyproject version
+        run: |
+          pkg=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "::error::pyproject.toml says $pkg but the tag says $tag"
+            exit 1
+          fi
+
+      - name: build sdist and wheel
+        run: |
+          pip install build
+          python -m build
+
+      - name: smoke-test the wheel
+        run: |
+          pip install dist/*.whl
+          agentsec --help >/dev/null
+          python -c "import agentsec; print(agentsec.__name__, 'imports')"
+
+      - name: publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
