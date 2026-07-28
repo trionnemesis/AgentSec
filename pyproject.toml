@@ -47,8 +47,8 @@ agentsec = "agentsec.cli:main"
 agentsec-mcp = "agentsec.mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/trionnemesis/agentsec-purple-harness"
-Documentation = "https://github.com/trionnemesis/agentsec-purple-harness/tree/main/docs"
+Homepage = "https://github.com/trionnemesis/AgentSec"
+Documentation = "https://github.com/trionnemesis/AgentSec/tree/main/docs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/agentsec"]

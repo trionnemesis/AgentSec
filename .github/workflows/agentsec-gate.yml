@@ -6,7 +6,7 @@
 #
 #   jobs:
 #     purple:
-#       uses: trionnemesis/agentsec-purple-harness/.github/workflows/agentsec-gate.yml@main
+#       uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@main
 #       with:
 #         target: order-agent-staging
 #         profile: pr
