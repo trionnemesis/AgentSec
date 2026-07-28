@@ -14,14 +14,18 @@ concurrency:
 
 jobs:
   test:
-    name: lint · types · tests
+    name: lint · types · tests (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
 
       # Deliberately not installing the `mcp` extra. If the test suite ever
