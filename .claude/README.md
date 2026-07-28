@@ -74,8 +74,7 @@ echo '{"tool_name":"Bash","tool_input":{"command":"agentsec validate"}}' \
 
 ## Note on paths
 
-`settings.json` assumes this tree lives at `<repo>/agentsec/`, matching how it was
-first committed. If you split it into its own repository with
-`tools/extract-to-new-repo.sh`, change the hook command to
-`"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_agentsec.py"` and move `.claude/` to the
-new root.
+This tree is its own repository root, so `settings.json` points the hook at
+`"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_agentsec.py"`. It was first committed as
+`<repo>/agentsec/` inside `wazuh_ai_agent`; if you vendor it back into a
+subdirectory, the hook command needs that prefix again.

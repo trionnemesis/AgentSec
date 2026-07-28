@@ -31,7 +31,7 @@ on:
       workspace:
         description: Path to the AgentSec workspace inside the caller's checkout.
         required: false
-        default: agentsec
+        default: .
         type: string
       fail-on-blocking:
         description: >

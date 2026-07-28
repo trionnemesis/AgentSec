@@ -58,7 +58,7 @@ packages = ["src/agentsec"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]  # "." so tests/conftest.py is importable as tests.conftest
 addopts = "-q --strict-markers"
 markers = [
   "integration: requires an external system (promptfoo, Wazuh, OTel backend)",
