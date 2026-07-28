@@ -64,6 +64,11 @@ markers = [
   "integration: requires an external system (promptfoo, Wazuh, OTel backend)",
 ]
 
+# Applies only when pytest runs with --cov (CI does); plain `pytest -q` is
+# unaffected. Baseline was 74% when the floor was set — raise it, don't lower it.
+[tool.coverage.report]
+fail_under = 72
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
