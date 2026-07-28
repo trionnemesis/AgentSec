@@ -1,0 +1,25 @@
+[
+  {
+    "id": "alert-100501-03",
+    "timestamp": "2026-07-28T09:00:03Z",
+    "agent": {
+      "id": "001",
+      "name": "order-agent-staging"
+    },
+    "rule": {
+      "id": "100501",
+      "level": 10,
+      "description": "AgentSec: tool call blocked, originated from retrieved content",
+      "groups": [
+        "agentsec",
+        "prompt_injection",
+        "tool_abuse"
+      ]
+    },
+    "data": {
+      "tool": "send_email",
+      "decision": "deny",
+      "provenance": "retrieved_content"
+    }
+  }
+]

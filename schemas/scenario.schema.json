@@ -1,0 +1,354 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/scenario.schema.json",
+  "title": "AgentSec Scenario (Attack-Detection Contract)",
+  "description": "A purple-team scenario. The `contract` block is the portable asset: it states, before the attack runs, what prevention, detection, evidence and response are supposed to look like. The evaluator compares observed reality against this contract deterministically. No LLM judges the outcome.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "agentsec.dev/v1" },
+    "kind": { "const": "Scenario" },
+    "metadata": { "$ref": "#/$defs/metadata" },
+    "spec": { "$ref": "#/$defs/spec" }
+  },
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "required": ["id", "title", "severity"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$",
+          "description": "Stable scenario id, e.g. AGT-XPIA-001. Never reused after retirement."
+        },
+        "title": { "type": "string", "minLength": 8, "maxLength": 160 },
+        "description": { "type": "string" },
+        "owner": { "type": "string", "description": "Team accountable for this scenario." },
+        "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "references": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "owasp_agentic": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^AAI[0-9]{3}$" },
+              "description": "OWASP Agentic AI Top 10 identifiers this scenario covers."
+            },
+            "owasp_llm": {
+              "type": "array",
+              "items": { "type": "string", "pattern": "^LLM[0-9]{2}:[0-9]{4}$" }
+            },
+            "mitre_attack": { "type": "array", "items": { "type": "string" } },
+            "mitre_atlas": { "type": "array", "items": { "type": "string" } },
+            "links": { "type": "array", "items": { "type": "string", "format": "uri" } }
+          }
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["target", "risk", "attack", "contract"],
+      "additionalProperties": false,
+      "properties": {
+        "target": { "$ref": "#/$defs/targetSelector" },
+        "risk": { "$ref": "#/$defs/risk" },
+        "attack": { "$ref": "#/$defs/attack" },
+        "contract": { "$ref": "#/$defs/contract" },
+        "regression": { "$ref": "#/$defs/regression" }
+      }
+    },
+    "targetSelector": {
+      "type": "object",
+      "description": "Declares what kind of target this scenario applies to. It never carries a URL or a credential; the harness resolves a concrete target from the policy allowlist.",
+      "required": ["environments"],
+      "additionalProperties": false,
+      "properties": {
+        "environments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["local", "ci", "staging"] },
+          "description": "Allowed environments. `production` is deliberately not a member of this enum."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "enum": ["rag", "tool_calling", "memory", "multi_tenant", "code_exec", "email", "payments"] },
+          "description": "Target must declare all of these capabilities for the scenario to be applicable."
+        },
+        "target_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional pin to specific allowlisted target ids."
+        }
+      }
+    },
+    "risk": {
+      "type": "object",
+      "required": ["level"],
+      "additionalProperties": false,
+      "properties": {
+        "level": { "enum": ["low", "medium", "high"] },
+        "destructive": {
+          "type": "boolean",
+          "default": false,
+          "description": "True if the scenario mutates target state in a way that is not automatically rolled back."
+        },
+        "requires_approval": {
+          "type": "boolean",
+          "default": false,
+          "description": "True if a signed approval token must accompany start_run. Always implied when destructive is true."
+        },
+        "data_classes_touched": {
+          "type": "array",
+          "items": { "enum": ["synthetic", "pseudonymised", "internal", "pii", "secret"] },
+          "default": ["synthetic"]
+        }
+      }
+    },
+    "attack": {
+      "type": "object",
+      "required": ["executor", "steps"],
+      "additionalProperties": false,
+      "properties": {
+        "executor": { "enum": ["replay", "promptfoo", "pyrit", "pytest"] },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 },
+        "config": {
+          "type": "object",
+          "description": "Executor-specific configuration. Never contains endpoints or credentials.",
+          "additionalProperties": true
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/attackStep" }
+        }
+      }
+    },
+    "attackStep": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+        "kind": {
+          "enum": [
+            "agent_message",
+            "seed_resource",
+            "seed_memory",
+            "tool_response_injection",
+            "assume_identity",
+            "wait",
+            "snapshot_state"
+          ]
+        },
+        "description": { "type": "string" },
+        "as_principal": {
+          "type": "string",
+          "description": "Logical principal id defined by the target fixture (e.g. tenant-a-user). Resolved by the harness, not by the caller."
+        },
+        "payload": {
+          "type": ["string", "object", "null"],
+          "description": "Step payload. For agent_message this is the user turn; for seed_resource the document body."
+        },
+        "payload_ref": {
+          "type": "string",
+          "description": "Relative path under the scenario pack for large payloads. Mutually exclusive with payload."
+        },
+        "seconds": { "type": "number", "minimum": 0, "maximum": 600 }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "description": "The Attack-Detection Contract. Each of the four axes is optional; an omitted axis evaluates to not_tested rather than pass.",
+      "additionalProperties": false,
+      "properties": {
+        "prevention": { "$ref": "#/$defs/preventionContract" },
+        "detection": { "$ref": "#/$defs/detectionContract" },
+        "evidence": { "$ref": "#/$defs/evidenceContract" },
+        "response": { "$ref": "#/$defs/responseContract" }
+      }
+    },
+    "preventionContract": {
+      "type": "object",
+      "description": "Did the agent refuse to do the bad thing?",
+      "additionalProperties": false,
+      "properties": {
+        "must_not": { "type": "array", "items": { "$ref": "#/$defs/behaviourAssertion" } },
+        "must": { "type": "array", "items": { "$ref": "#/$defs/behaviourAssertion" } }
+      }
+    },
+    "behaviourAssertion": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["tool_call", "output_contains", "output_matches", "policy_decision", "state_change", "http_egress"]
+        },
+        "tool": { "type": "string" },
+        "value": { "type": "string" },
+        "decision": { "enum": ["allow", "deny", "escalate"] },
+        "resource": { "type": "string" },
+        "case_sensitive": { "type": "boolean", "default": false },
+        "reason": { "type": "string", "description": "Human-readable rationale carried into the finding." },
+        "in_step": {
+          "type": "string",
+          "description": "Restrict the assertion to turns produced by this attack step. Without it, output assertions match the whole transcript, which misfires in multi-step or multi-principal scenarios."
+        },
+        "as_principal": {
+          "type": "string",
+          "description": "Restrict the assertion to turns made while acting as this principal."
+        }
+      }
+    },
+    "detectionContract": {
+      "type": "object",
+      "description": "If the agent did the bad thing, did the blue team see it?",
+      "additionalProperties": false,
+      "properties": {
+        "wazuh": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "must_fire": { "type": "array", "items": { "$ref": "#/$defs/alertAssertion" } },
+            "must_not_fire": { "type": "array", "items": { "$ref": "#/$defs/alertAssertion" } }
+          }
+        },
+        "otel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "must_emit": { "type": "array", "items": { "$ref": "#/$defs/spanAssertion" } }
+          }
+        }
+      }
+    },
+    "alertAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": { "type": "string" },
+        "rule_group": { "type": "string" },
+        "min_level": { "type": "integer", "minimum": 0, "maximum": 16 },
+        "within_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 },
+        "match_fields": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Field equality constraints on the alert document, e.g. {\"data.tenant_id\": \"tenant-b\"}."
+        },
+        "reason": { "type": "string" }
+      }
+    },
+    "spanAssertion": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "attributes": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+        "min_count": { "type": "integer", "minimum": 1, "default": 1 },
+        "status": { "enum": ["unset", "ok", "error"] },
+        "reason": { "type": "string" }
+      }
+    },
+    "evidenceContract": {
+      "type": "object",
+      "description": "Could an investigator reconstruct what happened afterwards?",
+      "additionalProperties": false,
+      "properties": {
+        "otel": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required_spans": { "type": "array", "items": { "$ref": "#/$defs/spanAssertion" } },
+            "trace_must_be_complete": { "type": "boolean", "default": false }
+          }
+        },
+        "tool_audit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required_records": { "type": "array", "items": { "$ref": "#/$defs/toolAuditAssertion" } },
+            "every_tool_call_audited": { "type": "boolean", "default": true }
+          }
+        },
+        "state_diff": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "must_be_empty": { "type": "boolean" },
+            "allowed_changes": { "type": "array", "items": { "$ref": "#/$defs/stateChangeAssertion" } },
+            "forbidden_changes": { "type": "array", "items": { "$ref": "#/$defs/stateChangeAssertion" } }
+          }
+        }
+      }
+    },
+    "toolAuditAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tool": { "type": "string" },
+        "decision": { "enum": ["allow", "deny", "escalate"] },
+        "principal": { "type": "string" },
+        "min_count": { "type": "integer", "minimum": 1, "default": 1 },
+        "reason": { "type": "string" }
+      }
+    },
+    "stateChangeAssertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collection": { "type": "string", "description": "Logical dataset name declared by the target, never raw SQL." },
+        "operation": { "enum": ["insert", "update", "delete"] },
+        "selector": { "type": "object", "additionalProperties": { "type": "string" } },
+        "reason": { "type": "string" }
+      }
+    },
+    "responseContract": {
+      "type": "object",
+      "description": "Did an automated or documented response actually happen? Leave `mode: not_tested` until you have one.",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "enum": ["not_tested", "manual_runbook", "automated"], "default": "not_tested" },
+        "runbook": { "type": "string", "description": "Path or URL to the runbook that must exist." },
+        "expected_actions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action"],
+            "additionalProperties": false,
+            "properties": {
+              "action": { "enum": ["revoke_credential", "quarantine_session", "disable_tool", "page_oncall", "block_principal"] },
+              "within_seconds": { "type": "integer", "minimum": 1, "maximum": 3600, "default": 300 },
+              "reason": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "regression": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ci_profiles": {
+          "type": "array",
+          "items": { "enum": ["pr", "nightly", "release"] },
+          "default": ["nightly"]
+        },
+        "gate": {
+          "enum": ["blocking", "warning", "off"],
+          "default": "warning",
+          "description": "Whether a non-secure verdict fails the CI job."
+        },
+        "linked_finding": { "type": "string" },
+        "quarantined_until": {
+          "type": "string",
+          "format": "date",
+          "description": "Temporarily downgrade to warning until this date. Expiry is enforced, not advisory."
+        }
+      }
+    }
+  }
+}

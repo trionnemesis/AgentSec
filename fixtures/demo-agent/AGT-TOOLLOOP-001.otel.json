@@ -1,0 +1,86 @@
+{
+  "spans": [
+    {
+      "name": "agent.request",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "dd01",
+      "parent_span_id": null,
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "unset",
+      "attributes": {
+        "session.id": "sess-loop"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "dd10",
+      "parent_span_id": "dd01",
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "ok",
+      "attributes": {
+        "tool.name": "invoke_pricing_api",
+        "agentsec.policy.decision": "allow",
+        "pricing.currency": "TWD"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "dd11",
+      "parent_span_id": "dd01",
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "ok",
+      "attributes": {
+        "tool.name": "invoke_pricing_api",
+        "agentsec.policy.decision": "allow",
+        "pricing.currency": "USD"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "dd12",
+      "parent_span_id": "dd01",
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "ok",
+      "attributes": {
+        "tool.name": "invoke_pricing_api",
+        "agentsec.policy.decision": "allow",
+        "pricing.currency": "JPY"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "dd14",
+      "parent_span_id": "dd01",
+      "start_time": "2026-07-28T09:00:02Z",
+      "end_time": "2026-07-28T09:00:03Z",
+      "status": "error",
+      "attributes": {
+        "tool.name": "invoke_pricing_api",
+        "agentsec.policy.decision": "deny",
+        "agentsec.policy.rule": "loop.max_tool_calls"
+      }
+    },
+    {
+      "name": "agent.loop_detected",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "dd20",
+      "parent_span_id": "dd01",
+      "start_time": "2026-07-28T09:00:02Z",
+      "end_time": "2026-07-28T09:00:03Z",
+      "status": "ok",
+      "attributes": {
+        "loop.tool": "invoke_pricing_api",
+        "loop.call_count": 4,
+        "loop.limit": 4
+      }
+    }
+  ]
+}

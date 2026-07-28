@@ -1,0 +1,12 @@
+[
+  {
+    "record_id": "aud-aa03",
+    "tool": "send_email",
+    "decision": "deny",
+    "principal": "demo-user",
+    "policy": "egress.no_tool_from_retrieved_content",
+    "span_id": "aa03",
+    "timestamp": "2026-07-28T09:00:02Z",
+    "arguments_digest": "sha256:aa03aa03aa03aa03aa03aa03aa03aa03"
+  }
+]

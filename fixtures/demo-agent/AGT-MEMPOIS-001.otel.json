@@ -1,0 +1,70 @@
+{
+  "spans": [
+    {
+      "name": "agent.request",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "cc01",
+      "parent_span_id": null,
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "unset",
+      "attributes": {
+        "session.id": "sess-2"
+      }
+    },
+    {
+      "name": "agent.memory.write",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "cc02",
+      "parent_span_id": "cc01",
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "ok",
+      "attributes": {
+        "memory.scope": "durable",
+        "memory.key": "standing_instructions",
+        "agentsec.policy.decision": "allow"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "cc03",
+      "parent_span_id": "cc01",
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "ok",
+      "attributes": {
+        "tool.name": "memory_write",
+        "agentsec.policy.decision": "allow"
+      }
+    },
+    {
+      "name": "agent.memory.read",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "cc04",
+      "parent_span_id": "cc01",
+      "start_time": "2026-07-28T09:00:02Z",
+      "end_time": "2026-07-28T09:00:03Z",
+      "status": "unset",
+      "attributes": {
+        "memory.key": "standing_instructions"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "cc05",
+      "parent_span_id": "cc01",
+      "start_time": "2026-07-28T09:00:03Z",
+      "end_time": "2026-07-28T09:00:04Z",
+      "status": "ok",
+      "attributes": {
+        "tool.name": "initiate_transfer",
+        "agentsec.policy.decision": "allow",
+        "transfer.amount": 42000,
+        "approval.source": "agent_memory"
+      }
+    }
+  ]
+}

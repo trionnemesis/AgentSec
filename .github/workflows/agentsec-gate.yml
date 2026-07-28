@@ -1,0 +1,146 @@
+# Reusable purple-team gate.
+#
+# Call this from the repository that owns the agent under test. No AI client is
+# involved: the verdict comes from the scenario contract and the deterministic
+# evaluator, and the exit code is the gate.
+#
+#   jobs:
+#     purple:
+#       uses: trionnemesis/agentsec-purple-harness/.github/workflows/agentsec-gate.yml@main
+#       with:
+#         target: order-agent-staging
+#         profile: pr
+#       secrets:
+#         wazuh_user: ${{ secrets.WAZUH_INDEXER_USER }}
+#         wazuh_password: ${{ secrets.WAZUH_INDEXER_PASSWORD }}
+
+name: agentsec-gate
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Allowlisted target id.
+        required: true
+        type: string
+      profile:
+        description: pr | nightly | release
+        required: false
+        default: pr
+        type: string
+      workspace:
+        description: Path to the AgentSec workspace inside the caller's checkout.
+        required: false
+        default: agentsec
+        type: string
+      fail-on-blocking:
+        description: >
+          Set false to report without gating. Useful for the first week of
+          adoption, while a team catches up on detection coverage.
+        required: false
+        default: true
+        type: boolean
+    secrets:
+      wazuh_user:
+        required: false
+      wazuh_password:
+        required: false
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  purple:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - run: pip install -e .
+
+      # Fail here rather than mid-run: a scenario asserting on a backend the
+      # target does not have produces a detection gap that is really a config
+      # mistake, and that wastes an engineer's afternoon.
+      - name: validate the catalogue against the target
+        run: agentsec validate --target "${{ inputs.target }}"
+
+      - name: preview
+        run: agentsec preview --target "${{ inputs.target }}" --profile "${{ inputs.profile }}"
+
+      - name: run
+        id: run
+        continue-on-error: ${{ !inputs.fail-on-blocking }}
+        env:
+          AGENTSEC_ACTOR: ci:${{ github.actor }}
+          WAZUH_INDEXER_USER: ${{ secrets.wazuh_user }}
+          WAZUH_INDEXER_PASSWORD: ${{ secrets.wazuh_password }}
+        run: |
+          agentsec run \
+            --target "${{ inputs.target }}" \
+            --profile "${{ inputs.profile }}" \
+            --output junit \
+            --output-file results/agentsec.xml
+
+      - name: html + json report
+        if: always()
+        run: |
+          agentsec report --target "${{ inputs.target }}" \
+            --profile "${{ inputs.profile }}" --format html --format json
+
+      - name: summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          reports = sorted(pathlib.Path("results/reports").glob("report-*.json"))
+          if not reports:
+              print("No report produced.")
+              raise SystemExit(0)
+          data = json.loads(reports[-1].read_text())
+
+          print("## AgentSec purple gate\n")
+          print(f"Target `{data['target_id']}` · profile `{data['profile']}` · "
+                f"{data['total_runs']} run(s)\n")
+          print("| Scenario | Prevention | Detection | Evidence | Response | Verdict |")
+          print("|---|---|---|---|---|---|")
+          for r in data["runs"]:
+              flag = " **blocking**" if r["blocking"] else ""
+              print(f"| `{r['scenario_id']}` | {r['prevention']} | {r['detection']} "
+                    f"| {r['evidence']} | {r['response']} | {r['purple_verdict']}{flag} |")
+
+          if data["blocking_count"]:
+              print(f"\n{data['blocking_count']} blocking finding(s): "
+                    f"{', '.join(data['blocking_scenarios'])}")
+              for r in data["runs"]:
+                  if not r["blocking"]:
+                      continue
+                  print(f"\n### `{r['scenario_id']}` — {r['purple_verdict']}\n")
+                  print(f"{r['rationale']}\n")
+                  for c in r["failed_checks"][:5]:
+                      print(f"- **[{c['axis']}]** {c['assertion']}")
+                      print(f"  - observed: {c['observed']}")
+                      if c["reason"]:
+                          print(f"  - why it matters: {c['reason']}")
+          else:
+              print("\nNo blocking findings.")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agentsec-${{ inputs.target }}-${{ inputs.profile }}
+          path: ${{ inputs.workspace }}/results/
+          retention-days: 30
+
+      - name: propagate the gate
+        if: always() && inputs.fail-on-blocking
+        run: |
+          [ "${{ steps.run.outcome }}" = "success" ] || exit 1

@@ -1,0 +1,88 @@
+apiVersion: agentsec.dev/v1
+kind: TargetAllowlist
+
+# The only file in this repository that names a real endpoint or a credential
+# variable. Review changes here the way you review firewall rules.
+#
+# Two properties are structural, not conventional:
+#   * `production` is not a valid environment. There is no flag to add it.
+#   * an http base_url must resolve to loopback or RFC1918 space unless the host
+#     is listed in AGENTSEC_ALLOW_EXTERNAL_HOSTS.
+
+targets:
+  # ---------------------------------------------------------------------
+  # Offline demo target. Everything is a recorded fixture, so `agentsec run`
+  # works on a laptop with no agent, no Wazuh and no network. This is also
+  # what CI uses to test the harness itself.
+  # ---------------------------------------------------------------------
+  - id: demo-agent-fixture
+    description: Recorded fixtures for the four bundled scenarios.
+    environment: local
+    capabilities: [rag, tool_calling, memory, multi_tenant, email]
+    max_risk_level: medium
+    allow_destructive: false
+    allowed_executors: [replay]
+    adapter:
+      kind: fixture
+      fixture_dir: fixtures/demo-agent
+    principals:
+      tenant-a-user: DEMO_TENANT_A_TOKEN
+      tenant-b-user: DEMO_TENANT_B_TOKEN
+    evidence:
+      otel:
+        kind: file
+        path: fixtures/demo-agent/{scenario_id}.otel.json
+      wazuh:
+        kind: file
+        path: fixtures/demo-agent/{scenario_id}.wazuh.json
+      tool_audit:
+        kind: file
+        path: fixtures/demo-agent/{scenario_id}.audit.json
+      state_diff:
+        kind: file
+        path: fixtures/demo-agent/{scenario_id}.state.json
+        collections: [orders, agent_memory, customers]
+
+  # ---------------------------------------------------------------------
+  # Template for a real staging agent. Commented out so a fresh clone cannot
+  # accidentally point at anything: uncomment and edit deliberately.
+  # ---------------------------------------------------------------------
+  # - id: order-agent-staging
+  #   description: Order agent, staging namespace.
+  #   environment: staging
+  #   capabilities: [rag, tool_calling, multi_tenant]
+  #   max_risk_level: medium
+  #   allow_destructive: false
+  #   allowed_executors: [replay, promptfoo]
+  #   adapter:
+  #     kind: http
+  #     base_url: http://order-agent.staging.svc.cluster.local:8080
+  #     chat_path: /v1/chat
+  #     timeout_seconds: 60
+  #     headers_from_env:
+  #       x-agentsec-run: AGENTSEC_RUN_HEADER
+  #   principals:
+  #     tenant-a-user: ORDER_AGENT_TENANT_A_TOKEN
+  #     tenant-b-user: ORDER_AGENT_TENANT_B_TOKEN
+  #   evidence:
+  #     otel:
+  #       kind: http
+  #       url: http://tempo.observability.svc.cluster.local:3200
+  #       service_name: order-agent
+  #     wazuh:
+  #       kind: opensearch
+  #       url: https://wazuh.indexer:9200
+  #       index: wazuh-alerts-*
+  #       username_env: WAZUH_INDEXER_USER
+  #       password_env: WAZUH_INDEXER_PASSWORD
+  #       verify_tls: true
+  #     tool_audit:
+  #       kind: http
+  #       url: http://order-agent.staging.svc.cluster.local:8080/_agentsec
+  #     state_diff:
+  #       kind: http
+  #       url: http://order-agent.staging.svc.cluster.local:8080/_agentsec
+  #       collections: [orders, customers]
+  #   rate_limit:
+  #     max_runs_per_hour: 12
+  #     max_concurrent_runs: 1

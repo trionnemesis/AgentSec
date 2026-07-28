@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentSec Purple Report — {{ batch.target_id }} / {{ batch.profile }}</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #16181d; --muted: #5b6472; --line: #e3e6eb;
+    --card: #f7f8fa; --accent: #5b4bd6;
+    --pass: #1a7f4b; --fail: #c0392b; --warn: #b26a00; --skip: #6b7280;
+    --pass-bg: #e6f5ec; --fail-bg: #fdeceb; --warn-bg: #fdf3e3; --skip-bg: #f0f1f3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e8eaed; --muted: #9aa4b2; --line: #2a2f37;
+      --card: #1c1f25; --accent: #9b8cff;
+      --pass: #4ade80; --fail: #f87171; --warn: #fbbf24; --skip: #9ca3af;
+      --pass-bg: #14301f; --fail-bg: #35191a; --warn-bg: #332612; --skip-bg: #23262b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .75rem; }
+  .sub { color: var(--muted); font-size: .875rem; margin-bottom: 1.5rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .85rem 1rem; }
+  .card .n { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .card .l { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+  code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pill { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .75rem;
+          font-weight: 600; white-space: nowrap; }
+  .pass { color: var(--pass); background: var(--pass-bg); }
+  .fail { color: var(--fail); background: var(--fail-bg); }
+  .warn { color: var(--warn); background: var(--warn-bg); }
+  .skip { color: var(--skip); background: var(--skip-bg); }
+  .axis { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  details { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem; margin: .6rem 0; background: var(--card); }
+  details summary { cursor: pointer; font-weight: 600; }
+  .check { border-left: 3px solid var(--fail); padding: .35rem 0 .35rem .7rem; margin: .55rem 0; }
+  .check .a { font-weight: 600; }
+  .check .o, .check .r { color: var(--muted); font-size: .85rem; }
+  .banner { border-radius: 10px; padding: .9rem 1.1rem; margin: 1.25rem 0; font-weight: 600; }
+  .banner.ok { color: var(--pass); background: var(--pass-bg); }
+  .banner.bad { color: var(--fail); background: var(--fail-bg); }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>AgentSec Purple Report</h1>
+  <div class="sub">
+    target <code>{{ batch.target_id }}</code> ·
+    profile <code>{{ batch.profile }}</code> ·
+    generated {{ batch.generated_at }}
+  </div>
+
+  {% if batch.blocking_count %}
+    <div class="banner bad">
+      {{ batch.blocking_count }} blocking finding{{ '' if batch.blocking_count == 1 else 's' }} —
+      CI exit code {{ batch.exit_code }}
+    </div>
+  {% else %}
+    <div class="banner ok">No blocking findings — CI exit code {{ batch.exit_code }}</div>
+  {% endif %}
+
+  <div class="cards">
+    <div class="card"><div class="n">{{ batch.total_runs }}</div><div class="l">runs</div></div>
+    <div class="card"><div class="n">{{ batch.secure }}</div><div class="l">secure</div></div>
+    {% for verdict, n in batch.verdict_counts.items() if verdict != 'secure' %}
+      <div class="card"><div class="n">{{ n }}</div><div class="l">{{ verdict.replace('_', ' ') }}</div></div>
+    {% endfor %}
+  </div>
+
+  <h2>Detection coverage</h2>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>Scenario</th><th>Prevention</th><th>Detection</th><th>Evidence</th><th>Response</th><th>Verdict</th></tr>
+      </thead>
+      <tbody>
+      {% for r in batch.runs %}
+        <tr>
+          <td><code>{{ r.scenario_id }}</code><br><span class="sub">{{ r.scenario_title }}</span></td>
+          {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
+            <td class="axis"><span class="pill {{ status_class(r[axis]) }}">{{ r[axis] }}</span></td>
+          {% endfor %}
+          <td>
+            <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
+            {% if r.blocking %}<br><span class="pill fail">blocking</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Run detail</h2>
+  {% for r in batch.runs %}
+    <details {% if r.purple_verdict != 'secure' %}open{% endif %}>
+      <summary>
+        <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
+        <code>{{ r.scenario_id }}</code> — {{ r.scenario_title }}
+      </summary>
+
+      <p class="sub">
+        run <code>{{ r.run_id }}</code> ·
+        severity {{ r.severity }} ·
+        gate {{ r.gate }} ·
+        {{ '%.2f'|format(r.duration_seconds) }}s
+        {% if r.owasp %} · OWASP {{ r.owasp|join(', ') }}{% endif %}
+      </p>
+
+      <p>{{ r.rationale }}</p>
+
+      {% if r.collector_errors %}
+        <p><strong>Evidence could not be collected:</strong></p>
+        {% for e in r.collector_errors %}
+          <div class="check"><div class="a">{{ e.source }}</div><div class="o">{{ e.message }}</div></div>
+        {% endfor %}
+      {% endif %}
+
+      {% for c in r.failed_checks %}
+        <div class="check">
+          <div class="a">[{{ c.axis }}] {{ c.assertion }}</div>
+          <div class="o">observed: {{ c.observed }}</div>
+          {% if c.reason %}<div class="r">why it matters: {{ c.reason }}</div>{% endif %}
+        </div>
+      {% endfor %}
+
+      {% if not r.failed_checks and not r.collector_errors %}
+        <p class="sub">All asserted checks held.</p>
+      {% endif %}
+    </details>
+  {% endfor %}
+
+  {% if coverage %}
+    <h2>OWASP Agentic Top 10 coverage</h2>
+    <p class="sub">
+      {{ coverage.covered_categories }}/{{ coverage.total_categories }} categories have at least
+      one scenario ({{ (coverage.coverage_ratio * 100)|round(1) }}%).
+    </p>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Category</th><th>Covered</th><th>Scenarios</th></tr></thead>
+        <tbody>
+        {% for c in coverage.categories %}
+          <tr>
+            <td><code>{{ c.id }}</code> {{ c.title }}</td>
+            <td><span class="pill {{ 'pass' if c.covered else 'skip' }}">{{ 'yes' if c.covered else 'no' }}</span></td>
+            <td>{{ c.scenario_ids|join(', ') or '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
+  <footer>
+    Verdicts are produced by the deterministic AgentSec evaluator from the scenario
+    contract and collected evidence. No language model participates in the pass/fail
+    decision.
+  </footer>
+</div>
+</body>
+</html>

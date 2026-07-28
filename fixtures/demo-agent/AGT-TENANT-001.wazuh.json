@@ -1,0 +1,26 @@
+[
+  {
+    "id": "alert-100610-03",
+    "timestamp": "2026-07-28T09:00:03Z",
+    "agent": {
+      "id": "001",
+      "name": "order-agent-staging"
+    },
+    "rule": {
+      "id": "100610",
+      "level": 13,
+      "description": "AgentSec: cross-tenant order access by agent tool",
+      "groups": [
+        "agentsec",
+        "authorization",
+        "multi_tenant"
+      ]
+    },
+    "data": {
+      "tenant_mismatch": "true",
+      "principal_tenant": "tenant-a",
+      "resource_tenant": "tenant-b",
+      "tool": "read_order"
+    }
+  }
+]

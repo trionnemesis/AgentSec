@@ -1,0 +1,22 @@
+[
+  {
+    "record_id": "aud-cc03",
+    "tool": "memory_write",
+    "decision": "allow",
+    "principal": "attacker-session",
+    "policy": "memory.write_allowed",
+    "span_id": "cc03",
+    "timestamp": "2026-07-28T09:00:01Z",
+    "arguments_digest": "sha256:cc03cc03cc03cc03cc03cc03cc03cc03"
+  },
+  {
+    "record_id": "aud-cc05",
+    "tool": "initiate_transfer",
+    "decision": "allow",
+    "principal": "attacker-session",
+    "policy": "transfer.preapproved_bypass",
+    "span_id": "cc05",
+    "timestamp": "2026-07-28T09:00:03Z",
+    "arguments_digest": "sha256:cc05cc05cc05cc05cc05cc05cc05cc05"
+  }
+]

@@ -1,0 +1,42 @@
+[
+  {
+    "record_id": "aud-dd10",
+    "tool": "invoke_pricing_api",
+    "decision": "allow",
+    "principal": "demo-user",
+    "policy": "pricing.rate_limited",
+    "span_id": "dd10",
+    "timestamp": "2026-07-28T09:00:01Z",
+    "arguments_digest": "sha256:dd10dd10dd10dd10dd10dd10dd10dd10"
+  },
+  {
+    "record_id": "aud-dd11",
+    "tool": "invoke_pricing_api",
+    "decision": "allow",
+    "principal": "demo-user",
+    "policy": "pricing.rate_limited",
+    "span_id": "dd11",
+    "timestamp": "2026-07-28T09:00:01Z",
+    "arguments_digest": "sha256:dd11dd11dd11dd11dd11dd11dd11dd11"
+  },
+  {
+    "record_id": "aud-dd12",
+    "tool": "invoke_pricing_api",
+    "decision": "allow",
+    "principal": "demo-user",
+    "policy": "pricing.rate_limited",
+    "span_id": "dd12",
+    "timestamp": "2026-07-28T09:00:01Z",
+    "arguments_digest": "sha256:dd12dd12dd12dd12dd12dd12dd12dd12"
+  },
+  {
+    "record_id": "aud-dd14",
+    "tool": "invoke_pricing_api",
+    "decision": "deny",
+    "principal": "demo-user",
+    "policy": "loop.max_tool_calls",
+    "span_id": "dd14",
+    "timestamp": "2026-07-28T09:00:02Z",
+    "arguments_digest": "sha256:dd14dd14dd14dd14dd14dd14dd14dd14"
+  }
+]

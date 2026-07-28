@@ -1,0 +1,14 @@
+{
+  "baseline_taken_at": "2026-07-28T09:00:01Z",
+  "changes": [
+    {
+      "collection": "agent_memory",
+      "operation": "insert",
+      "count": 1,
+      "keys": {
+        "memory_key": "standing_instructions",
+        "scope": "durable"
+      }
+    }
+  ]
+}

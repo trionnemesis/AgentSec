@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/target.schema.json",
+  "title": "AgentSec Target Allowlist",
+  "description": "The only place a real endpoint, credential reference or dataset name is ever written down. Scenarios and MCP callers reference a target by id; they cannot supply a URL. This file is operator-owned and should be code-reviewed like firewall rules.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "targets"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "agentsec.dev/v1" },
+    "kind": { "const": "TargetAllowlist" },
+    "targets": { "type": "array", "items": { "$ref": "#/$defs/target" } }
+  },
+  "$defs": {
+    "target": {
+      "type": "object",
+      "required": ["id", "environment", "adapter"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$" },
+        "description": { "type": "string" },
+        "environment": {
+          "enum": ["local", "ci", "staging"],
+          "description": "`production` is not a valid value. Refusing production is a schema-level property, not a runtime check that someone can flag their way past."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "enum": ["rag", "tool_calling", "memory", "multi_tenant", "code_exec", "email", "payments"] }
+        },
+        "max_risk_level": {
+          "enum": ["low", "medium", "high"],
+          "default": "medium",
+          "description": "Scenarios above this risk level are refused for this target."
+        },
+        "allow_destructive": { "type": "boolean", "default": false },
+        "allowed_executors": {
+          "type": "array",
+          "items": { "enum": ["replay", "promptfoo", "pyrit", "pytest"] },
+          "default": ["replay"]
+        },
+        "adapter": { "$ref": "#/$defs/adapter" },
+        "principals": {
+          "type": "object",
+          "description": "Logical principal id -> credential environment variable name. Values are never stored here.",
+          "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+        },
+        "evidence": { "$ref": "#/$defs/evidenceBackends" },
+        "rate_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_runs_per_hour": { "type": "integer", "minimum": 1, "default": 20 },
+            "max_concurrent_runs": { "type": "integer", "minimum": 1, "default": 1 }
+          }
+        }
+      }
+    },
+    "adapter": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["http", "fixture"] },
+        "base_url": {
+          "type": "string",
+          "description": "Required for kind=http. Must resolve to a private or loopback address unless explicitly overridden by the operator."
+        },
+        "chat_path": { "type": "string", "default": "/chat" },
+        "headers_from_env": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+        },
+        "fixture_dir": { "type": "string", "description": "Required for kind=fixture. Offline recorded transcripts." },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 600, "default": 60 }
+      }
+    },
+    "evidenceBackends": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "otel": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["file", "http", "none"] },
+            "path": { "type": "string" },
+            "url": { "type": "string" },
+            "service_name": { "type": "string" }
+          }
+        },
+        "wazuh": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["file", "opensearch", "none"] },
+            "path": { "type": "string" },
+            "url": { "type": "string" },
+            "index": { "type": "string", "default": "wazuh-alerts-*" },
+            "username_env": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+            "password_env": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+            "verify_tls": { "type": "boolean", "default": true }
+          }
+        },
+        "tool_audit": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["file", "http", "none"] },
+            "path": { "type": "string" },
+            "url": { "type": "string" }
+          }
+        },
+        "state_diff": {
+          "type": "object",
+          "required": ["kind"],
+          "additionalProperties": false,
+          "properties": {
+            "kind": { "enum": ["file", "http", "none"] },
+            "path": { "type": "string" },
+            "url": { "type": "string" },
+            "collections": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Logical dataset names the target agrees to snapshot. The harness never issues raw SQL."
+            }
+          }
+        }
+      }
+    }
+  }
+}

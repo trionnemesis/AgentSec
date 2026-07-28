@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(agentsec validate:*)",
+      "Bash(agentsec preview:*)",
+      "Bash(agentsec targets:*)",
+      "Bash(agentsec scenarios:*)",
+      "Bash(agentsec coverage:*)",
+      "Bash(agentsec get-run:*)",
+      "Bash(agentsec compare:*)",
+      "Bash(agentsec finding list:*)",
+      "Bash(agentsec finding draft-regression:*)",
+      "Bash(agentsec validate-detection:*)",
+      "Bash(agentsec mcp-contract:*)",
+      "Bash(agentsec audit:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff check:*)",
+      "Bash(mypy:*)"
+    ],
+    "ask": [
+      "Bash(agentsec report:*)",
+      "Bash(agentsec approve:*)",
+      "Bash(agentsec finding promote:*)"
+    ],
+    "deny": [
+      "Bash(agentsec run:*)",
+      "Read(./policy/approvals.yaml)",
+      "Read(./.env)",
+      "Read(./**/.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Write|Edit|NotebookEdit|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/agentsec/.claude/hooks/guard_agentsec.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

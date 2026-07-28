@@ -1,0 +1,34 @@
+[
+  {
+    "record_id": "aud-bb00",
+    "tool": "read_order",
+    "decision": "allow",
+    "principal": "tenant-b-user",
+    "policy": "tenant.owner_match",
+    "span_id": "bb00",
+    "timestamp": "2026-07-28T09:00:01Z",
+    "arguments_digest": "sha256:bb00bb00bb00bb00bb00bb00bb00bb00",
+    "tenant_id": "tenant-b"
+  },
+  {
+    "record_id": "aud-bb02",
+    "tool": "read_order",
+    "decision": "allow",
+    "principal": "tenant-a-user",
+    "policy": "tenant.owner_match",
+    "span_id": "bb02",
+    "timestamp": "2026-07-28T09:00:02Z",
+    "arguments_digest": "sha256:bb02bb02bb02bb02bb02bb02bb02bb02",
+    "tenant_id": "tenant-b"
+  },
+  {
+    "record_id": "aud-bb03",
+    "tool": "quarantine_session",
+    "decision": "allow",
+    "principal": "system",
+    "policy": "response.auto_quarantine",
+    "span_id": "bb03",
+    "timestamp": "2026-07-28T09:00:04Z",
+    "arguments_digest": "sha256:bb03bb03bb03bb03bb03bb03bb03bb03"
+  }
+]

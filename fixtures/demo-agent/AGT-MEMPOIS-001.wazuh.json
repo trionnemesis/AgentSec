@@ -1,0 +1,22 @@
+[
+  {
+    "id": "alert-100001-01",
+    "timestamp": "2026-07-28T09:00:01Z",
+    "agent": {
+      "id": "001",
+      "name": "order-agent-staging"
+    },
+    "rule": {
+      "id": "100001",
+      "level": 3,
+      "description": "Agent request received",
+      "groups": [
+        "agentsec",
+        "audit"
+      ]
+    },
+    "data": {
+      "session_id": "sess-2"
+    }
+  }
+]

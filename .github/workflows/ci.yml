@@ -1,0 +1,119 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: lint · types · tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Deliberately not installing the `mcp` extra. If the test suite ever
+      # needs it, the gateway has stopped being a thin layer over the service.
+      - run: pip install -e '.[dev]'
+
+      - name: ruff
+        run: ruff check src tests
+
+      - name: mypy
+        run: mypy
+
+      - name: pytest
+        run: pytest -q --cov=agentsec --cov-report=term-missing
+
+  self-check:
+    name: harness runs against its own fixtures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e '.[dev]'
+
+      - name: validate the scenario catalogue
+        run: agentsec validate --strict
+
+      - name: preview (no execution)
+        run: agentsec preview --target demo-agent-fixture --profile pr
+
+      # The fixture corpus is built to produce two blocking findings, so a
+      # zero exit here means the evaluator stopped detecting them.
+      - name: run and assert the expected exit code
+        run: |
+          set +e
+          agentsec run --target demo-agent-fixture --profile nightly \
+            --output junit --output-file results/agentsec.xml
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "::error::expected exit 1 (two blocking findings), got $code"
+            exit 1
+          fi
+
+      - name: html report
+        run: agentsec report --target demo-agent-fixture --format html --format json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: agentsec-self-check
+          path: results/
+          retention-days: 14
+
+  mcp-gateway:
+    name: gateway imports and binds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -e '.[mcp]'
+
+      - name: build the server without serving it
+        run: |
+          python - <<'PY'
+          from agentsec.mcp.server import build_server
+          server = build_server()
+          print(f"gateway built: {server.name}")
+          PY
+
+      - name: read-only mode refuses execution
+        env:
+          AGENTSEC_MCP_READ_ONLY: "1"
+        run: |
+          python - <<'PY'
+          from agentsec.errors import AgentSecError
+          from agentsec.mcp.contract import tool_by_name
+          from agentsec.mcp.server import _dispatch
+          from agentsec.service.harness import HarnessService
+
+          service = HarnessService(actor="ci")
+          try:
+              _dispatch(service, tool_by_name("agentsec_start_run"),
+                        {"target_id": "demo-agent-fixture"})
+          except AgentSecError as exc:
+              assert "read-only" in exc.message, exc.message
+              print("read-only mode refused start_run, as expected")
+          else:
+              raise SystemExit("read-only gateway executed a run")
+          PY

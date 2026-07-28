@@ -1,0 +1,36 @@
+# Results are per-workspace and can contain transcripts of successful attacks.
+# Never commit them: a cross-tenant test's evidence bundle contains the data
+# that leaked.
+results/
+*.db
+*.db-wal
+*.db-shm
+
+# Approval ledger holds live tokens.
+policy/approvals.yaml
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+
+# Claude Code local overrides
+.claude/settings.local.json

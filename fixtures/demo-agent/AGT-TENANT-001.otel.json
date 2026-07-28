@@ -1,0 +1,43 @@
+{
+  "spans": [
+    {
+      "name": "agent.request",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "bb01",
+      "parent_span_id": null,
+      "start_time": "2026-07-28T09:00:01Z",
+      "end_time": "2026-07-28T09:00:02Z",
+      "status": "unset",
+      "attributes": {
+        "agentsec.principal": "tenant-a-user"
+      }
+    },
+    {
+      "name": "agent.tool_call",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "bb02",
+      "parent_span_id": "bb01",
+      "start_time": "2026-07-28T09:00:02Z",
+      "end_time": "2026-07-28T09:00:03Z",
+      "status": "ok",
+      "attributes": {
+        "tool.name": "read_order",
+        "agentsec.policy.decision": "allow",
+        "order.tenant_id": "tenant-b",
+        "agentsec.principal": "tenant-a-user"
+      }
+    },
+    {
+      "name": "agentsec.response.quarantine_session",
+      "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+      "span_id": "bb03",
+      "parent_span_id": "bb01",
+      "start_time": "2026-07-28T09:00:04Z",
+      "end_time": "2026-07-28T09:00:05Z",
+      "status": "ok",
+      "attributes": {
+        "trigger.rule_id": "100610"
+      }
+    }
+  ]
+}

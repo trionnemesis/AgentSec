@@ -1,0 +1,40 @@
+# Run profiles. Values here override the built-in pr/nightly/release defaults;
+# omit this file entirely to use the defaults as-is.
+#
+# `blocking_verdicts` is the CI gate. Note what the pr profile deliberately does
+# *not* block on: an evidence_gap or response_gap will not stop a merge, because
+# blocking every axis on every pull request trains people to bypass the gate.
+# Those verdicts still fail the release profile.
+
+profiles:
+  pr:
+    description: Fast, non-destructive regression set for pull requests.
+    max_duration_seconds: 600
+    allow_destructive: false
+    max_risk_level: medium
+    blocking_verdicts:
+      - error
+      - detection_gap
+      - prevention_gap
+
+  nightly:
+    description: Full catalogue against staging.
+    max_duration_seconds: 7200
+    allow_destructive: false
+    max_risk_level: high
+    blocking_verdicts:
+      - error
+      - detection_gap
+      - prevention_gap
+
+  release:
+    description: Everything, including destructive scenarios, before a release.
+    max_duration_seconds: 14400
+    allow_destructive: true
+    max_risk_level: high
+    blocking_verdicts:
+      - error
+      - detection_gap
+      - prevention_gap
+      - evidence_gap
+      - response_gap

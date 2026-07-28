@@ -1,0 +1,24 @@
+[
+  {
+    "id": "alert-100810-02",
+    "timestamp": "2026-07-28T09:00:02Z",
+    "agent": {
+      "id": "001",
+      "name": "order-agent-staging"
+    },
+    "rule": {
+      "id": "100810",
+      "level": 8,
+      "description": "AgentSec: agent tool loop breaker engaged",
+      "groups": [
+        "agentsec",
+        "resource_exhaustion"
+      ]
+    },
+    "data": {
+      "tool": "invoke_pricing_api",
+      "call_count": "4",
+      "limit": "4"
+    }
+  }
+]

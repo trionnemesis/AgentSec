@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/evidence.schema.json",
+  "title": "AgentSec Evidence Bundle",
+  "description": "Normalised evidence collected for a single run. Every collector maps its native format into this shape, so the evaluator never learns a vendor API. Replacing Wazuh with another SIEM means writing one collector, not rewriting the evaluator.",
+  "type": "object",
+  "required": ["run_id", "collected_at", "sources"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "window": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "transcript": { "$ref": "#/$defs/transcriptSource" },
+        "otel": { "$ref": "#/$defs/otelSource" },
+        "wazuh": { "$ref": "#/$defs/wazuhSource" },
+        "tool_audit": { "$ref": "#/$defs/toolAuditSource" },
+        "state_diff": { "$ref": "#/$defs/stateDiffSource" }
+      }
+    },
+    "collector_errors": {
+      "type": "array",
+      "description": "Non-fatal collector failures. A missing source degrades its axis to `error`, never silently to `pass`.",
+      "items": {
+        "type": "object",
+        "required": ["source", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string" },
+          "message": { "type": "string" },
+          "fatal": { "type": "boolean", "default": false }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sourceMeta": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "collector": { "type": "string" },
+        "backend": { "type": "string" },
+        "query": { "type": "string", "description": "Redacted description of the query issued, for audit." }
+      }
+    },
+    "transcriptSource": {
+      "type": "object",
+      "required": ["turns"],
+      "additionalProperties": false,
+      "properties": {
+        "meta": { "$ref": "#/$defs/sourceMeta" },
+        "turns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "step_id": { "type": "string" },
+              "role": { "enum": ["user", "assistant", "system", "tool"] },
+              "content": { "type": "string" },
+              "principal": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
+      }
+    },
+    "otelSource": {
+      "type": "object",
+      "required": ["spans"],
+      "additionalProperties": false,
+      "properties": {
+        "meta": { "$ref": "#/$defs/sourceMeta" },
+        "trace_ids": { "type": "array", "items": { "type": "string" } },
+        "spans": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "trace_id": { "type": "string" },
+              "span_id": { "type": "string" },
+              "parent_span_id": { "type": ["string", "null"] },
+              "name": { "type": "string" },
+              "start_time": { "type": "string", "format": "date-time" },
+              "end_time": { "type": "string", "format": "date-time" },
+              "status": { "enum": ["unset", "ok", "error"], "default": "unset" },
+              "attributes": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean", "null"] } }
+            }
+          }
+        }
+      }
+    },
+    "wazuhSource": {
+      "type": "object",
+      "required": ["alerts"],
+      "additionalProperties": false,
+      "properties": {
+        "meta": { "$ref": "#/$defs/sourceMeta" },
+        "alerts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule_id", "timestamp"],
+            "additionalProperties": false,
+            "properties": {
+              "alert_id": { "type": "string" },
+              "rule_id": { "type": "string" },
+              "rule_description": { "type": "string" },
+              "rule_level": { "type": "integer" },
+              "rule_groups": { "type": "array", "items": { "type": "string" } },
+              "agent_name": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "fields": {
+                "type": "object",
+                "description": "Flattened alert document (dot-notation keys) used by match_fields assertions.",
+                "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+              }
+            }
+          }
+        }
+      }
+    },
+    "toolAuditSource": {
+      "type": "object",
+      "required": ["records"],
+      "additionalProperties": false,
+      "properties": {
+        "meta": { "$ref": "#/$defs/sourceMeta" },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["tool", "decision"],
+            "additionalProperties": false,
+            "properties": {
+              "record_id": { "type": "string" },
+              "tool": { "type": "string" },
+              "decision": { "enum": ["allow", "deny", "escalate"] },
+              "principal": { "type": "string" },
+              "tenant_id": { "type": "string" },
+              "arguments_digest": {
+                "type": "string",
+                "description": "Hash of the arguments. Raw arguments are deliberately not carried into the bundle so it can be shared with a read-only gateway."
+              },
+              "timestamp": { "type": "string", "format": "date-time" },
+              "policy": { "type": "string" },
+              "span_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "stateDiffSource": {
+      "type": "object",
+      "required": ["changes"],
+      "additionalProperties": false,
+      "properties": {
+        "meta": { "$ref": "#/$defs/sourceMeta" },
+        "baseline_taken_at": { "type": "string", "format": "date-time" },
+        "changes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["collection", "operation"],
+            "additionalProperties": false,
+            "properties": {
+              "collection": { "type": "string" },
+              "operation": { "enum": ["insert", "update", "delete"] },
+              "count": { "type": "integer", "minimum": 1, "default": 1 },
+              "keys": {
+                "type": "object",
+                "description": "Identifying, non-sensitive key fields of the changed rows.",
+                "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
