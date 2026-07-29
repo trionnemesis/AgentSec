@@ -4,9 +4,13 @@
 # involved: the verdict comes from the scenario contract and the deterministic
 # evaluator, and the exit code is the gate.
 #
+# Pin to a release tag, never @main: a gate on a moving branch means a change
+# here can silently alter another repository's pass/fail semantics — the exact
+# failure mode this harness exists to catch.
+#
 #   jobs:
 #     purple:
-#       uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@main
+#       uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.1.0
 #       with:
 #         target: order-agent-staging
 #         profile: pr
