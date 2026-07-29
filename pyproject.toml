@@ -31,7 +31,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.2"]
+# <2: mcp 2.0.0 removed mcp.server.fastmcp, which the gateway binds to.
+mcp = ["mcp>=1.2,<2"]
 otel = ["opentelemetry-sdk>=1.25", "opentelemetry-exporter-otlp-proto-http>=1.25"]
 pyrit = ["pyrit>=0.5"]
 dev = [
