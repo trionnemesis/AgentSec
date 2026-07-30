@@ -104,6 +104,67 @@ def test_prevention_only_scenario_warns_red_only() -> None:
     assert "red_only" in codes
 
 
+def test_must_fire_without_a_rule_identity_warns() -> None:
+    """A level-only must_fire passes when any unrelated alert fires in the window."""
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {"wazuh": {"must_fire": [{"min_level": 7}]}}
+    report = validate_scenario(Scenario.model_validate(doc))
+    issue = next(i for i in report.warnings if i.code == "unspecific_alert_assertion")
+    assert issue.path == "spec/contract/detection/wazuh/must_fire/0"
+
+
+def test_rule_group_or_match_fields_also_count_as_identity() -> None:
+    """rule_id is the usual way to name a signal, but not the only one."""
+    for identity in ({"rule_group": "agentsec"}, {"match_fields": {"data.tenant": "B"}}):
+        doc = _minimal()
+        doc["spec"]["contract"]["detection"] = {
+            "wazuh": {"must_fire": [{"min_level": 7, **identity}]}
+        }
+        report = validate_scenario(Scenario.model_validate(doc))
+        assert not [i for i in report.warnings if i.code == "unspecific_alert_assertion"], (
+            f"{identity} should satisfy the specificity check"
+        )
+
+
+def test_unspecific_must_not_fire_is_not_warned() -> None:
+    """Breadth in must_not_fire is a stricter assertion, not a weaker one.
+
+    "No alert above level 10 may fire" is a legitimate claim, so the specificity
+    warning would be actively wrong here.
+    """
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {"wazuh": {"must_not_fire": [{"min_level": 10}]}}
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert not [i for i in report.warnings if i.code == "unspecific_alert_assertion"]
+
+
+def test_span_assertion_needs_no_attributes_to_be_specific() -> None:
+    """SpanAssertion.name is required, so a span assertion always names its signal.
+
+    AGT-TOOLLOOP-001 detects on `agent.loop_detected` with no attributes and is
+    correct to: the span name *is* the finding. Warning on absent attributes would
+    fire on a shipped scenario and teach authors to ignore the validator.
+    """
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {
+        "otel": {"must_emit": [{"name": "agent.loop_detected"}]}
+    }
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert report.ok
+    assert not report.warnings
+
+
+def test_empty_otel_detection_block_warns() -> None:
+    """Coverage would count detection as tested while the evaluator returns not_tested."""
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {"otel": {"must_emit": []}}
+    scenario = Scenario.model_validate(doc)
+    assert "detection" in scenario.tested_axes  # the disagreement this warning names
+    report = validate_scenario(scenario)
+    issue = next(i for i in report.warnings if i.code == "empty_otel_block")
+    assert issue.path == "spec/contract/detection/otel"
+
+
 def test_scenario_with_no_stimulus_warns() -> None:
     doc = _minimal()
     doc["spec"]["attack"]["steps"] = [{"id": "snap", "kind": "snapshot_state"}]
