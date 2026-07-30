@@ -180,6 +180,12 @@ def _check_detection_specificity(s: Scenario, r: ValidationReport) -> None:
     what the pull request template asks a reviewer to confirm, and the property is
     target-independent, so the rule belongs here as well.
 
+    Only ``rule_id`` and ``rule_group`` satisfy this. ``match_fields`` deliberately
+    does not: it pins the *subject* an alert is about, not the rule that raised it,
+    so ``match_fields: {data.tenant: B}`` alone still passes on any alert mentioning
+    that tenant — including one from a rule nobody wrote for this attack. Narrower
+    than level-only, but it is not naming a signal.
+
     Two deliberate limits:
 
     * ``must_not_fire`` is exempt. Breadth there is a stricter assertion, not a
@@ -194,14 +200,15 @@ def _check_detection_specificity(s: Scenario, r: ValidationReport) -> None:
         return
 
     for i, assertion in enumerate(det.wazuh.must_fire):
-        if assertion.rule_id or assertion.rule_group or assertion.match_fields:
+        if assertion.rule_id or assertion.rule_group:
             continue
         r.add(
             "warning",
             "unspecific_alert_assertion",
-            f"must_fire[{i}] identifies no rule, so a pass proves only that *some* "
-            "alert fired — not that this attack was detected. Add a rule_id, a "
-            "rule_group, or match_fields.",
+            f"must_fire[{i}] names no rule, so a pass proves only that *some* alert "
+            "fired — not that this attack was detected. Add a rule_id or a "
+            "rule_group; match_fields narrows the subject but still does not name "
+            "the rule that should have caught this.",
             f"spec/contract/detection/wazuh/must_fire/{i}",
         )
 

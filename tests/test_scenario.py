@@ -113,17 +113,43 @@ def test_must_fire_without_a_rule_identity_warns() -> None:
     assert issue.path == "spec/contract/detection/wazuh/must_fire/0"
 
 
-def test_rule_group_or_match_fields_also_count_as_identity() -> None:
-    """rule_id is the usual way to name a signal, but not the only one."""
-    for identity in ({"rule_group": "agentsec"}, {"match_fields": {"data.tenant": "B"}}):
-        doc = _minimal()
-        doc["spec"]["contract"]["detection"] = {
-            "wazuh": {"must_fire": [{"min_level": 7, **identity}]}
+def test_rule_group_counts_as_identity() -> None:
+    """rule_id is the usual way to name a signal, but a group names one too."""
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {
+        "wazuh": {"must_fire": [{"min_level": 7, "rule_group": "agentsec"}]}
+    }
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert not [i for i in report.warnings if i.code == "unspecific_alert_assertion"]
+
+
+def test_match_fields_alone_does_not_count_as_identity() -> None:
+    """match_fields pins the subject of an alert, not the rule that raised it.
+
+    `{data.tenant: B}` still passes on any alert mentioning tenant B, including one
+    from a rule nobody wrote for this attack. Narrower than level-only, but not a
+    named signal — so the warning stands.
+    """
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {
+        "wazuh": {"must_fire": [{"min_level": 7, "match_fields": {"data.tenant": "B"}}]}
+    }
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert [i for i in report.warnings if i.code == "unspecific_alert_assertion"]
+
+
+def test_rule_id_with_match_fields_is_the_strongest_form() -> None:
+    """AGT-TENANT-001's shape: name the rule *and* pin the subject."""
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {
+        "wazuh": {
+            "must_fire": [
+                {"rule_id": "100610", "min_level": 12, "match_fields": {"data.tenant": "B"}}
+            ]
         }
-        report = validate_scenario(Scenario.model_validate(doc))
-        assert not [i for i in report.warnings if i.code == "unspecific_alert_assertion"], (
-            f"{identity} should satisfy the specificity check"
-        )
+    }
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert not [i for i in report.warnings if i.code == "unspecific_alert_assertion"]
 
 
 def test_unspecific_must_not_fire_is_not_warned() -> None:
