@@ -126,6 +126,8 @@ Expected output — deliberately not all green:
 
 Read that as: the tenant boundary is broken **but instrumented** — fix the code. Memory poisoning is broken **and invisible** — fix the code *and* ship a Wazuh rule. The run exits `1`, by design.
 
+**On "no Wazuh":** the fixture corpus supplies recorded Wazuh alerts and OTel spans from files, so the detection axis is genuinely evaluated offline — `AGT-MEMPOIS-001` is a `detection_gap` because rule `100720` is absent from those recorded alerts, not because nothing was checked. Gating a **real** agent on detection does need a live signal source, declared per target in `policy/targets.yaml`: a Wazuh indexer (`kind: opensearch`) or OTel. Wazuh is not mandatory — a contract asserting only `detection.otel` is valid — but it is currently the only SIEM collector implemented.
+
 ### 3. Add to Claude Code
 
 ```bash
@@ -340,6 +342,7 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 * **Endpoints must be private.** An `http` target whose host resolves to public space is refused unless the operator lists it in `AGENTSEC_ALLOW_EXTERNAL_HOSTS`.
 * **Models cannot approve themselves.** Approval tokens are scoped, expiring and single-use, and are minted only by `agentsec approve` on the CLI.
 * **Refusals are audited.** What a caller *tried* to do is the interesting record.
+* **An uncollectable evidence source is an `error`, never a `pass`.** A scenario asserting on a backend the target does not have is rejected by the validator before anything runs; a collector that fails at run time degrades its axis to `error`, which outranks every other verdict. The report cannot turn green because the evidence pipeline broke — which is the most dangerous bug available to this kind of tool.
 * **No language model in the verdict.** See [ADR 0002](docs/adr/0002-deterministic-verdict.md).
 
 ## Status

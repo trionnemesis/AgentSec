@@ -126,6 +126,8 @@ agentsec run --target demo-agent-fixture --profile nightly --html
 
 這份輸出要這樣讀：租戶邊界壞了，**但有被監控到** —— 修程式即可。記憶投毒則是壞了**而且看不見** —— 程式要修，Wazuh 規則也要補。這次執行會以 `1` 結束，這是設計如此。
 
+**關於「不需要 Wazuh」：** fixture 語料是以檔案提供錄製好的 Wazuh 告警與 OTel span，因此偵測面向在離線狀態下**確實有被評估** —— `AGT-MEMPOIS-001` 之所以是 `detection_gap`，是因為那份錄製告警裡找不到規則 `100720`，而不是因為沒檢查。但若要對**真實** agent 的偵測能力把關，就需要一個活的訊號來源，在 `policy/targets.yaml` 中逐一為目標宣告：Wazuh indexer（`kind: opensearch`）或 OTel。Wazuh 並非必要 —— 只斷言 `detection.otel` 的契約同樣合法 —— 但它目前是唯一已實作的 SIEM 蒐集器。
+
 ### 3. 加入 Claude Code
 
 ```bash
@@ -339,7 +341,7 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 * **沒有自由文字的位址參數。** 工具綱要拒絕 `url`、`sql`、`command`、`path`、`token` 之類的參數，並設定 `additionalProperties: false`。
 * **端點必須是私有位址。** 若 `http` 目標的主機解析到公開位址，除非營運者把它列入 `AGENTSEC_ALLOW_EXTERNAL_HOSTS`，否則一律拒絕。
 * **模型不能核准自己。** 核准權杖有作用域、會過期、只能用一次，且只有 CLI 的 `agentsec approve` 能簽發。
-* **拒絕行為會被稽核。** 呼叫端*試圖*做什麼，才是真正值得留存的紀錄。
+* **拿不到的證據來源一律是 `error`，絕不會是 `pass`。** 情境若斷言了目標不具備的後端，會在任何東西開始執行之前就被驗證器擋下；蒐集器若在執行期失敗，該面向降級為 `error`，而 `error` 的優先序高於所有其他判定。報表不可能因為證據管線壞掉而變綠 —— 那正是這類工具最危險的一種 bug。
 * **判定過程中沒有語言模型。** 見 [ADR 0002](docs/adr/0002-deterministic-verdict.md)。
 
 ## 狀態
