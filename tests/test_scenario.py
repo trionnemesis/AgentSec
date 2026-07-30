@@ -174,6 +174,55 @@ def test_assertion_without_a_backend_is_an_error(tmp_path) -> None:  # noqa: ANN
     assert "evidence_backend_missing" in codes
 
 
+def test_span_only_detection_without_an_otel_backend_is_an_error() -> None:
+    """Detecting on spans has the same plumbing dependency as detecting on alerts.
+
+    A scenario whose only detection assertion is `otel` used to pass this check,
+    because it looked at `detection.wazuh` alone. The run then failed at evidence
+    collection instead — still an `error` rather than a false pass, but discovered
+    after the attack ran rather than before, which is what the pre-flight
+    validation in the CI gate exists to prevent.
+    """
+    from agentsec.models.target import Target
+
+    doc = _minimal()
+    doc["spec"]["contract"]["detection"] = {
+        "otel": {"must_emit": [{"name": "agent.tool_call", "attributes": {"tool.name": "x"}}]}
+    }
+    scenario = Scenario.model_validate(doc)
+    target = Target.model_validate(
+        {
+            "id": "no-otel-agent",
+            "environment": "local",
+            "adapter": {"kind": "fixture", "fixture_dir": "x"},
+            "evidence": {"otel": {"kind": "none"}},
+        }
+    )
+    report = validate_scenario(scenario, target=target)
+    issue = next(i for i in report.errors if i.code == "detection_backend_missing")
+    assert issue.path == "spec/contract/detection/otel"
+    assert "OTel" in issue.message
+
+
+def test_alert_detection_without_a_wazuh_backend_still_reports_its_own_path() -> None:
+    """The Wazuh branch keeps its specific path after being folded into a loop."""
+    from agentsec.models.target import Target
+
+    scenario = Scenario.model_validate(_minimal())  # detection.wazuh only
+    target = Target.model_validate(
+        {
+            "id": "no-siem-agent",
+            "environment": "local",
+            "adapter": {"kind": "fixture", "fixture_dir": "x"},
+            "evidence": {"wazuh": {"kind": "none"}},
+        }
+    )
+    report = validate_scenario(scenario, target=target)
+    issue = next(i for i in report.errors if i.code == "detection_backend_missing")
+    assert issue.path == "spec/contract/detection/wazuh"
+    assert "Wazuh" in issue.message
+
+
 def test_environment_mismatch_is_reported() -> None:
     from agentsec.models.target import Target
 
