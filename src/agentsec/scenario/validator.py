@@ -304,13 +304,20 @@ def _check_applicability(s: Scenario, t: Target, r: ValidationReport) -> None:
     # An assertion with no backend behind it is the quietest failure mode there
     # is: the axis silently degrades and the dashboard shows a gap that is really
     # a plumbing problem.
+    # Both detection backends are checked, not only Wazuh: a scenario that
+    # detects purely on spans has the identical plumbing dependency, and
+    # HarnessService.validate_detection already reports both.
     contract = s.spec.contract
-    if contract.detection and contract.detection.wazuh:
-        backend = t.evidence.wazuh
-        if backend is None or backend.kind == "none":
-            r.add("error", "detection_backend_missing",
-                  f"scenario asserts Wazuh alerts but target '{t.id}' has no Wazuh "
-                  "evidence backend configured", "spec/contract/detection/wazuh")
+    if contract.detection:
+        for backend_name, label in (("wazuh", "Wazuh"), ("otel", "OTel")):
+            if getattr(contract.detection, backend_name) is None:
+                continue
+            backend = getattr(t.evidence, backend_name)
+            if backend is None or backend.kind == "none":
+                r.add("error", "detection_backend_missing",
+                      f"scenario asserts {label} detection but target '{t.id}' has no "
+                      f"{label} evidence backend configured",
+                      f"spec/contract/detection/{backend_name}")
     if contract.evidence:
         for axis_name, backend_name in (
             ("otel", "otel"), ("tool_audit", "tool_audit"), ("state_diff", "state_diff")
