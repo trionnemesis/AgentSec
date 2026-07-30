@@ -103,6 +103,7 @@ def validate_scenario(
 
     _check_contract_is_meaningful(scenario, report)
     _check_purple_balance(scenario, report)
+    _check_detection_specificity(scenario, report)
     _check_assertions_are_evaluatable(scenario, report)
     _check_steps(scenario, report)
     _check_risk_coherence(scenario, report)
@@ -156,6 +157,60 @@ def _check_purple_balance(s: Scenario, r: ValidationReport) -> None:
     if det and det.wazuh and not det.wazuh.must_fire and not det.wazuh.must_not_fire:
         r.add("warning", "empty_wazuh_block", "wazuh detection block has no assertions",
               "spec/contract/detection/wazuh")
+    # An empty otel block is worse than useless: `tested_axes` counts detection as
+    # covered because the block exists, while the evaluator produces no checks and
+    # returns not_tested. Coverage reporting and the verdict then disagree.
+    if det and det.otel and not det.otel.must_emit:
+        r.add("warning", "empty_otel_block",
+              "otel detection block has no assertions, so coverage reports detection "
+              "as tested while the evaluator returns not_tested",
+              "spec/contract/detection/otel")
+
+
+def _check_detection_specificity(s: Scenario, r: ValidationReport) -> None:
+    """A ``must_fire`` that names no rule passes on the wrong alert.
+
+    Every ``AlertAssertion`` field is optional, so ``min_level: 7`` on its own
+    matches any alert at or above that level — including one raised by something
+    unrelated that happened to fire inside the run window. The scenario then
+    reports ``detection=pass`` while proving only that the SIEM was awake.
+
+    ``HarnessService.validate_detection`` already reports this, but only when a
+    caller supplies a target. ``agentsec validate --strict`` is what CI runs and
+    what the pull request template asks a reviewer to confirm, and the property is
+    target-independent, so the rule belongs here as well.
+
+    Only ``rule_id`` and ``rule_group`` satisfy this. ``match_fields`` deliberately
+    does not: it pins the *subject* an alert is about, not the rule that raised it,
+    so ``match_fields: {data.tenant: B}`` alone still passes on any alert mentioning
+    that tenant — including one from a rule nobody wrote for this attack. Narrower
+    than level-only, but it is not naming a signal.
+
+    Two deliberate limits:
+
+    * ``must_not_fire`` is exempt. Breadth there is a stricter assertion, not a
+      weaker one — "nothing above level 10 may fire" is a legitimate claim.
+    * Span assertions need no equivalent. ``SpanAssertion.name`` is required, so an
+      otel assertion always names the signal it expects; a purpose-built detection
+      span such as ``agent.loop_detected`` is fully specific with no attributes at
+      all.
+    """
+    det = s.spec.contract.detection
+    if det is None or det.wazuh is None:
+        return
+
+    for i, assertion in enumerate(det.wazuh.must_fire):
+        if assertion.rule_id or assertion.rule_group:
+            continue
+        r.add(
+            "warning",
+            "unspecific_alert_assertion",
+            f"must_fire[{i}] names no rule, so a pass proves only that *some* alert "
+            "fired — not that this attack was detected. Add a rule_id or a "
+            "rule_group; match_fields narrows the subject but still does not name "
+            "the rule that should have caught this.",
+            f"spec/contract/detection/wazuh/must_fire/{i}",
+        )
 
 
 def _check_assertions_are_evaluatable(s: Scenario, r: ValidationReport) -> None:
