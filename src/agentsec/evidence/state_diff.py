@@ -17,6 +17,7 @@ from typing import Any
 from agentsec.errors import EvidenceUnavailable
 from agentsec.evidence.base import CollectContext, read_json, resolve_path
 from agentsec.models.evidence import SourceMeta, StateChange, StateDiffSource
+from agentsec.policy.allowlist import assert_private_url
 
 
 def collect_state_diff(ctx: CollectContext) -> StateDiffSource:
@@ -38,6 +39,8 @@ def collect_state_diff(ctx: CollectContext) -> StateDiffSource:
 
     if not backend.url:
         raise EvidenceUnavailable("state_diff backend kind=http requires a url")
+
+    assert_private_url(backend.url, what="the state-diff service")
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.get(

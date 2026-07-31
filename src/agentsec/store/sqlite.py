@@ -23,10 +23,19 @@ from agentsec.errors import FindingNotFound, RunNotFound
 from agentsec.models.finding import Finding, FindingStatus
 from agentsec.models.run import Run
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
+
+-- One row per day, incremented atomically. Deriving the next run id from
+-- MAX(run_id) in Python let two processes on one workspace mint the same id,
+-- and `save_run` upserts, so the second run silently overwrote the first --
+-- losing a run without trace, in the component whose job is to be the record.
+CREATE TABLE IF NOT EXISTS run_counter (
+    day     TEXT PRIMARY KEY,
+    next_n  INTEGER NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS runs (
     run_id          TEXT PRIMARY KEY,
@@ -136,6 +145,24 @@ class ResultStore:
                 ),
             )
 
+    def next_run_id(self, day: str) -> str:
+        """Claim the next run id for ``day``, atomically.
+
+        One statement, so two processes sharing a workspace cannot both be handed
+        the same number. Also removes the old ``list_runs(limit=1000)`` scan, which
+        doubled as an undocumented ceiling on runs per day.
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                INSERT INTO run_counter (day, next_n) VALUES (?, 1)
+                ON CONFLICT(day) DO UPDATE SET next_n = next_n + 1
+                RETURNING next_n
+                """,
+                (day,),
+            ).fetchone()
+        return f"RUN-{day}-{row['next_n']:03d}"
+
     def get_run(self, run_id: str) -> Run:
         with self._conn() as conn:
             row = conn.execute(
@@ -150,6 +177,7 @@ class ResultStore:
         *,
         scenario_id: str | None = None,
         target_id: str | None = None,
+        profile: str | None = None,
         verdict: str | None = None,
         limit: int = 50,
     ) -> list[Run]:
@@ -161,6 +189,9 @@ class ResultStore:
         if target_id:
             clauses.append("target_id = ?")
             params.append(target_id)
+        if profile:
+            clauses.append("profile = ?")
+            params.append(profile)
         if verdict:
             clauses.append("purple_verdict = ?")
             params.append(verdict)

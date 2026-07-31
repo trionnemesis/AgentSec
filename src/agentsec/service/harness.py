@@ -42,7 +42,13 @@ from agentsec.policy.guard import PolicyGuard
 from agentsec.policy.profiles import Profile, load_profiles
 from agentsec.reporting.html import write_html_report
 from agentsec.reporting.junit import render_junit
-from agentsec.reporting.normalizer import RunSummary, normalize_batch, normalize_run
+from agentsec.reporting.normalizer import (
+    RunSummary,
+    latest_per_scenario,
+    normalize_batch,
+    normalize_run,
+    verdict_history,
+)
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.loader import scenario_digest
 from agentsec.scenario.validator import validate_scenario
@@ -668,24 +674,38 @@ class HarnessService:
         self,
         *,
         target_id: str | None = None,
-        profile: str = "pr",
+        profile: str | None = None,
         limit: int = 50,
         formats: list[str] | None = None,
     ) -> dict[str, Any]:
-        formats = formats or ["html", "json"]
-        runs = self.store.list_runs(target_id=target_id, limit=limit)
+        """Render stored runs. Omit ``profile`` to report across every profile.
 
-        summaries = []
+        ``profile`` filters the runs as well as labelling the report — a report
+        headed "profile pr" that also counted nightly runs would be worse than one
+        that says "all".
+        """
+        formats = formats or ["html", "json"]
+        runs = self.store.list_runs(target_id=target_id, profile=profile, limit=limit)
+
+        history = []
         for run in runs:
             scenario = None
             if run.scenario_id in self.catalog:
                 scenario = self.catalog.get(run.scenario_id)
             prof = self.profiles.get(run.profile) if run.profile in self.profiles.profiles else None
-            summaries.append(
+            history.append(
                 normalize_run(run, scenario, prof, self._collector_errors_for(run))
             )
 
-        batch = normalize_batch(summaries, profile=profile, target_id=target_id or "all")
+        # The rollup answers "where does this target stand now", not "what has CI
+        # done lately", so a scenario contributes its latest run and nothing else.
+        summaries = latest_per_scenario(history)
+
+        batch = normalize_batch(summaries, profile=profile or "all", target_id=target_id or "all")
+        batch["superseded_runs"] = len(history) - len(summaries)
+        # The runs the rollup dropped are not noise — they are the trend. Kept
+        # separately so the counts stay "where does this stand now".
+        batch["history"] = verdict_history(history)
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         written: dict[str, str] = {}
 
@@ -794,20 +814,8 @@ class HarnessService:
         ]
 
     def _next_run_id(self) -> str:
-        """RUN-YYYYMMDD-NNN, sequential within the day."""
-        today = datetime.now(UTC).strftime("%Y%m%d")
-        prefix = f"RUN-{today}-"
-        existing = [
-            r.run_id for r in self.store.list_runs(limit=1000)
-            if r.run_id.startswith(prefix)
-        ]
-        n = 0
-        for rid in existing:
-            try:
-                n = max(n, int(rid.rsplit("-", 1)[1]))
-            except (IndexError, ValueError):
-                continue
-        return f"{prefix}{n + 1:03d}"
+        """RUN-YYYYMMDD-NNN, sequential within the day and claimed atomically."""
+        return self.store.next_run_id(datetime.now(UTC).strftime("%Y%m%d"))
 
 
 def _check_map(run: Run) -> dict[str, str]:

@@ -99,7 +99,12 @@ class PolicyGuard:
         quarantined_until = scenario.spec.regression.quarantined_until
         if quarantined_until:
             try:
-                until = datetime.fromisoformat(quarantined_until).replace(tzinfo=UTC)
+                until = datetime.fromisoformat(quarantined_until)
+                # Assume UTC only when none was written. `.replace(tzinfo=UTC)` on an
+                # already-aware value overwrites the offset instead of converting it,
+                # so `2026-08-01T00:00:00+08:00` silently ran eight hours long.
+                if until.tzinfo is None:
+                    until = until.replace(tzinfo=UTC)
                 if until > now:
                     reasons.append(
                         f"scenario is quarantined until {quarantined_until}"

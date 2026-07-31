@@ -350,6 +350,108 @@ def test_junit_does_not_fail_on_a_warning_gated_scenario(service: HarnessService
     assert result.exit_code == 0
 
 
+def test_run_ids_are_claimed_atomically(service: HarnessService) -> None:
+    """Two processes on one workspace must not be handed the same id.
+
+    The id used to be derived from MAX(run_id) in Python while `save_run` upserts,
+    so a collision silently overwrote the earlier run — losing a run without trace,
+    in the component whose job is to be the record.
+    """
+    day = "20260731"
+    minted = [service.store.next_run_id(day) for _ in range(50)]
+    assert len(set(minted)) == 50
+    assert minted[0] == "RUN-20260731-001"
+    assert minted[-1] == "RUN-20260731-050"
+
+    # A second store over the same file continues the sequence rather than restarting.
+    from agentsec.store.sqlite import ResultStore
+
+    other = ResultStore(service.settings.db_path)
+    assert other.next_run_id(day) == "RUN-20260731-051"
+    # Days are independent.
+    assert other.next_run_id("20260801") == "RUN-20260801-001"
+
+
+def test_report_counts_the_latest_run_per_scenario(service: HarnessService) -> None:
+    """A rollup over every stored run measures how often CI ran, not what is broken.
+
+    Running the same catalogue twice used to report eight runs, four of them secure,
+    and name each blocking scenario twice — while `agentsec://coverage` reported
+    four. One database is not allowed to disagree with itself.
+    """
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+
+    written = service.generate_report(
+        target_id="demo-agent-fixture", profile="nightly", formats=["json"]
+    )
+    report = json.loads(Path(written["written"]["json"]).read_text(encoding="utf-8"))
+
+    assert report["total_runs"] == 4
+    assert report["superseded_runs"] == 4
+    assert report["secure"] == 2
+    assert report["blocking_count"] == 2
+    assert sorted(report["blocking_scenarios"]) == ["AGT-MEMPOIS-001", "AGT-TENANT-001"]
+    assert len({r["scenario_id"] for r in report["runs"]}) == len(report["runs"])
+
+    # The store's own histogram is the reference the report has to agree with.
+    assert report["verdict_counts"] == service.store.verdict_counts(
+        target_id="demo-agent-fixture"
+    )
+
+
+def test_report_filters_by_profile_it_labels(service: HarnessService) -> None:
+    """A report headed `profile pr` must not be counting nightly runs."""
+    service.start_run(
+        target_id="demo-agent-fixture", scenario_ids=["AGT-XPIA-001"], profile="pr"
+    )
+    service.start_run(
+        target_id="demo-agent-fixture", scenario_ids=["AGT-MEMPOIS-001"], profile="nightly"
+    )
+
+    def scenarios_in(profile: str | None) -> set[str]:
+        written = service.generate_report(
+            target_id="demo-agent-fixture", profile=profile, formats=["json"]
+        )
+        report = json.loads(Path(written["written"]["json"]).read_text(encoding="utf-8"))
+        assert report["profile"] == (profile or "all")
+        return {r["scenario_id"] for r in report["runs"]}
+
+    assert scenarios_in("pr") == {"AGT-XPIA-001"}
+    assert scenarios_in("nightly") == {"AGT-MEMPOIS-001"}
+    assert scenarios_in(None) == {"AGT-XPIA-001", "AGT-MEMPOIS-001"}
+
+
+def test_html_report_renders_the_axis_rollup_and_trend(service: HarnessService) -> None:
+    """`axis_counts` was computed and then never rendered.
+
+    The four-axis contract is the product's central idea, so a dashboard that omits
+    it while showing verdict totals is showing the least interesting half.
+    """
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+    written = service.generate_report(
+        target_id="demo-agent-fixture", profile="nightly", formats=["html", "json"]
+    )
+    html = Path(written["written"]["html"]).read_text(encoding="utf-8")
+    report = json.loads(Path(written["written"]["json"]).read_text(encoding="utf-8"))
+
+    # Every axis is named, and its counts reach the page rather than staying in JSON.
+    for axis in ("Prevention", "Detection", "Evidence", "Response"):
+        assert axis in html
+    assert "2 not tested" in html, "response has two not_tested scenarios"
+    assert "3 pass" in html and "1 fail" in html, "detection is 3 pass / 1 fail"
+
+    # Filters exist and are wired to the data attributes the script reads.
+    assert 'data-verdict="blocking"' in html
+    assert 'class="run-row"' in html
+
+    # Superseded runs are surfaced as trend rather than silently dropped.
+    assert report["superseded_runs"] == 4
+    assert report["history"]["AGT-MEMPOIS-001"][-1]["verdict"] == "detection_gap"
+    assert 'class="spark"' in html
+
+
 def test_html_report_is_self_contained(service: HarnessService) -> None:
     """It has to open from a CI artifact zip on a machine with no network."""
     service.start_run(target_id="demo-agent-fixture", profile="nightly")

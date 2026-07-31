@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 import yaml
 
-from agentsec.errors import ConfigError
+from agentsec.errors import ConfigError, EvidenceUnavailable
 from agentsec.models.scenario import Scenario
 from agentsec.models.target import Target, TargetAllowlist
-from agentsec.policy.allowlist import ENV_EXTERNAL_ALLOW, load_allowlist
+from agentsec.policy.allowlist import (
+    ENV_EXTERNAL_ALLOW,
+    assert_private_url,
+    load_allowlist,
+)
 from agentsec.policy.approvals import ApprovalStore
 from agentsec.policy.guard import PolicyGuard
 from agentsec.policy.profiles import default_profiles, load_profiles
@@ -109,6 +113,74 @@ def test_loopback_endpoint_is_accepted(tmp_path) -> None:  # noqa: ANN001
     path = tmp_path / "targets.yaml"
     path.write_text(yaml.safe_dump(doc), encoding="utf-8")
     assert load_allowlist(path).get("local-agent") is not None
+
+
+def test_evidence_backend_url_is_checked_too(tmp_path) -> None:  # noqa: ANN001
+    """The adapter is not the only thing the harness dials.
+
+    The Wazuh collector sends `WAZUH_INDEXER_USER`/`_PASSWORD` over basic auth, so
+    a public URL there leaks the SIEM credentials rather than merely reaching the
+    wrong host.
+    """
+    doc = {
+        "apiVersion": "agentsec.dev/v1",
+        "kind": "TargetAllowlist",
+        "targets": [
+            {
+                "id": "leaky-evidence",
+                "environment": "staging",
+                "adapter": {"kind": "fixture", "fixture_dir": "fixtures/demo-agent"},
+                "evidence": {
+                    "wazuh": {
+                        "kind": "opensearch",
+                        "url": "https://8.8.8.8:9200",
+                        "username_env": "WAZUH_INDEXER_USER",
+                        "password_env": "WAZUH_INDEXER_PASSWORD",
+                    }
+                },
+            }
+        ],
+    }
+    path = tmp_path / "targets.yaml"
+    path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+
+    with pytest.raises(ConfigError) as exc:
+        load_allowlist(path)
+    assert "not a private or loopback address" in exc.value.message
+    assert exc.value.details["field"] == "evidence.wazuh.url"
+
+
+def test_private_url_is_reasserted_at_collection_time() -> None:
+    """Load-time leniency is only safe if something checks again later.
+
+    `_is_private_host` treats an unresolvable name as private, because compose
+    service names legitimately do not resolve when the allowlist loads. A name that
+    resolves publicly by the time a collector dials it must still be refused.
+    """
+    assert_private_url("http://10.1.2.3:9200", what="the Wazuh Indexer")  # does not raise
+    with pytest.raises(EvidenceUnavailable) as exc:
+        assert_private_url("https://8.8.8.8:9200", what="the Wazuh Indexer")
+    assert "outside private address space" in exc.value.message
+
+
+def test_quarantine_with_an_explicit_offset_is_converted_not_overwritten() -> None:
+    """`.replace(tzinfo=UTC)` on an aware value moved the instant.
+
+    A quarantine written as `+08:00` used to be reinterpreted as UTC and ran eight
+    hours long. Expressed here as an instant that has already passed in its own
+    zone, so a wrong reading leaves it in force.
+    """
+    expired = (datetime.now(UTC) - timedelta(minutes=30)).astimezone(
+        timezone(timedelta(hours=8))
+    )
+    base = _scenario("AGT-XPIA-001").model_dump(mode="json")
+    base["spec"]["regression"]["quarantined_until"] = expired.isoformat()
+    scenario = Scenario.model_validate(base)
+
+    decision = PolicyGuard().check(
+        scenario=scenario, target=_target(), profile=default_profiles().get("pr")
+    )
+    assert decision.allowed, decision.reasons
 
 
 def test_redacted_target_withholds_endpoint_and_credential_names() -> None:

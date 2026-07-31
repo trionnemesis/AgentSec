@@ -93,6 +93,8 @@ jobs:
           cache: pip
       - run: pip install -e '.[mcp]'
 
+      - run: pip install pytest
+
       - name: build the server without serving it
         run: |
           python - <<'PY'
@@ -100,6 +102,12 @@ jobs:
           server = build_server()
           print(f"gateway built: {server.name}")
           PY
+
+      # These skip in the main job, which deliberately has no `mcp` extra. They
+      # assert the wire contract matches the declared one, so they have to run
+      # somewhere.
+      - name: gateway contract reaches the wire
+        run: pytest -q tests/test_mcp_gateway.py
 
       - name: read-only mode refuses execution
         env:

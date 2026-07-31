@@ -104,7 +104,14 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
     service = HarnessService(settings, actor=os.environ.get("AGENTSEC_ACTOR", "mcp"))
     server = FastMCP("agentsec")
 
+    read_only = _read_only_mode()
+
     for tool in TOOLS:
+        # A read-only gateway does not merely refuse execution, it does not offer
+        # it: a tool that is advertised is a tool a model will plan around, and
+        # deployment option C describes execution as absent rather than denied.
+        if read_only and not tool.read_only:
+            continue
         server.add_tool(
             _make_tool_callable(service, tool),
             name=tool.name,
@@ -112,6 +119,7 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
             description=tool.description,
             structured_output=True,
         )
+        _publish_declared_schema(server, tool)
 
     for resource in RESOURCES:
         _register_resource(server, service, resource)
@@ -120,6 +128,51 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
         _register_prompt(server, prompt)
 
     return server
+
+
+def _publish_declared_schema(server, tool: ToolSpec) -> None:  # noqa: ANN001
+    """Make the wire contract match the declared one.
+
+    FastMCP derives what it advertises, and what it validates, from the handler's
+    Python signature. That loses every constraint that carries a security property
+    — ``pattern``, ``enum``, ``maxItems``, ``required``, ``additionalProperties`` —
+    so the advertised schema said "no required fields, any extra key welcome" while
+    ``mcp/contract.py`` said the opposite, and an unknown argument was dropped in
+    silence rather than refused.
+
+    Two changes, both against the registered tool:
+
+    * the advertised ``parameters`` become the declared schema, so a client is told
+      the truth about ``pattern`` and ``required``;
+    * the derived argument model forbids extras, so an unknown key is refused at the
+      protocol boundary instead of being quietly discarded.
+
+    The refusal happens before the call reaches ``HarnessService``, so it lands in
+    the client's error rather than in ``audit_log``. That is the accepted cost of not
+    reaching into FastMCP's dispatch path: a security control that works by patching
+    another library's internals fails silently the first time that library moves.
+    Everything inside the boundary is still checked by ``validate_arguments``.
+
+    Raises if FastMCP's internals are not the shape expected, because a hardening
+    step that quietly did nothing is exactly the failure this project is about.
+    """
+    registered = server._tool_manager._tools.get(tool.name)  # noqa: SLF001
+    if registered is None:  # pragma: no cover - add_tool just succeeded
+        raise AgentSecError(f"tool '{tool.name}' vanished from the FastMCP registry")
+
+    registered.parameters = dict(tool.input_schema)
+
+    arg_model = getattr(getattr(registered, "fn_metadata", None), "arg_model", None)
+    config = getattr(arg_model, "model_config", None)
+    if arg_model is None or config is None:  # pragma: no cover - version drift
+        raise AgentSecError(
+            "cannot harden the MCP argument model: FastMCP no longer exposes "
+            "fn_metadata.arg_model. Refusing to start rather than advertise a "
+            "closed schema that is not enforced.",
+            details={"tool": tool.name},
+        )
+    config["extra"] = "forbid"
+    arg_model.model_rebuild(force=True)
 
 
 _JSON_TO_PY: dict[str, Any] = {
