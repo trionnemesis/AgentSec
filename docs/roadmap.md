@@ -54,6 +54,9 @@ integrations are first drafts.
 - [ ] PyRIT executor for nightly exploratory runs
 - [ ] pytest executor, so existing security tests join the same verdict model
 - [ ] Coverage against MITRE ATLAS alongside OWASP
+- [ ] Skill Assurance (`skill_eval`) — [ADR 0008](adr/0008-skill-assurance-bounded-context.md) ·
+      [#14](https://github.com/trionnemesis/AgentSec/issues/14). The `static` profile needs no
+      model and can land ahead of the staging run; the rest waits on it
 
 **Longer term**
 
