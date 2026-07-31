@@ -48,6 +48,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network |
 | **CI gate** | JUnit output plus meaningful exit codes, and a reusable GitHub workflow you call from the agent's own repo |
 | **Constrained MCP gateway** | 11 narrow tools and 8 read-only resources; no shell, no SQL, no free-text URL |
+| **Publication boundary** | A read-only report gateway serves a projected subset — turn digests, pseudonymous principals, no evidence or audit URIs — so a dashboard cannot re-commit the breach it reports |
 | **Finding workflow** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`, with transitions enforced |
 
 **Scope**
@@ -153,7 +154,7 @@ Or commit it, so the whole team gets the same gateway:
 }
 ```
 
-Add `"AGENTSEC_MCP_READ_ONLY": "1"` for a review-only session — in that mode `agentsec_start_run` is refused by the dispatcher, not merely discouraged. The repo also ships a Claude Code skill and a permission hook under [`.claude/`](.claude/README.md).
+Add `"AGENTSEC_MCP_READ_ONLY": "1"` for a review-only session — in that mode `agentsec_start_run` is refused by the dispatcher, not merely discouraged, and the resource surface narrows to the [published subset](#resources). The repo also ships a Claude Code skill and a permission hook under [`.claude/`](.claude/README.md).
 
 ### 4. Gate a real agent in CI
 
@@ -269,6 +270,25 @@ Run this first when a detection gap looks suspicious: on first adoption, most ar
 
 `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
 
+Every resource is a read, so "read-only" was never the question that separated
+them — the question is who holds the other end. With `AGENTSEC_MCP_READ_ONLY=1`
+the gateway becomes a *report* gateway and serves five of the eight: `targets`,
+`scenarios`, `runs/{run_id}`, `findings`, `coverage`. Per-run evidence, the audit
+log and the target authoring schema are working surfaces for whoever operates the
+harness, and are not registered at all rather than rendered carefully.
+
+What is served is **projected, not filtered**: each publisher names the fields it
+keeps, so a field added to an evidence model tomorrow is absent from published
+output until someone decides it belongs there. Transcript turns become digests,
+free-form maps keep their keys and lose their values, and principals, tenants and
+actors become stable pseudonyms — the cross-tenant pivot stays visible without
+printing who it was. Verdicts, axis statuses, failed checks, rule ids, alert
+levels, tool names and decisions survive intact, because redaction that costs the
+reader the finding is not worth deploying. Every projection carries a manifest of
+what it dropped, for the same reason an untested axis reports `not_tested`: a
+withheld field must not read as an absent one. Details in
+[`docs/deployment.md`](docs/deployment.md).
+
 ## CLI
 
 The CLI is the interface CI uses, and therefore the one that must never depend on a model being present.
@@ -296,7 +316,8 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | `AGENTSEC_WORKSPACE` | Workspace root holding `scenarios/`, `policy/`, `results/` | cwd |
 | `AGENTSEC_DB` | SQLite results path | `<workspace>/results/agentsec.db` |
 | `AGENTSEC_ACTOR` | Recorded on every audit row; CI should set `ci:<actor>` | `local` |
-| `AGENTSEC_MCP_READ_ONLY` | `1` refuses every non-read-only tool at the dispatcher | unset |
+| `AGENTSEC_MCP_READ_ONLY` | `1` runs the report gateway: non-read-only tools are refused at the dispatcher, and only the allowlisted resources are served | unset |
+| `AGENTSEC_PSEUDONYM_SALT` | Salt for the principal / tenant / actor labels in published output | a value that ships in the source |
 | `AGENTSEC_ALLOW_EXTERNAL_HOSTS` | Comma-separated hosts exempt from the private-address check | unset |
 
 Per-target credentials are referenced **by variable name** from `policy/targets.yaml`; no credential value ever appears in a scenario, a target definition or a tool argument. Start from [`.env.example`](.env.example).
@@ -304,7 +325,8 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ## Architecture
 
 ```
-schemas/               JSON Schema for scenario, target, evidence — the portable assets
+schemas/               JSON Schema for scenario, target, evidence and the published
+                       dashboard rollup — the portable assets
 scenarios/             The scenario catalogue (four worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus so everything runs offline
@@ -316,7 +338,7 @@ src/agentsec/
 ├── execution/         # red executors (replay, promptfoo) and target adapters
 ├── evidence/          # collectors: OTel, Wazuh, tool audit, DB state diff
 ├── evaluation/        # the four axes and the verdict resolver
-├── reporting/         # normaliser → JUnit / HTML / JSON
+├── reporting/         # normaliser → JUnit / HTML / JSON; publication projections
 ├── store/             # SQLite runs, findings, audit log
 ├── service/           # HarnessService — the internal API
 └── mcp/               # gateway: tool contract, resources, prompts, server
@@ -351,6 +373,7 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 * **Endpoints must be private.** An `http` target whose host resolves to public space is refused unless the operator lists it in `AGENTSEC_ALLOW_EXTERNAL_HOSTS`.
 * **Models cannot approve themselves.** Approval tokens are scoped, expiring and single-use, and are minted only by `agentsec approve` on the CLI.
 * **Refusals are audited.** What a caller *tried* to do is the interesting record.
+* **A report cannot re-commit the breach it reports.** `AGT-TENANT-001` proves a cross-tenant leak by getting tenant B's order into tenant A's transcript, which makes that transcript both the evidence *and* the leaked record. Published output is therefore projected rather than filtered, and the report gateway declines to serve per-run evidence and the audit log at all. Adding a resource is a decision, not a default: every one names a publication policy, and the gateway refuses to start if a policy is missing.
 * **An uncollectable evidence source is an `error`, never a `pass`.** A scenario asserting on a backend the target does not have is rejected by the validator before anything runs; a collector that fails at run time degrades its axis to `error`, which outranks every other verdict. The report cannot turn green because the evidence pipeline broke — which is the most dangerous bug available to this kind of tool.
 * **No language model in the verdict.** See [ADR 0002](docs/adr/0002-deterministic-verdict.md).
 
