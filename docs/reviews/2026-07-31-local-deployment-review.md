@@ -106,7 +106,11 @@ the one metric the dashboard omits. There is also no filtering, no sorting and n
 trend, while the roadmap describes a "metrics dashboard".
 
 `docs/reviews/assets/purple-dashboard.html` in this commit is a worked reference for
-the missing view, built from the same JSON.
+the missing view, built from the same JSON. `purple-dashboard.zh-TW.html` is the same
+page in Traditional Chinese; both are self-contained single files. Enum values
+(`secure`, `detection_gap`, `not_tested`, …), code identifiers and CLI flags stay in
+English in the translation, because they are the strings the evaluator actually emits —
+translating them would put a name in the report that does not exist in the JSON.
 
 **Fix:** render `axis_counts` as a segmented bar per axis; add verdict/severity
 filters and a per-scenario verdict history.
