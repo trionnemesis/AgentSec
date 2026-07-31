@@ -42,7 +42,12 @@ from agentsec.policy.guard import PolicyGuard
 from agentsec.policy.profiles import Profile, load_profiles
 from agentsec.reporting.html import write_html_report
 from agentsec.reporting.junit import render_junit
-from agentsec.reporting.normalizer import RunSummary, normalize_batch, normalize_run
+from agentsec.reporting.normalizer import (
+    RunSummary,
+    latest_per_scenario,
+    normalize_batch,
+    normalize_run,
+)
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.loader import scenario_digest
 from agentsec.scenario.validator import validate_scenario
@@ -668,24 +673,35 @@ class HarnessService:
         self,
         *,
         target_id: str | None = None,
-        profile: str = "pr",
+        profile: str | None = None,
         limit: int = 50,
         formats: list[str] | None = None,
     ) -> dict[str, Any]:
-        formats = formats or ["html", "json"]
-        runs = self.store.list_runs(target_id=target_id, limit=limit)
+        """Render stored runs. Omit ``profile`` to report across every profile.
 
-        summaries = []
+        ``profile`` filters the runs as well as labelling the report — a report
+        headed "profile pr" that also counted nightly runs would be worse than one
+        that says "all".
+        """
+        formats = formats or ["html", "json"]
+        runs = self.store.list_runs(target_id=target_id, profile=profile, limit=limit)
+
+        history = []
         for run in runs:
             scenario = None
             if run.scenario_id in self.catalog:
                 scenario = self.catalog.get(run.scenario_id)
             prof = self.profiles.get(run.profile) if run.profile in self.profiles.profiles else None
-            summaries.append(
+            history.append(
                 normalize_run(run, scenario, prof, self._collector_errors_for(run))
             )
 
-        batch = normalize_batch(summaries, profile=profile, target_id=target_id or "all")
+        # The rollup answers "where does this target stand now", not "what has CI
+        # done lately", so a scenario contributes its latest run and nothing else.
+        summaries = latest_per_scenario(history)
+
+        batch = normalize_batch(summaries, profile=profile or "all", target_id=target_id or "all")
+        batch["superseded_runs"] = len(history) - len(summaries)
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         written: dict[str, str] = {}
 

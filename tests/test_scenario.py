@@ -429,6 +429,25 @@ def test_unscoped_tool_assertion_warns() -> None:
     assert "unscoped_tool_assertion" in [i.code for i in report.warnings]
 
 
+def test_tool_audit_without_spans_warns() -> None:
+    """`every_tool_call_audited` needs traces to cross-reference against.
+
+    It defaults to true, so a contract can assert it without the author writing it.
+    The evaluator errors rather than faking a pass; this catches it before commit.
+    """
+    doc = _minimal()
+    doc["spec"]["contract"]["evidence"] = {"tool_audit": {"every_tool_call_audited": True}}
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert "tool_audit_without_spans" in [i.code for i in report.warnings]
+
+    # An otel block on either axis supplies the spans, so the warning goes away.
+    doc["spec"]["contract"]["evidence"]["otel"] = {
+        "required_spans": [{"name": "agent.tool_call"}]
+    }
+    report = validate_scenario(Scenario.model_validate(doc))
+    assert "tool_audit_without_spans" not in [i.code for i in report.warnings]
+
+
 def test_egress_assertion_without_resource_is_an_error() -> None:
     doc = _minimal()
     doc["spec"]["contract"]["prevention"]["must_not"] = [{"kind": "http_egress"}]

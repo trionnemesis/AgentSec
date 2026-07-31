@@ -7,6 +7,10 @@ not a mock.
 Interactive dashboard rendering this review:
 <https://claude.ai/code/artifact/1bd63b3a-6a33-4303-9e8b-39a895ede90f>
 
+> **Status:** findings 01, 02 and 03 — the three where the harness could report green
+> without having checked — are **fixed on this branch**, with regression tests. See
+> "What was fixed" below. Findings 04–12 remain open and are tracked on issue #13.
+
 ---
 
 ## Part 1 — deployment verification
@@ -252,11 +256,81 @@ granted but never used.
 
 ---
 
-## Suggested order of work
+## What was fixed
 
-1. **01** — it is the only finding where a control silently reports green.
-2. **02** and **03** — both make the dashboard misreport; **03** additionally puts two
-   parts of the same codebase in disagreement.
-3. **04** — the metrics view the project describes but does not yet render.
-4. **05**–**08** — claim-versus-behaviour gaps; each is a small change plus a test.
-5. **09**–**12** — correctness and ergonomics.
+Findings 01–03 are fixed on this branch. The bundled corpus is unaffected: the same
+four verdicts, the same exit 1, and `agentsec validate --strict` still clean.
+
+### 01 — the cross-reference has to actually run
+
+`evaluation/axes.py`, `scenario/validator.py`
+
+`tool_call_span_name()` and `tool_name_attribute()` read
+`spec.attack.config.tool_call_span` / `.tool_name_attribute`, defaulting to the old
+constants. `_unaudited_tool_calls` is replaced by `_every_tool_call_audited_check`,
+which returns `error` — never `pass` — when no span carries the configured name, or
+when matching spans carry no tool-name attribute. The message names the span names
+actually seen and points at the config key.
+
+`agentsec validate` gains `tool_audit_without_spans`: a warning when
+`every_tool_call_audited` is asserted (it defaults to `true`) while the contract
+collects no OTel evidence, so the author hears about it before committing rather than
+from a red nightly.
+
+Demonstrated end to end against a doctored fixture whose spans are named
+`agent.invoke_tool`:
+
+| Scenario | Before | After |
+|---|---|---|
+| Spans named differently, nothing declared | `secure`, evidence **pass** | `error`, evidence **error** |
+| Same, with `attack.config.tool_call_span` declared | — | check runs; passes on real evidence |
+| Bundled corpus | 2 secure / 2 gaps, exit 1 | unchanged |
+
+### 02 — the report filters on the profile it labels
+
+`store/sqlite.py`, `service/harness.py`, `cli.py`, `mcp/contract.py`
+
+`ResultStore.list_runs` takes `profile`; `generate_report` passes it. `profile` is now
+optional everywhere — omit it to report across every profile, and the report says
+`"all"` rather than claiming a profile the caller never chose. `--profile` on
+`agentsec report` and the `profile` field on `agentsec_generate_report` lost their
+`pr` default accordingly.
+
+### 03 — the rollup counts the latest run per scenario
+
+`reporting/normalizer.py`, `service/harness.py`
+
+New `latest_per_scenario()` keeps the most recent summary per (scenario, target),
+breaking `created_at` ties on `run_id` — a whole batch shares a timestamp to the
+second, so the tiebreak is load-bearing. `generate_report` narrows history through it
+before the rollup and before JUnit, and adds `superseded_runs` so the JSON stays honest
+that history exists.
+
+The original repro, running the four scenarios twice:
+
+| | Before | After |
+|---|---|---|
+| `total_runs` | 8 | 4 |
+| `secure` | 4 | 2 |
+| `blocking_count` | 4 | 2 |
+| `blocking_scenarios` | each listed twice | one entry each |
+| agrees with `verdict_counts` | no | yes |
+
+### Tests added
+
+`test_every_tool_call_audited_errors_when_no_span_matches`,
+`test_every_tool_call_audited_honours_attack_config_span_name`,
+`test_every_tool_call_audited_errors_when_spans_carry_no_tool_name`,
+`test_tool_audit_without_spans_warns`,
+`test_report_counts_the_latest_run_per_scenario`,
+`test_report_filters_by_profile_it_labels`.
+
+151 tests pass; ruff and mypy clean.
+
+---
+
+## Suggested order for the rest
+
+1. **04** — the metrics view the project describes but does not yet render.
+2. **05**–**08** — claim-versus-behaviour gaps; each is a small change plus a test.
+3. **09**–**12** — correctness and ergonomics.

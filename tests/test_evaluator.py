@@ -26,7 +26,8 @@ from agentsec.models.evidence import (
     WazuhAlert,
 )
 from agentsec.models.run import AxisStatus, PurpleVerdict
-from agentsec.scenario.loader import load_scenario_file
+from agentsec.models.scenario import Scenario
+from agentsec.scenario.loader import load_scenario_dict, load_scenario_file
 from tests.conftest import REPO_ROOT, make_evidence
 
 P, F, N, E = AxisStatus.PASS, AxisStatus.FAIL, AxisStatus.NOT_TESTED, AxisStatus.ERROR
@@ -247,6 +248,85 @@ def test_evidence_detects_unaudited_tool_call() -> None:
         c.observed for c in result.failed_checks if c.id == "evidence.tool_audit.complete"
     )
     assert "delete_customer" in (observed or "")
+
+
+def test_every_tool_call_audited_errors_when_no_span_matches() -> None:
+    """The check that cannot run must not report a pass.
+
+    A target naming its tool-call spans something else used to produce an empty
+    traced set, an empty difference, and evidence=pass — grading a target green for
+    emitting nothing this axis could read.
+    """
+    scenario = _scenario("AGT-XPIA-001")
+    evidence = make_evidence(
+        spans=[
+            OtelSpan(name="agent.invoke_tool", attributes={"tool.name": "send_email"}),
+            OtelSpan(name="agent.request"),
+        ],
+        records=[ToolAuditRecord(tool="send_email", decision="deny")],
+        state_changes=[],
+    )
+    result = evaluate_evidence(scenario, evidence)
+    assert result.status is E
+    check = next(c for c in result.checks if c.id == "evidence.tool_audit.complete")
+    assert check.status is E
+    assert "agent.invoke_tool" in (check.observed or "")
+    assert "tool_call_span" in (check.reason or "")
+
+
+def test_every_tool_call_audited_honours_attack_config_span_name() -> None:
+    """A target with its own span convention declares it and is graded normally."""
+    raw = load_scenario_dict(REPO_ROOT / "scenarios" / "AGT-XPIA-001.yaml")
+    raw["spec"]["attack"]["config"] = {
+        "tool_call_span": "agent.invoke_tool",
+        "tool_name_attribute": "gen_ai.tool.name",
+    }
+    scenario = Scenario.model_validate(raw)
+    spans = [
+        OtelSpan(name="agent.invoke_tool", attributes={"gen_ai.tool.name": "send_email"}),
+        OtelSpan(name="agent.invoke_tool", attributes={"gen_ai.tool.name": "delete_customer"}),
+    ]
+    audited = make_evidence(
+        spans=spans,
+        records=[
+            ToolAuditRecord(tool="send_email", decision="deny"),
+            ToolAuditRecord(tool="delete_customer", decision="deny"),
+        ],
+        state_changes=[],
+    )
+    check = next(
+        c for c in evaluate_evidence(scenario, audited).checks
+        if c.id == "evidence.tool_audit.complete"
+    )
+    assert check.status is P
+
+    unaudited = make_evidence(
+        spans=spans,
+        records=[ToolAuditRecord(tool="send_email", decision="deny")],
+        state_changes=[],
+    )
+    check = next(
+        c for c in evaluate_evidence(scenario, unaudited).checks
+        if c.id == "evidence.tool_audit.complete"
+    )
+    assert check.status is F
+    assert "delete_customer" in (check.observed or "")
+
+
+def test_every_tool_call_audited_errors_when_spans_carry_no_tool_name() -> None:
+    """A traced call with no tool name cannot be matched to an audit record."""
+    scenario = _scenario("AGT-XPIA-001")
+    evidence = make_evidence(
+        spans=[OtelSpan(name="agent.tool_call", attributes={"peer.service": "mail"})],
+        records=[ToolAuditRecord(tool="send_email", decision="deny")],
+        state_changes=[],
+    )
+    check = next(
+        c for c in evaluate_evidence(scenario, evidence).checks
+        if c.id == "evidence.tool_audit.complete"
+    )
+    assert check.status is E
+    assert "tool_name_attribute" in (check.reason or "")
 
 
 def test_evidence_can_pass_while_prevention_fails() -> None:

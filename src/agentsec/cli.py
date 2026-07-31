@@ -298,7 +298,10 @@ def compare(run_a: str, run_b: str, workspace: WorkspaceOpt = None) -> None:
 @app.command()
 def report(
     target: Annotated[str | None, typer.Option("--target", "-t")] = None,
-    profile: Annotated[str, typer.Option("--profile", "-p")] = "pr",
+    profile: Annotated[
+        str | None,
+        typer.Option("--profile", "-p", help="Restrict to one profile; omit for all."),
+    ] = None,
     limit: Annotated[int, typer.Option("--limit")] = 50,
     formats: Annotated[
         list[str] | None, typer.Option("--format", "-f", help="html | json | junit")

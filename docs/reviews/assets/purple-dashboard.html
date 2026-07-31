@@ -316,6 +316,14 @@
   .sev.high { background: var(--gap-bg); color: var(--gap); }
   .sev.medium { background: var(--warn-bg); color: var(--warn); }
   .sev.low { background: var(--untested-bg); color: var(--untested); }
+  .sev.fixed { background: var(--secure-bg); color: var(--secure); }
+  .find[data-fixed="true"] > summary .ftitle { text-decoration: line-through; text-decoration-color: var(--muted); text-decoration-thickness: 1px; }
+  .fixnote {
+    font-size: var(--step--1); color: var(--secure);
+    border-left: 2px solid var(--secure); padding-left: .8rem;
+  }
+  .fixnote b { font-family: var(--data); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; display: block; margin-bottom: .1rem; }
+  .fixnote code { background: var(--secure-bg); color: var(--secure); }
   .fbody { padding: 0 1.1rem 1.15rem 5.1rem; display: flex; flex-direction: column; gap: .75rem; }
   .fbody p { font-size: var(--step--1); color: var(--ink-2); }
   .fbody code { font-family: var(--data); font-size: .93em; color: var(--ink); background: var(--sunk); padding: .08em .32em; border-radius: 3px; overflow-wrap: anywhere; }
@@ -732,29 +740,39 @@
   <section>
     <div class="sec-head">
       <span class="eyebrow">Code review</span>
-      <h2>Twelve findings, three of them worth doing first</h2>
+      <h2>Twelve findings; the three high ones are fixed</h2>
       <p>Ranked by how badly each one undermines the project's own central claim: that an
-        untested or uncollectable axis must never round up to a pass.</p>
+        untested or uncollectable axis must never round up to a pass. All three findings in
+        that category are now fixed with regression tests — the bundled corpus still returns
+        the same four verdicts and the same exit 1.</p>
     </div>
 
     <div class="filters" id="finding-filters">
       <span class="eyebrow">Severity</span>
       <button class="chip" data-sev="all" aria-pressed="true">all 12</button>
-      <button class="chip" data-sev="high" aria-pressed="false">high 3</button>
+      <button class="chip" data-sev="high" aria-pressed="false">high 3 · fixed</button>
       <button class="chip" data-sev="medium" aria-pressed="false">medium 5</button>
       <button class="chip" data-sev="low" aria-pressed="false">low 4</button>
     </div>
 
     <div class="finds" id="finds">
 
-      <details class="find" data-sev="high">
+      <details class="find" data-sev="high" data-fixed="true">
         <summary>
           <span class="fid">01</span>
           <span><span class="ftitle">A target that names its tool-call span differently gets a free pass on the evidence axis</span>
             <span class="fmeta">evaluation/axes.py:28,455 · correctness</span></span>
-          <span class="sev high">high</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>The span name and tool-name attribute now come from
+            <code>attack.config</code>, and the check returns <code>error</code> — never
+            <code>pass</code> — when no span matches or matching spans carry no tool name.
+            <code>agentsec validate</code> gains a <code>tool_audit_without_spans</code> warning
+            for contracts that assert the check while collecting no OTel evidence. Verified
+            against a doctored fixture: <code>secure</code>/evidence&nbsp;pass →
+            <code>error</code>/evidence&nbsp;error, and declaring the convention makes it grade
+            normally again.</div>
           <p><code>TOOL_CALL_SPAN = "agent.tool_call"</code> is hardcoded, and its own comment says
             targets using another convention "set it in the scenario's <code>attack.config</code>" —
             but nothing reads that. <code>attack.config</code> is consulted in exactly one place,
@@ -771,14 +789,18 @@
         </div>
       </details>
 
-      <details class="find" data-sev="high">
+      <details class="find" data-sev="high" data-fixed="true">
         <summary>
           <span class="fid">02</span>
           <span><span class="ftitle">The report is stamped with a profile it never filtered on</span>
             <span class="fmeta">service/harness.py:676 · store/sqlite.py:148 · correctness</span></span>
-          <span class="sev high">high</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b><code>ResultStore.list_runs</code> takes a
+            <code>profile</code> and <code>generate_report</code> passes it. The parameter is now
+            optional everywhere: omit it and the report covers every profile and says
+            <code>"all"</code>, rather than claiming one the caller never chose.</div>
           <p><code>generate_report</code> takes a <code>profile</code> argument, passes it to
             <code>normalize_batch</code> as the report's label, and never passes it to
             <code>list_runs</code> — which has no <code>profile</code> parameter at all. So
@@ -793,14 +815,20 @@
         </div>
       </details>
 
-      <details class="find" data-sev="high">
+      <details class="find" data-sev="high" data-fixed="true">
         <summary>
           <span class="fid">03</span>
           <span><span class="ftitle">The report counts every historical run; the coverage resource counts only the latest</span>
             <span class="fmeta">reporting/normalizer.py:127 · store/sqlite.py:285 · correctness</span></span>
-          <span class="sev high">high</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>New <code>latest_per_scenario()</code> keeps the most
+            recent summary per (scenario, target), breaking <code>created_at</code> ties on
+            <code>run_id</code> — a whole batch shares a timestamp to the second, so the tiebreak
+            is load-bearing. The repro below now reports 4 runs, 2 secure, 2 blocking with no
+            duplicates, and agrees with <code>verdict_counts</code>. A new
+            <code>superseded_runs</code> field keeps the JSON honest that history exists.</div>
           <p><code>verdict_counts</code> deliberately dedupes to the latest run per scenario, with a
             comment explaining why: "counting every historical run would let a scenario that failed
             fifty times last month dominate today's picture." <code>normalize_batch</code> does no

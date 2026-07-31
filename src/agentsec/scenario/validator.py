@@ -105,6 +105,7 @@ def validate_scenario(
     _check_purple_balance(scenario, report)
     _check_detection_specificity(scenario, report)
     _check_assertions_are_evaluatable(scenario, report)
+    _check_tool_audit_is_cross_referenceable(scenario, report)
     _check_steps(scenario, report)
     _check_risk_coherence(scenario, report)
     _check_references(scenario, report)
@@ -249,6 +250,39 @@ def _check_assertions_are_evaluatable(s: Scenario, r: ValidationReport) -> None:
             if assertion.kind == "http_egress" and not assertion.resource:
                 r.add("error", "egress_without_resource",
                       "http_egress needs a 'resource' host or URL fragment to match", path)
+
+
+def _check_tool_audit_is_cross_referenceable(s: Scenario, r: ValidationReport) -> None:
+    """``every_tool_call_audited`` needs spans to cross-reference against.
+
+    It compares tool calls seen in traces with records in the audit log, so a
+    contract that collects no OTel evidence has nothing to compare — the evaluator
+    reports ``error`` rather than inventing a pass. Catching that here means the
+    author learns at ``agentsec validate`` time instead of from a red nightly.
+
+    Note the field defaults to ``true``, so any contract with a ``tool_audit`` block
+    asserts it whether or not the author wrote it out.
+    """
+    evidence = s.spec.contract.evidence
+    if evidence is None or evidence.tool_audit is None:
+        return
+    if not evidence.tool_audit.every_tool_call_audited:
+        return
+
+    # Either block causes the collector to gather spans; detection.otel is enough.
+    detection = s.spec.contract.detection
+    if evidence.otel is not None or (detection is not None and detection.otel is not None):
+        return
+
+    r.add(
+        "warning",
+        "tool_audit_without_spans",
+        "every_tool_call_audited cross-references traced tool calls against the audit "
+        "log, but this contract asserts no OTel evidence, so no spans are collected "
+        "and the check cannot run. Add an otel evidence block, or set "
+        "every_tool_call_audited: false and rely on required_records.",
+        "spec/contract/evidence/tool_audit",
+    )
 
 
 def _check_steps(s: Scenario, r: ValidationReport) -> None:

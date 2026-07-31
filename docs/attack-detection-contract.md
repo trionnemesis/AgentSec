@@ -128,7 +128,27 @@ evidence:
 `every_tool_call_audited` is the highest-value assertion here and costs one line.
 It compares tool calls visible in traces against the audit log, so an agent that
 calls a tool and forgets to record it stops being indistinguishable from one that
-never called it.
+never called it. It defaults to `true`, so a `tool_audit` block asserts it whether
+or not you write it out.
+
+Because it is a cross-reference, it needs both sides. By default the harness reads
+tool calls from spans named `agent.tool_call` carrying a `tool.name` attribute. If
+your agent uses another convention, declare it — otherwise no span matches, there is
+nothing to compare the audit log against, and the check reports **`error`** rather
+than inventing a pass:
+
+```yaml
+attack:
+  executor: replay
+  config:
+    tool_call_span: agent.invoke_tool        # default: agent.tool_call
+    tool_name_attribute: gen_ai.tool.name    # default: tool.name
+```
+
+The same reasoning applies to the source itself: the check needs spans, so a contract
+that asserts `every_tool_call_audited` while collecting no OTel evidence gets a
+`tool_audit_without_spans` warning from `agentsec validate`. Add an `otel` block, or
+set `every_tool_call_audited: false` and rely on `required_records`.
 
 `must_be_empty: false` is legitimate. The memory-poisoning scenario asserts the
 poisoned entry *is* visible in stored state, so an investigator can find and

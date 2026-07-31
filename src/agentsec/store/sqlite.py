@@ -150,6 +150,7 @@ class ResultStore:
         *,
         scenario_id: str | None = None,
         target_id: str | None = None,
+        profile: str | None = None,
         verdict: str | None = None,
         limit: int = 50,
     ) -> list[Run]:
@@ -161,6 +162,9 @@ class ResultStore:
         if target_id:
             clauses.append("target_id = ?")
             params.append(target_id)
+        if profile:
+            clauses.append("profile = ?")
+            params.append(profile)
         if verdict:
             clauses.append("purple_verdict = ?")
             params.append(verdict)

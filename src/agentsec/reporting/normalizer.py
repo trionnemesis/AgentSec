@@ -124,8 +124,37 @@ def normalize_run(
     )
 
 
+def latest_per_scenario(summaries: list[RunSummary]) -> list[RunSummary]:
+    """Keep only the most recent summary per (scenario, target).
+
+    A rollup over every stored run measures how often CI ran, not how many
+    problems exist: four scenarios run twice would report eight runs, four of them
+    ``secure``, and name each blocking scenario twice. ``ResultStore.verdict_counts``
+    already dedupes for exactly this reason, and a report that does not is the same
+    database disagreeing with itself.
+
+    Ties on ``created_at`` are broken by ``run_id``, which is sequential within the
+    day — a whole batch can share a timestamp to the second.
+    """
+    ordered = sorted(summaries, key=lambda s: (s.created_at, s.run_id), reverse=True)
+    seen: set[tuple[str, str]] = set()
+    latest: list[RunSummary] = []
+    for summary in ordered:
+        key = (summary.scenario_id, summary.target_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        latest.append(summary)
+    return latest
+
+
 def normalize_batch(summaries: list[RunSummary], *, profile: str, target_id: str) -> dict[str, Any]:
-    """Batch-level rollup, including the CI exit decision."""
+    """Batch-level rollup, including the CI exit decision.
+
+    Callers pass the runs they want counted. ``start_run`` runs each scenario once,
+    so its list is already one-per-scenario; ``generate_report`` reads history out
+    of the store and narrows it with ``latest_per_scenario`` first.
+    """
     counts: dict[str, int] = {}
     for s in summaries:
         counts[s.verdict] = counts.get(s.verdict, 0) + 1

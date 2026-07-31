@@ -87,6 +87,14 @@ _PROFILE = {
     "enum": ["pr", "nightly", "release"],
     "default": "pr",
 }
+#: Reporting has no sensible default profile: a report filtered to `pr` but headed
+#: with a profile the caller never chose is the mislabelling this field exists to
+#: avoid. Omitting it reports across every profile, and the report says so.
+_REPORT_PROFILE = {
+    "type": "string",
+    "enum": ["pr", "nightly", "release"],
+    "description": "Restrict the report to one profile. Omit to report across all of them.",
+}
 
 
 TOOLS: tuple[ToolSpec, ...] = (
@@ -294,7 +302,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         input_schema=_obj(
             {
                 "target_id": _TARGET_ID,
-                "profile": _PROFILE,
+                "profile": _REPORT_PROFILE,
                 "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 50},
                 "formats": {
                     "type": "array",
