@@ -25,17 +25,37 @@ import json
 import re
 import sys
 
-# Substrings that suggest a production system. Deliberately broad — a false
-# refusal costs one clarifying message, a false allow costs an incident.
+# Substrings that suggest a production system, matched against *host-shaped tokens*
+# rather than the raw command. Deliberately broad — a false refusal costs one
+# clarifying message, a false allow costs an incident — but scanning the whole
+# command string made it broad in the wrong direction: `grep "Live Artifact" docs/`
+# and a `Co-Authored-By: … <noreply@anthropic.com>` commit trailer both tripped it,
+# while `curl https://prod.customer.com --proxy localhost` passed, because one
+# `localhost` anywhere exempted every marker in the line.
 PRODUCTION_MARKERS = (
     "prod", "production", "prd", "live", ".com", ".net", ".org", ".io",
     "customer", "payments", "billing",
 )
 
-# Hosts that are fine despite matching a marker above.
+# Hosts that are fine despite matching a marker above. Matched per token, so an
+# exempt host no longer launders a production host sharing the same command.
 PRODUCTION_EXEMPT = (
     "localhost", "127.0.0.1", "::1", ".local", ".svc", ".internal", ".test",
-    "example.com", "example.org", "vendor-collect.example", "partner-billing.example",
+    "example.com", "example.org", "example.net", "vendor-collect.example",
+    "partner-billing.example",
+)
+
+# A URL, or a bare host:port / dotted hostname. Anchored on characters that cannot
+# appear mid-word, so prose and file paths are not mistaken for endpoints.
+HOST_TOKEN = re.compile(
+    r"""(?:
+        [a-z][a-z0-9+.-]*://(?P<url_host>[^/\s:@'"]+(?::\d+)?)   # scheme://host
+      | (?:^|[\s'"=@,(])(?P<bare>
+            (?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}      # dotted hostname
+            (?::\d+)?
+        )(?=$|[\s'"/,;)])
+    )""",
+    re.VERBOSE,
 )
 
 FORBIDDEN_MCP_ARGS = {
@@ -78,19 +98,47 @@ def check_bash(command: str) -> None:
             "`agentsec preview` and the read-only subcommands are fine."
         )
 
-    for marker in PRODUCTION_MARKERS:
-        if marker not in lowered:
+    for host in _hosts(lowered):
+        # Scoped to this host, not the whole line: an exempt host elsewhere in the
+        # command must not vouch for this one.
+        if _is_exempt(host):
             continue
-        if any(ok in lowered for ok in PRODUCTION_EXEMPT):
-            continue
-        deny(
-            f"This command mentions {marker!r}, which looks like a production "
-            f"system. AgentSec targets staging only — `production` is not a valid "
-            f"environment in the allowlist. If this host is genuinely a test "
-            f"system, rename it or ask the user to confirm."
-        )
+        for marker in PRODUCTION_MARKERS:
+            if marker in host:
+                deny(
+                    f"This command contacts {host!r}, which contains {marker!r} and "
+                    f"looks like a production system. AgentSec targets staging only — "
+                    f"`production` is not a valid environment in the allowlist. If "
+                    f"this host is genuinely a test system, rename it or ask the user "
+                    f"to confirm."
+                )
 
     allow()
+
+
+def _is_exempt(host: str) -> bool:
+    """Exact host, or a subdomain of an exempt domain — never a substring.
+
+    Substring matching would exempt `example.com.evil.net`, which is the same
+    laundering trick the per-token scoping above exists to stop.
+    """
+    for entry in PRODUCTION_EXEMPT:
+        if entry.startswith("."):
+            if host == entry.lstrip(".") or host.endswith(entry):
+                return True
+        elif host == entry or host.endswith("." + entry):
+            return True
+    return False
+
+
+def _hosts(command: str) -> list[str]:
+    """Host-shaped tokens in a command, without their port."""
+    found = []
+    for match in HOST_TOKEN.finditer(command):
+        host = match.group("url_host") or match.group("bare")
+        if host:
+            found.append(host.rsplit(":", 1)[0] if ":" in host else host)
+    return found
 
 
 def check_write(path: str) -> None:

@@ -17,6 +17,7 @@ from typing import Any, Literal
 from agentsec.errors import EvidenceUnavailable
 from agentsec.evidence.base import CollectContext, read_json, resolve_path
 from agentsec.models.evidence import OtelSource, OtelSpan, SourceMeta
+from agentsec.policy.allowlist import assert_private_url
 
 SpanStatus = Literal["unset", "ok", "error"]
 
@@ -58,6 +59,8 @@ def _collect_http(ctx: CollectContext) -> OtelSource:
     assert backend is not None
     if not backend.url:
         raise EvidenceUnavailable("otel backend kind=http requires a url")
+
+    assert_private_url(backend.url, what="the OTel trace store")
 
     params: dict[str, Any] = {
         "start": int(ctx.window_start.timestamp()),

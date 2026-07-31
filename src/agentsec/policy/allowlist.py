@@ -72,29 +72,77 @@ def load_allowlist(path: Path, *, check_network: bool = True) -> TargetAllowlist
     return allowlist
 
 
+def assert_private_url(url: str, *, what: str) -> None:
+    """Re-assert the private-address rule at the moment of dialling.
+
+    ``_is_private_host`` treats an unresolvable name as private, because compose
+    service names and CI DNS legitimately do not resolve when the allowlist is
+    loaded. That leniency is only safe if something checks again later — otherwise
+    a name that fails to resolve at load time and resolves publicly at run time is
+    never caught at all.
+
+    Raises ``EvidenceUnavailable`` rather than ``ConfigError``: at collection time
+    the caller is a collector, and a refusal has to degrade its axis to ``error``
+    rather than abort the batch.
+    """
+    from agentsec.errors import EvidenceUnavailable
+
+    host = urlparse(url).hostname
+    if not host:
+        raise EvidenceUnavailable(f"{what} has no host")
+    if host.lower() in _external_allowlist():
+        return
+    if not _is_private_host(host):
+        raise EvidenceUnavailable(
+            f"refusing to contact {what}: host '{host}' resolves outside private "
+            f"address space. If this is intentional, add it to {ENV_EXTERNAL_ALLOW}."
+        )
+
+
 def _external_allowlist() -> set[str]:
     raw = os.environ.get(ENV_EXTERNAL_ALLOW, "")
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
 def _check_endpoint(target: Target) -> None:
-    if target.adapter.kind != "http" or not target.adapter.base_url:
-        return
+    """Every URL the target can make the harness dial, not only the agent's.
 
-    parsed = urlparse(target.adapter.base_url)
+    The adapter's ``base_url`` is the obvious one, but the evidence backends dial
+    out too — and the Wazuh collector carries HTTP basic auth from the environment
+    when it does, so a public URL there leaks the SIEM credentials rather than just
+    reaching the wrong host.
+    """
+    for label, url in _target_urls(target):
+        _check_url(target, label, url)
+
+
+def _target_urls(target: Target) -> list[tuple[str, str]]:
+    urls: list[tuple[str, str]] = []
+    if target.adapter.kind == "http" and target.adapter.base_url:
+        urls.append(("adapter.base_url", target.adapter.base_url))
+    for name in ("otel", "wazuh", "tool_audit", "state_diff"):
+        backend = getattr(target.evidence, name, None)
+        if backend is None or backend.kind == "none" or not getattr(backend, "url", None):
+            continue
+        urls.append((f"evidence.{name}.url", backend.url))
+    return urls
+
+
+def _check_url(target: Target, label: str, raw: str) -> None:
+    parsed = urlparse(raw)
     host = parsed.hostname
     if not host:
-        raise ConfigError(f"target '{target.id}': base_url has no host")
+        raise ConfigError(f"target '{target.id}': {label} has no host")
 
     if host.lower() in _external_allowlist():
         return
 
     if not _is_private_host(host):
         raise ConfigError(
-            f"target '{target.id}': base_url host '{host}' is not a private or "
+            f"target '{target.id}': {label} host '{host}' is not a private or "
             f"loopback address. If this is intentional, add it to "
             f"{ENV_EXTERNAL_ALLOW}.",
-            details={"target_id": target.id, "host": host},
+            details={"target_id": target.id, "host": host, "field": label},
         )
 
 

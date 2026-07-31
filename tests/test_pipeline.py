@@ -350,6 +350,28 @@ def test_junit_does_not_fail_on_a_warning_gated_scenario(service: HarnessService
     assert result.exit_code == 0
 
 
+def test_run_ids_are_claimed_atomically(service: HarnessService) -> None:
+    """Two processes on one workspace must not be handed the same id.
+
+    The id used to be derived from MAX(run_id) in Python while `save_run` upserts,
+    so a collision silently overwrote the earlier run — losing a run without trace,
+    in the component whose job is to be the record.
+    """
+    day = "20260731"
+    minted = [service.store.next_run_id(day) for _ in range(50)]
+    assert len(set(minted)) == 50
+    assert minted[0] == "RUN-20260731-001"
+    assert minted[-1] == "RUN-20260731-050"
+
+    # A second store over the same file continues the sequence rather than restarting.
+    from agentsec.store.sqlite import ResultStore
+
+    other = ResultStore(service.settings.db_path)
+    assert other.next_run_id(day) == "RUN-20260731-051"
+    # Days are independent.
+    assert other.next_run_id("20260801") == "RUN-20260801-001"
+
+
 def test_report_counts_the_latest_run_per_scenario(service: HarnessService) -> None:
     """A rollup over every stored run measures how often CI ran, not what is broken.
 

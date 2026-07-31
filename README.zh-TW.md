@@ -111,6 +111,10 @@ agentsec preview --target demo-agent-fixture   # 「會」執行什麼，以及�
 agentsec run --target demo-agent-fixture --profile nightly --html
 ```
 
+> 在 Claude Code 裡最後一行會被拒絕,由 `.claude/settings.json` 與 guard hook 擋下。
+> 這是刻意的:執行一律走 `agentsec_start_run` MCP 工具,才能記錄到執行者身上並套用
+> 核准檢查。在一般 shell 中則如上照常運作。
+
 預期輸出 —— 刻意不會全綠：
 
 ```
@@ -232,7 +236,9 @@ spec:
 
 ### `agentsec_preview_run`
 
-執行前一律先預覽 —— `agentsec_start_run` 本身也會要求先做過預覽。
+執行前一律先預覽。這是慣例而非強制：`start_run` 不會檢查你是否預覽過,因為 gateway
+不得擁有 CLI 與 CI 所沒有的行為,而那兩者都不會先預覽。真正被強制的是核准 token ——
+`agentsec approve` 只存在於 CLI,所以模型無法自行核准。
 
 | 參數 | 型別 | 說明 |
 |---|---|---|

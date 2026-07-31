@@ -740,17 +740,18 @@
   <section>
     <div class="sec-head">
       <span class="eyebrow">Code review</span>
-      <h2>Twelve findings; the first four are fixed</h2>
+      <h2>Twelve findings, all twelve fixed</h2>
       <p>Ranked by how badly each one undermines the project's own central claim: that an
-        untested or uncollectable axis must never round up to a pass. All three findings in
-        that category are fixed with regression tests, as is the missing metrics view — the
-        bundled corpus still returns the same four verdicts and the same exit 1.</p>
+        untested or uncollectable axis must never round up to a pass. All twelve are now fixed with
+        regression tests; two of them — 07 and part of 08 — by correcting a claim rather than
+        the code, and each says so. The bundled corpus still returns the same four verdicts
+        and the same exit 1.</p>
     </div>
 
     <div class="filters" id="finding-filters">
       <span class="eyebrow">Severity</span>
-      <button class="chip" data-sev="all" aria-pressed="true">all 12</button>
-      <button class="chip" data-sev="high" aria-pressed="false">high 3 · fixed</button>
+      <button class="chip" data-sev="all" aria-pressed="true">all 12 · fixed</button>
+      <button class="chip" data-sev="high" aria-pressed="false">high 3</button>
       <button class="chip" data-sev="medium" aria-pressed="false">medium 5</button>
       <button class="chip" data-sev="low" aria-pressed="false">low 4</button>
     </div>
@@ -871,14 +872,15 @@
         </div>
       </details>
 
-      <details class="find" data-sev="medium">
+      <details class="find" data-sev="medium" data-fixed="true">
         <summary>
           <span class="fid">05</span>
           <span><span class="ftitle">Extra MCP tool arguments are silently dropped, not refused</span>
             <span class="fmeta">mcp/server.py:151-201 · claim vs behaviour</span></span>
-          <span class="sev medium">medium</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>The advertised schema is now the declared schema — <code>required</code>, <code>pattern</code> and <code>additionalProperties: false</code> all reach the wire — and the derived argument model sets <code>extra="forbid"</code>, so an unknown key is refused rather than discarded. The same call now returns <code>isError: true</code> with <code>extra_forbidden at 'url'</code>. The refusal lands in the client's error rather than the audit log, which is the accepted cost of not patching FastMCP's dispatch path.</div>
           <p>The README states that tool schemas "reject <code>url</code>, <code>sql</code>,
             <code>command</code>, <code>path</code>, <code>token</code> and friends, with
             <code>additionalProperties: false</code>". Verified against a real stdio client, they
@@ -904,14 +906,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="medium">
+      <details class="find" data-sev="medium" data-fixed="true">
         <summary>
           <span class="fid">06</span>
           <span><span class="ftitle">Evidence-backend URLs bypass the private-address guard</span>
             <span class="fmeta">policy/allowlist.py:80 · evidence/wazuh.py:92 · security</span></span>
-          <span class="sev medium">medium</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b><code>_check_endpoint</code> now walks every evidence backend URL as well as the adapter's, and new <code>assert_private_url()</code> re-asserts the rule inside all four collectors at the moment of dialling — closing the hole left by treating unresolvable names as private at load time.</div>
           <p><code>_check_endpoint</code> inspects <code>target.adapter.base_url</code> and only
             when <code>adapter.kind == "http"</code>. <code>target.evidence.wazuh.url</code> and
             the OTel endpoint are never checked — so a public Wazuh Indexer URL in
@@ -929,14 +932,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="medium">
+      <details class="find" data-sev="medium" data-fixed="true">
         <summary>
           <span class="fid">07</span>
           <span><span class="ftitle">start_run does not require the prior preview it documents</span>
             <span class="fmeta">mcp/contract.py:167 · service/harness.py:284 · doc vs behaviour</span></span>
-          <span class="sev medium">medium</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>Corrected in the documentation rather than the code, deliberately. Enforcing a preview only on the gateway would create the "Claude-only code path" that <code>harness.py</code>'s own docstring forbids, and enforcing it everywhere would break the CLI and CI, neither of which previews. The tool description and both READMEs now call it a convention and point at what is enforced: the approval token.</div>
           <p>The tool description says "Requires a prior preview" and the README says
             "<code>agentsec_start_run</code> requires it". <code>HarnessService.start_run</code>
             records no preview state and enforces nothing — a first call runs immediately.</p>
@@ -946,14 +950,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="medium">
+      <details class="find" data-sev="medium" data-fixed="true">
         <summary>
           <span class="fid">08</span>
           <span><span class="ftitle">Confirmed for issue #7: read-only mode still advertises all eleven tools</span>
             <span class="fmeta">mcp/server.py:107 · confirms an open issue</span></span>
-          <span class="sev medium">medium</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b><code>build_server()</code> skips every <code>read_only=False</code> tool when <code>AGENTSEC_MCP_READ_ONLY=1</code>. <code>tools/list</code> drops from 11 to 8 — execution is absent, not denied. That closes acceptance criterion 1 of issue #7; resource allowlisting and evidence redaction stay open there.</div>
           <p>Issue #7 lists "a real stdio MCP client smoke test verifies capability listing" as an
             unmet acceptance criterion. Done, and it confirms the report: with
             <code>AGENTSEC_MCP_READ_ONLY=1</code>, <code>tools/list</code> returns all 11 tools
@@ -967,14 +972,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="low">
+      <details class="find" data-sev="low" data-fixed="true">
         <summary>
           <span class="fid">09</span>
           <span><span class="ftitle">Quarantine expiry silently reinterprets a non-UTC timestamp</span>
             <span class="fmeta">policy/guard.py:102 · correctness</span></span>
-          <span class="sev low">low</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b><code>if until.tzinfo is None: until = until.replace(tzinfo=UTC)</code> — an offset that was written down is now converted rather than overwritten.</div>
           <p><code>datetime.fromisoformat(quarantined_until).replace(tzinfo=UTC)</code> overwrites
             an existing offset instead of converting it. <code>2026-08-01T00:00:00+08:00</code>
             becomes <code>2026-08-01T00:00:00Z</code>, and the quarantine runs eight hours longer
@@ -984,14 +990,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="low">
+      <details class="find" data-sev="low" data-fixed="true">
         <summary>
           <span class="fid">10</span>
           <span><span class="ftitle">must_fire has no lower time bound</span>
             <span class="fmeta">evaluation/matchers.py:118 · robustness</span></span>
-          <span class="sev low">low</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b><code>match_alert</code> rejects <code>ts &lt; window_start</code> too. Still unreachable through the shipped collectors, which is exactly why the guarantee now lives in the matcher rather than in whichever collector supplies the alerts.</div>
           <p><code>match_alert</code> rejects an alert only when <code>ts &gt; deadline</code>. An
             alert that fired <em>before</em> <code>window_start</code> still satisfies a
             <code>must_fire</code>. Not reachable today — the OpenSearch collector bounds
@@ -1003,14 +1010,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="low">
+      <details class="find" data-sev="low" data-fixed="true">
         <summary>
           <span class="fid">11</span>
           <span><span class="ftitle">Run-id minting races, and a collision overwrites the earlier run</span>
             <span class="fmeta">service/harness.py:796 · store/sqlite.py:115 · robustness</span></span>
-          <span class="sev low">low</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>New <code>run_counter</code> table and <code>next_run_id()</code>: one <code>INSERT … ON CONFLICT … RETURNING</code>, so two processes on one workspace cannot be handed the same id. Also removes the <code>limit=1000</code> scan that doubled as a ceiling on runs per day.</div>
           <p><code>_next_run_id</code> reads <code>list_runs(limit=1000)</code>, computes
             <code>max + 1</code> in Python, and <code>save_run</code> is
             <code>ON CONFLICT(run_id) DO UPDATE</code>. Two processes sharing a workspace mint the
@@ -1022,14 +1030,15 @@ tools/list advertises, for all 11 tools:
         </div>
       </details>
 
-      <details class="find" data-sev="low">
+      <details class="find" data-sev="low" data-fixed="true">
         <summary>
           <span class="fid">12</span>
           <span><span class="ftitle">The guard hook over-matches, and the README's first command is blocked by it</span>
             <span class="fmeta">.claude/hooks/guard_agentsec.py:30,84 · README §2 · developer experience</span></span>
-          <span class="sev low">low</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>Markers are matched against host-shaped tokens rather than the raw command, and the exemption is scoped to the same token and anchored to a whole label — so ordinary commands are allowed again while <code>prod.customer.com --proxy localhost</code> and <code>example.com.evil.net</code> are both refused. 20 cases pinned in <code>tests/test_guard_hook.py</code>. Both READMEs note the blocked quick-start command, and the gate workflow passes inputs through <code>env:</code>.</div>
           <p>Production markers are matched as bare substrings anywhere in the command. Hit
             organically during this review: <code>grep -rn "Live Artifact" docs/</code> was refused
             because <code>"live"</code> appears in the name of the project's own documented

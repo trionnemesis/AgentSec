@@ -814,20 +814,8 @@ class HarnessService:
         ]
 
     def _next_run_id(self) -> str:
-        """RUN-YYYYMMDD-NNN, sequential within the day."""
-        today = datetime.now(UTC).strftime("%Y%m%d")
-        prefix = f"RUN-{today}-"
-        existing = [
-            r.run_id for r in self.store.list_runs(limit=1000)
-            if r.run_id.startswith(prefix)
-        ]
-        n = 0
-        for rid in existing:
-            try:
-                n = max(n, int(rid.rsplit("-", 1)[1]))
-            except (IndexError, ValueError):
-                continue
-        return f"{prefix}{n + 1:03d}"
+        """RUN-YYYYMMDD-NNN, sequential within the day and claimed atomically."""
+        return self.store.next_run_id(datetime.now(UTC).strftime("%Y%m%d"))
 
 
 def _check_map(run: Run) -> dict[str, str]:

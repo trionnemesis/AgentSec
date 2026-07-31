@@ -52,7 +52,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 jobs:
   purple:
@@ -60,6 +59,13 @@ jobs:
     defaults:
       run:
         working-directory: ${{ inputs.workspace }}
+    # Caller inputs reach the shell as environment variables, never spliced
+    # into the script text. A reusable workflow runs on the caller's runner
+    # with the caller's secrets, so an input landing inside `run:` is a
+    # command-injection sink even when today's caller is trusted.
+    env:
+      AGENTSEC_TARGET: ${{ inputs.target }}
+      AGENTSEC_PROFILE: ${{ inputs.profile }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,10 +80,10 @@ jobs:
       # target does not have produces a detection gap that is really a config
       # mistake, and that wastes an engineer's afternoon.
       - name: validate the catalogue against the target
-        run: agentsec validate --target "${{ inputs.target }}"
+        run: agentsec validate --target "$AGENTSEC_TARGET"
 
       - name: preview
-        run: agentsec preview --target "${{ inputs.target }}" --profile "${{ inputs.profile }}"
+        run: agentsec preview --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE"
 
       - name: run
         id: run
@@ -88,16 +94,16 @@ jobs:
           WAZUH_INDEXER_PASSWORD: ${{ secrets.wazuh_password }}
         run: |
           agentsec run \
-            --target "${{ inputs.target }}" \
-            --profile "${{ inputs.profile }}" \
+            --target "$AGENTSEC_TARGET" \
+            --profile "$AGENTSEC_PROFILE" \
             --output junit \
             --output-file results/agentsec.xml
 
       - name: html + json report
         if: always()
         run: |
-          agentsec report --target "${{ inputs.target }}" \
-            --profile "${{ inputs.profile }}" --format html --format json
+          agentsec report --target "$AGENTSEC_TARGET" \
+            --profile "$AGENTSEC_PROFILE" --format html --format json
 
       - name: summary
         if: always()

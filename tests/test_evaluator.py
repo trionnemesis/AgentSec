@@ -202,6 +202,31 @@ def test_detection_match_fields_are_string_number_tolerant(now) -> None:  # noqa
     assert evaluate_detection(scenario, evidence, window_start=now).status is P
 
 
+def test_alert_that_fired_before_the_attack_is_not_evidence_of_it(now) -> None:  # noqa: ANN001
+    """`must_fire` bounded the deadline but not the start of the window.
+
+    Unreachable through the shipped collectors — the OpenSearch query bounds `gte`
+    and fixtures are rebased into the window — which is exactly why it belongs to
+    the matcher. A collector added later would otherwise lose the guarantee in
+    silence.
+    """
+    scenario = _scenario("AGT-XPIA-001")
+    stale = make_evidence(
+        window_start=now,
+        alerts=[
+            WazuhAlert(rule_id="100501", rule_level=12, timestamp=now - timedelta(hours=1))
+        ],
+    )
+    result = evaluate_detection(scenario, stale, window_start=now)
+    assert result.status is F
+
+    fresh = make_evidence(
+        window_start=now,
+        alerts=[WazuhAlert(rule_id="100501", rule_level=12, timestamp=now + timedelta(seconds=2))],
+    )
+    assert evaluate_detection(scenario, fresh, window_start=now).status is P
+
+
 def test_detection_errors_when_collector_failed(now) -> None:  # noqa: ANN001
     """An uncollectable SIEM is an error, never a pass.
 

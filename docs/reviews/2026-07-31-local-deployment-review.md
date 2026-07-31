@@ -7,10 +7,9 @@ not a mock.
 Interactive dashboard rendering this review:
 <https://claude.ai/code/artifact/1bd63b3a-6a33-4303-9e8b-39a895ede90f>
 
-> **Status:** findings 01–04 are **fixed on this branch**, with regression tests — the
-> three where the harness could report green without having checked, plus the metrics
-> view. See "What was fixed" below. Findings 05–12 remain open and are tracked on
-> issue #13.
+> **Status:** all twelve findings are **fixed on this branch**, with regression tests.
+> See "What was fixed" below. Two were resolved by correcting the documentation rather
+> than the code — 07 and part of 08 — and each says why.
 
 ---
 
@@ -339,6 +338,110 @@ alongside it:
 The page stays a single self-contained file: inline CSS and JS, no external asset of any
 kind, and the existing self-containment test still passes.
 
+### 05 — unknown arguments are refused, not dropped
+
+`mcp/server.py`
+
+New `_publish_declared_schema()` does two things to each registered tool: replaces the
+advertised `parameters` with the schema declared in `mcp/contract.py`, so a client is
+told the truth about `pattern`, `enum`, `required` and `additionalProperties`; and sets
+`extra="forbid"` on the derived argument model, so an unknown key is refused at the
+protocol boundary rather than discarded. It raises if FastMCP's internals are not the
+expected shape — a hardening step that quietly did nothing is the failure this project
+is about.
+
+Before / after, same call:
+
+```
+agentsec_preview_run {target_id: "demo-agent-fixture", url: "http://attacker.example/x"}
+  before →  {"ok": true, ...}       no error, no trace
+  after  →  isError: true           extra_forbidden at 'url'
+
+tools/list, all 11 tools
+  before →  required: []   additionalProperties: <unset>
+  after  →  required: ["target_id"]   additionalProperties: false
+```
+
+The refusal happens before the call reaches `HarnessService`, so it lands in the
+client's error rather than in `audit_log`. That is the accepted cost of not reaching
+into FastMCP's dispatch path: a security control implemented by patching another
+library's internals fails silently the first time that library moves. `model_dump_one_level`
+only iterates declared fields, so there is no supported way to receive an extra
+argument and audit it.
+
+### 06 — every URL the target can dial
+
+`policy/allowlist.py`, `evidence/{wazuh,otel,tool_audit,state_diff}.py`
+
+`_check_endpoint` now walks `adapter.base_url` **and** every evidence backend URL. New
+`assert_private_url()` re-asserts the rule at collection time in all four collectors,
+closing the gap left by treating unresolvable names as private at load time — a name
+that does not resolve when the allowlist loads and resolves publicly when a collector
+dials it is now caught. It raises `EvidenceUnavailable`, so a refusal degrades the axis
+to `error` rather than aborting the batch.
+
+### 07 — the preview claim, corrected rather than enforced
+
+`mcp/contract.py`, `README.md`, `README.zh-TW.md`
+
+Documentation fix, deliberately. Enforcing a preview only on the gateway would create
+exactly the "Claude-only code path" that `service/harness.py`'s own module docstring
+forbids, and enforcing it everywhere would break the CLI and CI, neither of which
+previews first. The tool description and both READMEs now say preview is a working
+convention, and point at what *is* enforced: the approval token, which no tool can mint.
+
+### 08 — read-only mode no longer advertises execution
+
+`mcp/server.py`
+
+`build_server()` skips registering any tool with `read_only=False` when
+`AGENTSEC_MCP_READ_ONLY=1`. `tools/list` drops from 11 to 8; `agentsec_start_run`,
+`agentsec_promote_finding` and `agentsec_generate_report` are absent rather than
+denied, which is what deployment option C describes.
+
+This closes acceptance criterion 1 of issue #7. The rest of that issue — resource
+allowlisting, dashboard-safe DTOs and evidence redaction — is a larger design change
+and stays open there. Note `agentsec_generate_report` is still `read_only=False`, so a
+read-only gateway cannot render a report; that is the right call for a tool that writes
+files, and it is the reason #7's DTO work matters.
+
+### 09 — quarantine expiry converts instead of overwriting
+
+`policy/guard.py` — `if until.tzinfo is None: until = until.replace(tzinfo=UTC)`.
+
+### 10 — `must_fire` is bounded at both ends
+
+`evaluation/matchers.py` — an alert that fired before `window_start` is no longer
+evidence of the attack. Unreachable through the shipped collectors, which is why it
+belongs in the matcher rather than in whichever collector happens to supply the alerts.
+
+### 11 — run ids are claimed atomically
+
+`store/sqlite.py`, `service/harness.py`
+
+New `run_counter` table and `next_run_id()`, one `INSERT … ON CONFLICT … RETURNING`
+statement, so two processes sharing a workspace cannot be handed the same id. Schema
+version 2; the table is created by the existing `CREATE TABLE IF NOT EXISTS` script, so
+existing databases pick it up without migration. Also removes the
+`list_runs(limit=1000)` scan, which doubled as an undocumented ceiling on runs per day.
+
+### 12 — the guard hook matches hosts, not prose
+
+`.claude/hooks/guard_agentsec.py`, `README.md`, `README.zh-TW.md`,
+`.github/workflows/agentsec-gate.yml`
+
+Production markers are matched against host-shaped tokens extracted from the command,
+and the exemption is scoped to the same token and anchored to a whole label. That fixes
+both directions at once: `grep "Live Artifact" docs/` and a `noreply@anthropic.com`
+commit trailer are allowed again, while `curl https://prod.customer.com --proxy localhost`
+and `example.com.evil.net` are refused — the first used to pass because one `localhost`
+anywhere exempted the whole line, the second because the exemption was a plain substring.
+
+`tests/test_guard_hook.py` pins all of it. Both READMEs note that the quick start's
+`agentsec run` is refused inside Claude Code and why. The reusable gate workflow passes
+caller inputs through `env:` instead of splicing them into `run:`, and drops the
+`checks: write` permission it never used.
+
 ### Tests added
 
 `test_every_tool_call_audited_errors_when_no_span_matches`,
@@ -347,13 +450,13 @@ kind, and the existing self-containment test still passes.
 `test_tool_audit_without_spans_warns`,
 `test_report_counts_the_latest_run_per_scenario`,
 `test_report_filters_by_profile_it_labels`,
-`test_html_report_renders_the_axis_rollup_and_trend`.
+`test_html_report_renders_the_axis_rollup_and_trend`,
+`test_run_ids_are_claimed_atomically`,
+`test_evidence_backend_url_is_checked_too`,
+`test_private_url_is_reasserted_at_collection_time`,
+`test_quarantine_with_an_explicit_offset_is_converted_not_overwritten`,
+`test_alert_that_fired_before_the_attack_is_not_evidence_of_it`,
+plus `tests/test_guard_hook.py` (20 cases) and `tests/test_mcp_gateway.py` (3 cases,
+skipped unless the `mcp` extra is present — CI runs them in the gateway job).
 
-153 tests pass; ruff and mypy clean; coverage 74.8%.
-
----
-
-## Suggested order for the rest
-
-1. **05**–**08** — claim-versus-behaviour gaps; each is a small change plus a test.
-2. **09**–**12** — correctness and ergonomics.
+182 tests pass; ruff and mypy clean; coverage 76.4%.

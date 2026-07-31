@@ -111,6 +111,11 @@ agentsec preview --target demo-agent-fixture   # what *would* run, and why
 agentsec run --target demo-agent-fixture --profile nightly --html
 ```
 
+> Inside Claude Code that last command is refused, by `.claude/settings.json` and by
+> the guard hook. That is deliberate: runs go through the `agentsec_start_run` MCP tool
+> so each one is recorded against an actor and the approval check applies. In a plain
+> shell it works as written.
+
 Expected output — deliberately not all green:
 
 ```
@@ -232,7 +237,11 @@ Eleven tools, all narrow by construction: a caller names a target by id and the 
 
 ### `agentsec_preview_run`
 
-Always preview before starting a run — `agentsec_start_run` requires it.
+Always preview before starting a run. This is a working convention, not an enforced
+one: `start_run` does not check that you previewed, because the gateway is not allowed
+to enforce anything the CLI and CI do not, and neither of those previews first. What
+*is* enforced is the approval token — `agentsec approve` is CLI-only, so a model cannot
+grant its own.
 
 | Parameter | Type | Description |
 |---|---|---|

@@ -171,9 +171,9 @@ TOOLS: tuple[ToolSpec, ...] = (
         title="Start a run",
         description=(
             "Execute the selected scenarios against an allowlisted target and "
-            "return the purple verdicts. Requires a prior preview; high-risk and "
-            "destructive scenarios additionally require an approval token granted "
-            "out of band by a human."
+            "return the purple verdicts. Preview first — that is a convention, not "
+            "an enforced precondition. High-risk and destructive scenarios do require "
+            "an approval token, granted out of band by a human: no tool mints one."
         ),
         risk="execute",
         input_schema=_obj(

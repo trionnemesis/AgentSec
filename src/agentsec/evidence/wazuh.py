@@ -26,6 +26,7 @@ from agentsec.evidence.base import (
     resolve_path,
 )
 from agentsec.models.evidence import SourceMeta, WazuhAlert, WazuhSource
+from agentsec.policy.allowlist import assert_private_url
 
 
 def collect_wazuh(ctx: CollectContext) -> WazuhSource:
@@ -59,6 +60,10 @@ def _collect_opensearch(ctx: CollectContext) -> WazuhSource:
     assert backend is not None
     if not backend.url:
         raise EvidenceUnavailable("wazuh backend kind=opensearch requires a url")
+
+    # Checked again here, not only at allowlist load: this request carries the
+    # Indexer credentials, so the wrong host costs more than a failed query.
+    assert_private_url(backend.url, what="the Wazuh Indexer")
 
     auth: httpx.Auth | None = None
     if backend.username_env and backend.password_env:

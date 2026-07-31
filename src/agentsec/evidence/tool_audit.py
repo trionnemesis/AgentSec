@@ -17,6 +17,7 @@ from typing import Any
 from agentsec.errors import EvidenceUnavailable
 from agentsec.evidence.base import CollectContext, read_json, read_jsonl, resolve_path
 from agentsec.models.evidence import SourceMeta, ToolAuditRecord, ToolAuditSource
+from agentsec.policy.allowlist import assert_private_url
 
 
 def collect_tool_audit(ctx: CollectContext) -> ToolAuditSource:
@@ -36,6 +37,8 @@ def collect_tool_audit(ctx: CollectContext) -> ToolAuditSource:
 
     if not backend.url:
         raise EvidenceUnavailable("tool_audit backend kind=http requires a url")
+
+    assert_private_url(backend.url, what="the tool-audit service")
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.get(

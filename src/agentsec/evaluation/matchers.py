@@ -124,6 +124,13 @@ def match_alert(
         # one; detection latency is part of the contract.
         if ts > deadline:
             return False
+        # And one that fired before the attack started cannot be evidence of it.
+        # Live collection already bounds the query window and fixtures are rebased
+        # into it, so this is unreachable today — which is the point: the guarantee
+        # belongs to the matcher, not to whichever collector happens to supply the
+        # alerts, or the next collector silently loses it.
+        if ts < window_start:
+            return False
     return True
 
 
