@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "agentsec": {
+      "command": "agentsec-mcp",
+      "env": {
+        "AGENTSEC_WORKSPACE": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}
