@@ -100,10 +100,57 @@ Execution stays inside the network. The dashboard reads a redacted export.
 Nothing internet-reachable can start a run — not by policy, but because
 `start_run` is not registered on that process.
 
-**The work you cannot skip:** the export step is a real component. Evidence
-bundles carry transcripts, and transcripts of a cross-tenant test contain the
-data that leaked. Decide per source what crosses the boundary. `Target.redacted()`
-already does this for target metadata; you need the equivalent for evidence.
+### What each side of that boundary holds
+
+The export step used to be described here as work you had to write yourself. It
+ships now, in `reporting/publish.py`, and the line it draws is between *declared
+configuration* and *observed data*:
+
+* **Declared configuration** — what an operator wrote in `policy/targets.yaml`,
+  what a scenario author committed and a reviewer merged — has already been
+  through review and already has its credentials withheld. It crosses.
+* **Observed data** — transcript turns, span attributes, alert fields, tenant
+  ids, audit detail — is whatever the system under test happened to emit. In a
+  cross-tenant scenario that is, by construction, the record that leaked. It is
+  projected, never passed through.
+
+| | Execution host (local) | Report gateway (`AGENTSEC_MCP_READ_ONLY=1`) |
+|---|---|---|
+| Raw evidence bundle | on disk under `results/`, referenced by `run.evidence_ref` | not served, not referenced |
+| `agentsec://runs/{run_id}/evidence` | projected: turn digests, pseudonymous principals, attribute keys without values | not registered |
+| `agentsec://audit` | full rows | not registered |
+| `agentsec://targets/{target_id}` | principals, executors, capabilities | not registered |
+| `agentsec://runs/{run_id}` | projected run: no `evidence_ref`, no `raw_ref`, no approval token | same projection |
+| `agentsec://coverage`, `findings`, `scenarios`, `targets` | served | served |
+
+Raw evidence is a local capability on purpose. An investigator working an
+incident reads the bundle off the execution host — as a file, or through the
+report the CLI renders there. Nothing that crosses the MCP boundary carries it,
+on either gateway, because the difference between the two is which URIs exist
+rather than how carefully each one is rendered.
+
+**What the projection keeps.** Redaction that costs the reader the finding is
+not worth deploying. Verdicts, axis statuses, failed checks, rule ids, alert
+levels, tool names and decisions all survive intact — the assertion text quotes
+values declared in the contract, so it survives too. What goes is the payload:
+turn content becomes a digest, free-form maps keep their keys and lose their
+values, principals and tenant ids become stable pseudonyms that still correlate
+across turns so the pivot remains visible.
+
+**Pseudonyms are not anonymisation.** They preserve correlation without printing
+the identifier. The identifier space is small and the default salt ships in the
+source, so anyone holding both can invert them by enumeration. Set
+`AGENTSEC_PSEUDONYM_SALT` per deployment when the reader is less trusted than
+whoever can read the repository.
+
+**Adding a resource is a decision, not a default.** Every `ResourceSpec` names a
+publication policy, and the gateway refuses to start if one names a policy that
+does not exist. A new resource whose output nobody has vetted fails on the
+machine of whoever added it rather than serving a raw model in production.
+
+The published shapes are versioned — `reporting.publish.PUBLISH_SCHEMA_VERSION`,
+with the rollup described by `schemas/dashboard.schema.json` — so a Live Artifact
+or MCP App can pin against them.
 
 **Recommended sequencing:**
 
@@ -126,7 +173,8 @@ on it yet.
 | `AGENTSEC_WORKSPACE` | workspace root holding `scenarios/`, `policy/`, `results/` |
 | `AGENTSEC_DB` | override the SQLite path (CI often points this at a cache) |
 | `AGENTSEC_ACTOR` | who is acting, recorded on every audit row |
-| `AGENTSEC_MCP_READ_ONLY` | `1` refuses every non-read-only tool |
+| `AGENTSEC_MCP_READ_ONLY` | `1` runs the report gateway: non-read-only tools are not registered, and only the allowlisted resources are served |
+| `AGENTSEC_PSEUDONYM_SALT` | salt for the principal/tenant/actor labels in published output; defaults to a value that ships in the source |
 | `AGENTSEC_ALLOW_EXTERNAL_HOSTS` | comma-separated hosts exempt from the private-address check |
 | target-specific | credential variable *names* come from `policy/targets.yaml`; the values live only in the environment |
 
@@ -138,7 +186,11 @@ No credential is ever written in a scenario, a target file, or a tool argument.
 
 - [ ] `AGENTSEC_MCP_READ_ONLY=1` on any internet-reachable gateway
 - [ ] OAuth scopes mapped to tool risk tiers (`read` / `write` / `execute`)
-- [ ] Evidence redaction on the export path — assume transcripts contain the leak
+- [x] Evidence redaction on the export path — assume transcripts contain the leak
+      (`reporting/publish.py`; the projection is asserted against the
+      cross-tenant corpus in `tests/test_publish_redaction.py`)
+- [ ] `AGENTSEC_PSEUDONYM_SALT` set, if the dashboard's readers should not be
+      able to invert principal labels by enumeration
 - [ ] Approvals in your change-management system, not the YAML ledger
 - [ ] `audit_log` shipped to the SIEM, including refusals
 - [ ] Per-target rate limits enforced at the gateway as well as in policy

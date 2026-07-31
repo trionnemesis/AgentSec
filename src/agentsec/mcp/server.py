@@ -24,8 +24,10 @@ from jsonschema import Draft202012Validator
 
 from agentsec.config import load_settings
 from agentsec.errors import AgentSecError
-from agentsec.mcp.contract import RESOURCES, TOOLS, ToolSpec, tool_by_name
+from agentsec.mcp.contract import RESOURCES, TOOLS, ResourceSpec, ToolSpec, tool_by_name
 from agentsec.mcp.prompts import PROMPTS
+from agentsec.models.run import Run
+from agentsec.reporting.publish import PUBLISHERS, publish
 from agentsec.service.harness import BatchResult, HarnessService
 
 #: Set to "1" to refuse every non-read-only tool. This is the read-only report
@@ -42,7 +44,12 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, BatchResult):
         # Return the normalised report, not the raw Run objects: the report is
         # already the redacted, stable shape both interfaces consume.
-        return value.report
+        return publish("report", value.report)
+    if isinstance(value, Run):
+        # A Run carries evidence_ref, execution.raw_ref and the approval token.
+        # Those are workspace paths and a credential, and dumping the model sent
+        # all three to whoever called the tool.
+        return publish("run", value)
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
     if isinstance(value, list):
@@ -105,6 +112,7 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
     server = FastMCP("agentsec")
 
     read_only = _read_only_mode()
+    _assert_every_resource_has_a_policy()
 
     for tool in TOOLS:
         # A read-only gateway does not merely refuse execution, it does not offer
@@ -122,12 +130,32 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
         _publish_declared_schema(server, tool)
 
     for resource in RESOURCES:
+        # Read-only is not the distinction that matters here — every resource is
+        # a read. The distinction is who is holding the other end.
+        if read_only and not resource.published:
+            continue
         _register_resource(server, service, resource)
 
     for prompt in PROMPTS:
         _register_prompt(server, prompt)
 
     return server
+
+
+def _assert_every_resource_has_a_policy() -> None:
+    """Refuse to start rather than serve an output nobody has vetted.
+
+    The failure this guards against is a quiet one: someone adds a resource, the
+    handler returns a model, and the model is serialised in full because nothing
+    objected. Checking at startup rather than on first read means the mistake
+    surfaces on the machine of whoever made it.
+    """
+    missing = sorted(r.uri_template for r in RESOURCES if r.publish not in PUBLISHERS)
+    if missing:
+        raise AgentSecError(
+            "these resources have no publication policy: " + ", ".join(missing),
+            details={"known_policies": sorted(PUBLISHERS)},
+        )
 
 
 def _publish_declared_schema(server, tool: ToolSpec) -> None:  # noqa: ANN001
@@ -277,7 +305,7 @@ def _resource_params(uri_template: str) -> list[str]:
     return re.findall(r"\{([a-z_]+)\}", uri_template)
 
 
-def _register_resource(server, service: HarnessService, resource) -> None:  # noqa: ANN001
+def _register_resource(server, service: HarnessService, resource: ResourceSpec) -> None:  # noqa: ANN001
     handler_name = resource.handler
     params = _resource_params(resource.uri_template)
 
@@ -287,7 +315,9 @@ def _register_resource(server, service: HarnessService, resource) -> None:  # no
             if handler is None:
                 # A few resources are served straight off the store (audit_tail).
                 handler = getattr(service.store, handler_name)
-            return json.dumps(_jsonable(handler(**kwargs)), indent=2, default=str)
+            # The projection, not the handler, decides what leaves the process.
+            body = publish(resource.publish, handler(**kwargs))
+            return json.dumps(body, indent=2, default=str)
         except AgentSecError as exc:
             # Resources cannot signal failure structurally, so return the error
             # body rather than raising through the protocol.
