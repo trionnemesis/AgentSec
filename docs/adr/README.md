@@ -13,3 +13,4 @@ same debate being reopened in six months without new information.
 | [0005](0005-local-first-deployment.md) | Local MCP first, remote gateway later | Accepted |
 | [0006](0006-normalised-evidence-schema.md) | Normalise evidence, don't query vendors from the evaluator | Accepted |
 | [0007](0007-sqlite-and-files.md) | SQLite plus JSON files, not a service database | Accepted |
+| [0008](0008-skill-assurance-bounded-context.md) | Skill Assurance is a separate bounded context | Accepted |
