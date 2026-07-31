@@ -14,6 +14,7 @@ from typing import Any
 from agentsec.models.run import AxisStatus, PurpleVerdict, Run
 from agentsec.models.scenario import Scenario
 from agentsec.policy.profiles import Profile
+from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
 
 
 @dataclass
@@ -194,6 +195,10 @@ def normalize_batch(summaries: list[RunSummary], *, profile: str, target_id: str
     blocking = [s for s in summaries if s.blocking]
 
     return {
+        # Stamped here rather than at the gateway so the JSON written to disk
+        # carries it too: a dashboard reading a file and a dashboard reading the
+        # resource should not have to work out which shape they got.
+        "schema_version": PUBLISH_SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
         "profile": profile,
         "target_id": target_id,

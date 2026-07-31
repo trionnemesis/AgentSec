@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/dashboard.schema.json",
+  "title": "AgentSec Dashboard Rollup",
+  "description": "The normalised batch rollup: the one shape every output renders from, and the contract a Live Artifact or MCP App may depend on. Produced by reporting.normalizer.normalize_batch, written by `agentsec report --format json`, and returned by agentsec_start_run and agentsec_generate_report. Every field here is a verdict or a count derived from committed contracts; nothing the system under test emitted reaches this document. Per-run observations live behind agentsec://runs/{run_id} and its evidence resource, which carry their own redaction envelope.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "generated_at",
+    "profile",
+    "target_id",
+    "total_runs",
+    "verdict_counts",
+    "axis_counts",
+    "secure",
+    "blocking_count",
+    "blocking_scenarios",
+    "exit_code",
+    "runs"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semantic version of this shape. The major component changes when a consumer would break; see reporting.publish.PUBLISH_SCHEMA_VERSION."
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "profile": {
+      "type": "string",
+      "description": "The profile the rollup was filtered to, or \"all\" when the caller named none. A report headed with a profile it never filtered on is the mislabelling this field exists to avoid."
+    },
+    "target_id": { "type": "string" },
+    "total_runs": { "type": "integer", "minimum": 0 },
+    "verdict_counts": {
+      "type": "object",
+      "description": "Histogram over the runs counted, keyed by purple verdict.",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "axis_counts": {
+      "type": "object",
+      "description": "The four-axis rollup. `not_tested` is a first-class outcome: an axis a scenario never asserted is never counted as a pass.",
+      "required": ["prevention", "detection", "evidence", "response"],
+      "additionalProperties": false,
+      "properties": {
+        "prevention": { "$ref": "#/$defs/axisTally" },
+        "detection": { "$ref": "#/$defs/axisTally" },
+        "evidence": { "$ref": "#/$defs/axisTally" },
+        "response": { "$ref": "#/$defs/axisTally" }
+      }
+    },
+    "secure": { "type": "integer", "minimum": 0 },
+    "blocking_count": { "type": "integer", "minimum": 0 },
+    "blocking_scenarios": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" }
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [0, 1],
+      "description": "1 when any counted run is blocking. This is the CI gate."
+    },
+    "superseded_runs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Stored runs older than the ones counted here. The rollup keeps the latest run per (scenario, target) so a scenario that failed fifty times last month cannot dominate today's picture; this field keeps the document honest that the history exists."
+    },
+    "history": {
+      "type": "object",
+      "description": "Per-scenario verdict timeline, oldest first, for trend rendering.",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["run_id", "verdict", "created_at"],
+          "properties": {
+            "run_id": { "type": "string" },
+            "verdict": { "$ref": "#/$defs/verdict" },
+            "created_at": { "type": "string", "format": "date-time" },
+            "profile": { "type": "string" }
+          }
+        }
+      }
+    },
+    "runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/runSummary" }
+    }
+  },
+  "$defs": {
+    "axisStatus": {
+      "type": "string",
+      "enum": ["pass", "fail", "not_tested", "error"]
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "secure",
+        "prevention_gap",
+        "detection_gap",
+        "evidence_gap",
+        "response_gap",
+        "error"
+      ],
+      "description": "Highest rung reached, in precedence order error > detection_gap > prevention_gap > evidence_gap > response_gap > secure. A silent failure always outranks a noisy one."
+    },
+    "axisTally": {
+      "type": "object",
+      "required": ["pass", "fail", "not_tested", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "pass": { "type": "integer", "minimum": 0 },
+        "fail": { "type": "integer", "minimum": 0 },
+        "not_tested": { "type": "integer", "minimum": 0 },
+        "error": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "runSummary": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "scenario_id",
+        "target_id",
+        "profile",
+        "status",
+        "purple_verdict",
+        "prevention",
+        "detection",
+        "evidence",
+        "response",
+        "blocking",
+        "gate"
+      ],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$" },
+        "scenario_id": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" },
+        "scenario_title": { "type": "string" },
+        "severity": { "type": "string" },
+        "target_id": { "type": "string" },
+        "profile": { "type": "string" },
+        "status": { "type": "string" },
+        "purple_verdict": { "$ref": "#/$defs/verdict" },
+        "prevention": { "$ref": "#/$defs/axisStatus" },
+        "detection": { "$ref": "#/$defs/axisStatus" },
+        "evidence": { "$ref": "#/$defs/axisStatus" },
+        "response": { "$ref": "#/$defs/axisStatus" },
+        "rationale": { "type": "string" },
+        "duration_seconds": { "type": "number", "minimum": 0 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "blocking": {
+          "type": "boolean",
+          "description": "Whether this run fails the CI gate: the scenario's gate is blocking and the profile blocks this verdict."
+        },
+        "gate": { "type": "string", "enum": ["blocking", "warning"] },
+        "failed_checks": {
+          "type": "array",
+          "description": "Only the checks that failed or errored. `assertion` and `observed` are evaluator-authored and quote values declared in the scenario contract.",
+          "items": {
+            "type": "object",
+            "required": ["id", "axis", "status", "assertion"],
+            "properties": {
+              "id": { "type": "string" },
+              "axis": {
+                "type": "string",
+                "enum": ["prevention", "detection", "evidence", "response"]
+              },
+              "status": { "$ref": "#/$defs/axisStatus" },
+              "assertion": { "type": "string" },
+              "observed": { "type": "string" },
+              "reason": { "type": "string" }
+            }
+          }
+        },
+        "collector_errors": {
+          "type": "array",
+          "description": "A collector that could not answer. Present because an axis it fed degrades to `error` rather than to `pass`.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "source": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        },
+        "owasp": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^AAI[0-9]{3}$" }
+        },
+        "tags": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

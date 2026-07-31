@@ -18,6 +18,7 @@ from agentsec.models.finding import FindingStatus
 from agentsec.models.run import PurpleVerdict, RunStatus
 from agentsec.reporting.junit import render_junit
 from agentsec.service.harness import HarnessService
+from tests.conftest import REPO_ROOT
 
 #: The verdict matrix the fixture corpus is built to produce. Asserting it here
 #: means the README's worked example cannot silently stop being true.
@@ -496,3 +497,29 @@ def test_run_ids_are_sequential_within_a_day(service: HarnessService) -> None:
     suffixes = [int(i.rsplit("-", 1)[1]) for i in ids]
     assert suffixes == sorted(suffixes)
     assert len(set(suffixes)) == 3
+
+
+def test_rollup_validates_against_the_published_dashboard_schema(
+    service: HarnessService,
+) -> None:
+    """The versioned contract a Live Artifact is invited to depend on.
+
+    `schemas/dashboard.schema.json` is only a promise if something checks that
+    the shipped rollup keeps it. Validating the real corpus rather than a
+    hand-written sample means a field that quietly changes type fails here.
+    """
+    from jsonschema import Draft202012Validator
+
+    from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
+
+    schema = json.loads(
+        (REPO_ROOT / "schemas" / "dashboard.schema.json").read_text(encoding="utf-8")
+    )
+    report = service.start_run(target_id="demo-agent-fixture", profile="nightly").report
+
+    errors = sorted(Draft202012Validator(schema).iter_errors(report), key=str)
+    assert not errors, [f"{'/'.join(str(p) for p in e.absolute_path)}: {e.message}" for e in errors]
+    assert report["schema_version"] == PUBLISH_SCHEMA_VERSION
+    # The gate, spelled out: two blocking findings in the shipped corpus.
+    assert report["exit_code"] == 1
+    assert sorted(report["blocking_scenarios"]) == ["AGT-MEMPOIS-001", "AGT-TENANT-001"]

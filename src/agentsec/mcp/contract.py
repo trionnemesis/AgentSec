@@ -52,6 +52,22 @@ class ResourceSpec:
     title: str
     description: str
     handler: str
+    publish: str
+    """Publication policy in ``reporting.publish.PUBLISHERS``.
+
+    Required, and validated at startup: a resource whose output has no policy
+    stops the gateway from booting rather than serving a raw model. There is no
+    default because a default is a decision that nobody made.
+    """
+    published: bool = True
+    """Served by the read-only report gateway.
+
+    ``AGENTSEC_MCP_READ_ONLY=1`` is the deployment where something outside the
+    security team — a dashboard, a Live Artifact — is the reader. Everything is
+    a read, so read-only is not the question; the question is whether this URI
+    is a *product* for that reader or an internal working surface. Authoring
+    detail, per-run evidence and the audit log are the latter.
+    """
     mime_type: str = "application/json"
 
 
@@ -323,50 +339,79 @@ RESOURCES: tuple[ResourceSpec, ...] = (
         title="Targets",
         description="Allowlisted targets, redacted.",
         handler="list_targets",
+        publish="declared",
     ),
     ResourceSpec(
         uri_template="agentsec://targets/{target_id}",
         title="Target detail",
         description="One target's authoring schema.",
         handler="get_target_schema",
+        publish="declared",
+        # Logical principal names, permitted executors and declared capabilities
+        # are what a scenario author needs and what a reader of the dashboard
+        # does not: together they describe where the target can be pushed.
+        published=False,
     ),
     ResourceSpec(
         uri_template="agentsec://scenarios",
         title="Scenarios",
         description="Scenario catalogue with tested axes and gate settings.",
         handler="list_scenarios",
+        publish="declared",
     ),
     ResourceSpec(
         uri_template="agentsec://runs/{run_id}",
         title="Run",
         description="One run's verdict and per-axis results.",
         handler="get_run",
+        publish="run",
     ),
     ResourceSpec(
         uri_template="agentsec://runs/{run_id}/evidence",
         title="Run evidence",
-        description="The normalised evidence bundle behind a verdict.",
+        description=(
+            "The evidence bundle behind a verdict, projected for publication: "
+            "transcript turns are reduced to digests and principals to stable "
+            "pseudonyms. Raw bundles stay on the execution host."
+        ),
         handler="get_run_evidence",
+        publish="evidence",
+        # Even projected, this is the investigator's surface rather than the
+        # reader's, and it is the one place where a projection bug would be
+        # worst. The report gateway does not offer it at all.
+        published=False,
     ),
     ResourceSpec(
         uri_template="agentsec://findings",
         title="Findings",
         description="Findings and their workflow state.",
         handler="list_findings",
+        publish="findings",
     ),
     ResourceSpec(
         uri_template="agentsec://coverage",
         title="Coverage",
         description="OWASP Agentic Top 10 coverage and latest verdict histogram.",
         handler="coverage",
+        publish="coverage",
     ),
     ResourceSpec(
         uri_template="agentsec://audit",
         title="Audit log",
         description="Recent gateway and CLI actions, including refusals.",
         handler="audit_tail",
+        publish="audit",
+        # The audit log is the record of who reached for what, including the
+        # refusals. It belongs to the operators of the harness, not to its
+        # readership.
+        published=False,
     ),
 )
+
+
+def published_resources() -> tuple[ResourceSpec, ...]:
+    """The read-only report gateway's resource allowlist."""
+    return tuple(r for r in RESOURCES if r.published)
 
 
 #: Tool names that must never exist on this server. Enforced by a unit test.
@@ -430,7 +475,13 @@ def contract_summary() -> dict[str, Any]:
     return {
         "tools": [t.to_dict() for t in TOOLS],
         "resources": [
-            {"uri": r.uri_template, "title": r.title, "description": r.description}
+            {
+                "uri": r.uri_template,
+                "title": r.title,
+                "description": r.description,
+                "publish": r.publish,
+                "published": r.published,
+            }
             for r in RESOURCES
         ],
         "counts": {
@@ -438,5 +489,6 @@ def contract_summary() -> dict[str, Any]:
             "read_only_tools": sum(1 for t in TOOLS if t.read_only),
             "execute_tools": sum(1 for t in TOOLS if t.risk == "execute"),
             "resources": len(RESOURCES),
+            "published_resources": len(published_resources()),
         },
     }
