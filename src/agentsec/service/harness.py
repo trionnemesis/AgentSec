@@ -47,6 +47,7 @@ from agentsec.reporting.normalizer import (
     latest_per_scenario,
     normalize_batch,
     normalize_run,
+    verdict_history,
 )
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.loader import scenario_digest
@@ -702,6 +703,9 @@ class HarnessService:
 
         batch = normalize_batch(summaries, profile=profile or "all", target_id=target_id or "all")
         batch["superseded_runs"] = len(history) - len(summaries)
+        # The runs the rollup dropped are not noise — they are the trend. Kept
+        # separately so the counts stay "where does this stand now".
+        batch["history"] = verdict_history(history)
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         written: dict[str, str] = {}
 

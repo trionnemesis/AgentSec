@@ -400,6 +400,36 @@ def test_report_filters_by_profile_it_labels(service: HarnessService) -> None:
     assert scenarios_in(None) == {"AGT-XPIA-001", "AGT-MEMPOIS-001"}
 
 
+def test_html_report_renders_the_axis_rollup_and_trend(service: HarnessService) -> None:
+    """`axis_counts` was computed and then never rendered.
+
+    The four-axis contract is the product's central idea, so a dashboard that omits
+    it while showing verdict totals is showing the least interesting half.
+    """
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+    written = service.generate_report(
+        target_id="demo-agent-fixture", profile="nightly", formats=["html", "json"]
+    )
+    html = Path(written["written"]["html"]).read_text(encoding="utf-8")
+    report = json.loads(Path(written["written"]["json"]).read_text(encoding="utf-8"))
+
+    # Every axis is named, and its counts reach the page rather than staying in JSON.
+    for axis in ("Prevention", "Detection", "Evidence", "Response"):
+        assert axis in html
+    assert "2 not tested" in html, "response has two not_tested scenarios"
+    assert "3 pass" in html and "1 fail" in html, "detection is 3 pass / 1 fail"
+
+    # Filters exist and are wired to the data attributes the script reads.
+    assert 'data-verdict="blocking"' in html
+    assert 'class="run-row"' in html
+
+    # Superseded runs are surfaced as trend rather than silently dropped.
+    assert report["superseded_runs"] == 4
+    assert report["history"]["AGT-MEMPOIS-001"][-1]["verdict"] == "detection_gap"
+    assert 'class="spark"' in html
+
+
 def test_html_report_is_self_contained(service: HarnessService) -> None:
     """It has to open from a CI artifact zip on a machine with no network."""
     service.start_run(target_id="demo-agent-fixture", profile="nightly")

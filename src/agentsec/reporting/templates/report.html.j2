@@ -7,16 +7,20 @@
 <style>
   :root {
     --bg: #ffffff; --fg: #16181d; --muted: #5b6472; --line: #e3e6eb;
-    --card: #f7f8fa; --accent: #5b4bd6;
-    --pass: #1a7f4b; --fail: #c0392b; --warn: #b26a00; --skip: #6b7280;
-    --pass-bg: #e6f5ec; --fail-bg: #fdeceb; --warn-bg: #fdf3e3; --skip-bg: #f0f1f3;
+    --card: #f7f8fa; --accent: #5b4bd6; --accent-soft: rgba(91, 75, 214, .12);
+    /* `warn` is stepped well clear of `fail`: at #b26a00 the two sat ~5 ΔE apart
+       under deuteranopia and ~11 in normal vision, which is not enough to carry a
+       pass/fail distinction. Every status is also labelled in text, never colour
+       alone, for the cases no palette can fix. */
+    --pass: #0f7a4a; --fail: #b3261e; --warn: #8f6200; --skip: #707784;
+    --pass-bg: #e2f2e9; --fail-bg: #fbe8e6; --warn-bg: #f9eeda; --skip-bg: #e9e9ee;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #14161a; --fg: #e8eaed; --muted: #9aa4b2; --line: #2a2f37;
-      --card: #1c1f25; --accent: #9b8cff;
-      --pass: #4ade80; --fail: #f87171; --warn: #fbbf24; --skip: #9ca3af;
-      --pass-bg: #14301f; --fail-bg: #35191a; --warn-bg: #332612; --skip-bg: #23262b;
+      --card: #1c1f25; --accent: #9b8cff; --accent-soft: rgba(155, 140, 255, .16);
+      --pass: #3fbf78; --fail: #ef6b64; --warn: #d9a441; --skip: #8b93a1;
+      --pass-bg: #12301f; --fail-bg: #34181a; --warn-bg: #322612; --skip-bg: #22242f;
     }
   }
   * { box-sizing: border-box; }
@@ -37,6 +41,7 @@
   th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { background: var(--card); font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
   tbody tr:last-child td { border-bottom: none; }
+  tr[hidden] { display: none; }
   code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
   .pill { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .75rem;
           font-weight: 600; white-space: nowrap; }
@@ -46,7 +51,9 @@
   .skip { color: var(--skip); background: var(--skip-bg); }
   .axis { font-variant-numeric: tabular-nums; white-space: nowrap; }
   details { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem; margin: .6rem 0; background: var(--card); }
+  details[hidden] { display: none; }
   details summary { cursor: pointer; font-weight: 600; }
+  summary:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .check { border-left: 3px solid var(--fail); padding: .35rem 0 .35rem .7rem; margin: .55rem 0; }
   .check .a { font-weight: 600; }
   .check .o, .check .r { color: var(--muted); font-size: .85rem; }
@@ -54,6 +61,49 @@
   .banner.ok { color: var(--pass); background: var(--pass-bg); }
   .banner.bad { color: var(--fail); background: var(--fail-bg); }
   footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+
+  /* --- axis rollup ------------------------------------------------------- */
+  .meters { display: grid; gap: 1rem; }
+  .meter { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem; align-items: center; }
+  .meter-label .name { font-weight: 650; }
+  .meter-label .q { display: block; font-size: .8rem; color: var(--muted); line-height: 1.35; }
+  .track { display: flex; gap: 2px; height: 2.2rem; }
+  .seg { display: flex; align-items: center; justify-content: center; gap: .3rem;
+         font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums;
+         border-radius: 2px; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .seg:first-child { border-start-start-radius: 8px; border-end-start-radius: 8px; }
+  .seg:last-child { border-start-end-radius: 8px; border-end-end-radius: 8px; }
+  .glyph { font-size: .8em; }
+
+  /* --- filters ----------------------------------------------------------- */
+  .filters { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .25rem 0 .9rem; }
+  .filters .lbl { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em;
+                  color: var(--muted); margin-right: .3rem; }
+  .chip { font: inherit; font-size: .8rem; padding: .22rem .65rem; border-radius: 999px;
+          cursor: pointer; border: 1px solid var(--line); background: transparent;
+          color: var(--fg); }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent);
+                               color: var(--accent); font-weight: 650; }
+  .empty { color: var(--muted); font-size: .875rem; padding: .8rem; }
+
+  /* --- trend ------------------------------------------------------------- */
+  .spark { display: inline-flex; gap: 2px; vertical-align: middle; }
+  .tick { width: 9px; height: 16px; border-radius: 2px; display: inline-block; }
+  .tick.pass { background: var(--pass); }
+  .tick.fail { background: var(--fail); }
+  .tick.warn { background: var(--warn); }
+  .tick.skip { background: var(--skip); }
+  .tick.now { outline: 2px solid var(--fg); outline-offset: 1px; }
+
+  @media (max-width: 640px) {
+    .meter { grid-template-columns: 1fr; gap: .4rem; }
+  }
+  @media print {
+    .filters { display: none; }
+    details { break-inside: avoid; }
+    details:not([open]) > *:not(summary) { display: revert; }
+  }
 </style>
 </head>
 <body>
@@ -76,22 +126,96 @@
   {% endif %}
 
   <div class="cards">
-    <div class="card"><div class="n">{{ batch.total_runs }}</div><div class="l">runs</div></div>
+    <div class="card"><div class="n">{{ batch.total_runs }}</div><div class="l">scenarios</div></div>
     <div class="card"><div class="n">{{ batch.secure }}</div><div class="l">secure</div></div>
     {% for verdict, n in batch.verdict_counts.items() if verdict != 'secure' %}
       <div class="card"><div class="n">{{ n }}</div><div class="l">{{ verdict.replace('_', ' ') }}</div></div>
     {% endfor %}
   </div>
+  {% if batch.superseded_runs %}
+    <p class="sub" style="margin-top:.75rem">
+      Counts show each scenario's latest run. {{ batch.superseded_runs }} earlier
+      run{{ '' if batch.superseded_runs == 1 else 's' }} are kept out of the totals and
+      shown as trend below.
+    </p>
+  {% endif %}
+
+  {% if batch.axis_counts %}
+    <h2>The four axes</h2>
+    <p class="sub">
+      An attack that got through is one problem; an attack nobody saw is a different one.
+      An axis a scenario never asserted stays <code>not_tested</code> — it never rounds up
+      to a pass.
+    </p>
+    {% set axis_questions = {
+      'prevention': 'Did the agent refuse to do the bad thing?',
+      'detection': 'If it did — or tried — did the blue side see it, in time?',
+      'evidence': 'Could an investigator reconstruct the incident afterwards?',
+      'response': 'Did the documented or automated reaction actually happen?'
+    } %}
+    {% set glyphs = {'pass': '●', 'fail': '▲', 'error': '■', 'not_tested': '○'} %}
+    <div class="meters">
+      {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
+        {% set counts = batch.axis_counts[axis] %}
+        {% set total = counts.values() | sum %}
+        <div class="meter">
+          <div class="meter-label">
+            <span class="name">{{ axis | capitalize }}</span>
+            <span class="q">{{ axis_questions[axis] }}</span>
+          </div>
+          {% if total %}
+            <div class="track" role="img" aria-label="{{ axis }}:
+              {%- for status in ['pass', 'fail', 'error', 'not_tested'] %}
+                {{- ' ' }}{{ counts[status] }} {{ status }}{{ ',' if not loop.last }}
+              {%- endfor %}">
+              {% for status in ['pass', 'fail', 'error', 'not_tested'] %}
+                {% if counts[status] %}
+                  <div class="seg {{ status_class(status) }}" style="flex:{{ counts[status] }}"
+                       title="{{ counts[status] }} scenario(s): {{ status }}">
+                    <span class="glyph" aria-hidden="true">{{ glyphs[status] }}</span>
+                    {{ counts[status] }} {{ status.replace('_', ' ') }}
+                  </div>
+                {% endif %}
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="empty">no runs</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
 
   <h2>Detection coverage</h2>
+
+  <div class="filters" id="filters">
+    <span class="lbl">Verdict</span>
+    <button type="button" class="chip" data-verdict="all" aria-pressed="true">all {{ batch.total_runs }}</button>
+    <button type="button" class="chip" data-verdict="gap" aria-pressed="false">gaps {{ batch.total_runs - batch.secure }}</button>
+    <button type="button" class="chip" data-verdict="secure" aria-pressed="false">secure {{ batch.secure }}</button>
+    <button type="button" class="chip" data-verdict="blocking" aria-pressed="false">blocking {{ batch.blocking_count }}</button>
+    {% set severities = batch.runs | map(attribute='severity') | unique | list %}
+    {% if severities | length > 1 %}
+      <span class="lbl" style="margin-left:.75rem">Severity</span>
+      <button type="button" class="chip" data-severity="all" aria-pressed="true">any</button>
+      {% for sev in ['critical', 'high', 'medium', 'low', 'info'] if sev in severities %}
+        <button type="button" class="chip" data-severity="{{ sev }}" aria-pressed="false">{{ sev }}</button>
+      {% endfor %}
+    {% endif %}
+  </div>
+
   <div class="scroll">
     <table>
       <thead>
-        <tr><th>Scenario</th><th>Prevention</th><th>Detection</th><th>Evidence</th><th>Response</th><th>Verdict</th></tr>
+        <tr>
+          <th>Scenario</th><th>Prevention</th><th>Detection</th><th>Evidence</th>
+          <th>Response</th><th>Verdict</th>{% if batch.history %}<th>Trend</th>{% endif %}
+        </tr>
       </thead>
       <tbody>
       {% for r in batch.runs %}
-        <tr>
+        <tr class="run-row" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
+            data-blocking="{{ 'true' if r.blocking else 'false' }}">
           <td><code>{{ r.scenario_id }}</code><br><span class="sub">{{ r.scenario_title }}</span></td>
           {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
             <td class="axis"><span class="pill {{ status_class(r[axis]) }}">{{ r[axis] }}</span></td>
@@ -100,15 +224,35 @@
             <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
             {% if r.blocking %}<br><span class="pill fail">blocking</span>{% endif %}
           </td>
+          {% if batch.history %}
+            {% set past = batch.history.get(r.scenario_id, []) %}
+            <td>
+              {% if past | length > 1 %}
+                <span class="spark" role="img"
+                      aria-label="{{ past | length }} runs, oldest to newest:
+                      {%- for h in past %}{{ ' ' }}{{ h.verdict }}{{ ',' if not loop.last }}{% endfor %}">
+                  {% for h in past %}
+                    <span class="tick {{ verdict_class(h.verdict) }}{{ ' now' if loop.last }}"
+                          title="{{ h.run_id }} · {{ h.profile }} · {{ h.verdict }}"></span>
+                  {% endfor %}
+                </span>
+              {% else %}
+                <span class="sub">first run</span>
+              {% endif %}
+            </td>
+          {% endif %}
         </tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
+  <p class="empty" id="no-match" hidden>No scenario matches this filter.</p>
 
   <h2>Run detail</h2>
   {% for r in batch.runs %}
-    <details {% if r.purple_verdict != 'secure' %}open{% endif %}>
+    <details class="run-detail" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
+             data-blocking="{{ 'true' if r.blocking else 'false' }}"
+             {% if r.purple_verdict != 'secure' %}open{% endif %}>
       <summary>
         <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
         <code>{{ r.scenario_id }}</code> — {{ r.scenario_title }}
@@ -173,5 +317,50 @@
     decision.
   </footer>
 </div>
+
+<script>
+(function () {
+  "use strict";
+  var bar = document.getElementById("filters");
+  if (!bar) { return; }
+  var state = { verdict: "all", severity: "all" };
+  var items = document.querySelectorAll(".run-row, .run-detail");
+  var note = document.getElementById("no-match");
+
+  function matches(el) {
+    var v = el.dataset.verdict, s = el.dataset.severity;
+    if (state.severity !== "all" && s !== state.severity) { return false; }
+    if (state.verdict === "all") { return true; }
+    if (state.verdict === "blocking") { return el.dataset.blocking === "true"; }
+    if (state.verdict === "secure") { return v === "secure"; }
+    return v !== "secure";
+  }
+
+  function apply() {
+    var visibleRows = 0;
+    items.forEach(function (el) {
+      var ok = matches(el);
+      el.hidden = !ok;
+      if (ok && el.classList.contains("run-row")) { visibleRows++; }
+    });
+    if (note) { note.hidden = visibleRows !== 0; }
+  }
+
+  bar.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      var group = chip.dataset.verdict !== undefined ? "verdict" : "severity";
+      var attr = group === "verdict" ? "verdict" : "severity";
+      bar.querySelectorAll(".chip").forEach(function (other) {
+        if ((other.dataset.verdict !== undefined ? "verdict" : "severity") === group) {
+          other.setAttribute("aria-pressed", "false");
+        }
+      });
+      chip.setAttribute("aria-pressed", "true");
+      state[group] = chip.dataset[attr];
+      apply();
+    });
+  });
+}());
+</script>
 </body>
 </html>

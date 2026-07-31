@@ -7,9 +7,10 @@ not a mock.
 Interactive dashboard rendering this review:
 <https://claude.ai/code/artifact/1bd63b3a-6a33-4303-9e8b-39a895ede90f>
 
-> **Status:** findings 01, 02 and 03 — the three where the harness could report green
-> without having checked — are **fixed on this branch**, with regression tests. See
-> "What was fixed" below. Findings 04–12 remain open and are tracked on issue #13.
+> **Status:** findings 01–04 are **fixed on this branch**, with regression tests — the
+> three where the harness could report green without having checked, plus the metrics
+> view. See "What was fixed" below. Findings 05–12 remain open and are tracked on
+> issue #13.
 
 ---
 
@@ -316,6 +317,28 @@ The original repro, running the four scenarios twice:
 | `blocking_scenarios` | each listed twice | one entry each |
 | agrees with `verdict_counts` | no | yes |
 
+### 04 — the axis rollup reaches the page
+
+`reporting/templates/report.html.j2`, `reporting/normalizer.py`, `service/harness.py`
+
+The report now renders `axis_counts` as a segmented bar per axis, each segment labelled
+in text and carrying a shape glyph so status never depends on colour alone. Added
+alongside it:
+
+* **Filters** — verdict (all / gaps / secure / blocking) and severity, driven by inline
+  JS over `data-` attributes, filtering the table and the detail cards together, with an
+  empty state when a combination matches nothing. Hidden in print.
+* **Trend** — `verdict_history()` returns the per-scenario verdict timeline the rollup
+  drops, capped at ten runs each, rendered as a sparkline with the latest run outlined.
+  This is the other half of finding 03: the history is not noise, it just must not
+  distort today's counts.
+* **Palette** — `--warn` moved from `#b26a00` to `#8f6200` (dark `#d9a441`). Against
+  `--fail` the old pair sat ~5 ΔE apart under deuteranopia and ~11 in normal vision,
+  below the threshold where a full-colour reader can tell them apart.
+
+The page stays a single self-contained file: inline CSS and JS, no external asset of any
+kind, and the existing self-containment test still passes.
+
 ### Tests added
 
 `test_every_tool_call_audited_errors_when_no_span_matches`,
@@ -323,14 +346,14 @@ The original repro, running the four scenarios twice:
 `test_every_tool_call_audited_errors_when_spans_carry_no_tool_name`,
 `test_tool_audit_without_spans_warns`,
 `test_report_counts_the_latest_run_per_scenario`,
-`test_report_filters_by_profile_it_labels`.
+`test_report_filters_by_profile_it_labels`,
+`test_html_report_renders_the_axis_rollup_and_trend`.
 
-151 tests pass; ruff and mypy clean.
+153 tests pass; ruff and mypy clean; coverage 74.8%.
 
 ---
 
 ## Suggested order for the rest
 
-1. **04** — the metrics view the project describes but does not yet render.
-2. **05**–**08** — claim-versus-behaviour gaps; each is a small change plus a test.
-3. **09**–**12** — correctness and ergonomics.
+1. **05**–**08** — claim-versus-behaviour gaps; each is a small change plus a test.
+2. **09**–**12** — correctness and ergonomics.

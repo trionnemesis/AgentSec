@@ -148,6 +148,30 @@ def latest_per_scenario(summaries: list[RunSummary]) -> list[RunSummary]:
     return latest
 
 
+def verdict_history(
+    summaries: list[RunSummary], *, per_scenario: int = 10
+) -> dict[str, list[dict[str, str]]]:
+    """Per-scenario verdict timeline, oldest first.
+
+    The rollup deliberately reports only the latest run per scenario, which answers
+    "where does this target stand now" and says nothing about whether it is getting
+    better. This is the other half: enough history for a reader to see a scenario
+    that has been red for a week, without letting it distort today's counts.
+    """
+    ordered = sorted(summaries, key=lambda s: (s.created_at, s.run_id))
+    history: dict[str, list[dict[str, str]]] = {}
+    for summary in ordered:
+        history.setdefault(summary.scenario_id, []).append(
+            {
+                "run_id": summary.run_id,
+                "verdict": summary.verdict,
+                "created_at": summary.created_at,
+                "profile": summary.profile,
+            }
+        )
+    return {sid: runs[-per_scenario:] for sid, runs in history.items()}
+
+
 def normalize_batch(summaries: list[RunSummary], *, profile: str, target_id: str) -> dict[str, Any]:
     """Batch-level rollup, including the CI exit decision.
 

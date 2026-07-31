@@ -740,11 +740,11 @@
   <section>
     <div class="sec-head">
       <span class="eyebrow">Code review</span>
-      <h2>Twelve findings; the three high ones are fixed</h2>
+      <h2>Twelve findings; the first four are fixed</h2>
       <p>Ranked by how badly each one undermines the project's own central claim: that an
         untested or uncollectable axis must never round up to a pass. All three findings in
-        that category are now fixed with regression tests — the bundled corpus still returns
-        the same four verdicts and the same exit 1.</p>
+        that category are fixed with regression tests, as is the missing metrics view — the
+        bundled corpus still returns the same four verdicts and the same exit 1.</p>
     </div>
 
     <div class="filters" id="finding-filters">
@@ -843,14 +843,22 @@
         </div>
       </details>
 
-      <details class="find" data-sev="medium">
+      <details class="find" data-sev="medium" data-fixed="true">
         <summary>
           <span class="fid">04</span>
           <span><span class="ftitle">The axis rollup is computed and then never rendered</span>
             <span class="fmeta">reporting/normalizer.py:133 · templates/report.html.j2 · dashboard gap</span></span>
-          <span class="sev medium">medium</span>
+          <span class="sev fixed">fixed</span>
         </summary>
         <div class="fbody">
+          <div class="fixnote"><b>Fixed</b>The shipped report now renders <code>axis_counts</code>
+            as a segmented bar per axis, each segment labelled in text and carrying a shape glyph
+            so status never rests on colour alone. Verdict and severity filters drive the table
+            and the detail cards together, with an empty state; <code>verdict_history()</code>
+            supplies the per-scenario trend the rollup drops, drawn as a sparkline with the
+            latest run outlined. <code>--warn</code> moved off <code>#b26a00</code>, which sat
+            below the normal-vision separation floor against <code>--fail</code>. Still one
+            self-contained file with no external assets.</div>
           <p><code>normalize_batch</code> builds <code>axis_counts</code> — pass / fail /
             not_tested / error for each of the four axes — and the HTML template renders verdict
             cards, a table and collapsible detail, but never touches it. The four-axis contract is
