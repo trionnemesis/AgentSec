@@ -52,6 +52,7 @@ class ResourceSpec:
     title: str
     description: str
     handler: str
+    read_only: bool = True
     mime_type: str = "application/json"
 
 
@@ -315,48 +316,56 @@ RESOURCES: tuple[ResourceSpec, ...] = (
         title="Targets",
         description="Allowlisted targets, redacted.",
         handler="list_targets",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://targets/{target_id}",
         title="Target detail",
         description="One target's authoring schema.",
         handler="get_target_schema",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://scenarios",
         title="Scenarios",
         description="Scenario catalogue with tested axes and gate settings.",
         handler="list_scenarios",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://runs/{run_id}",
         title="Run",
         description="One run's verdict and per-axis results.",
         handler="get_run",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://runs/{run_id}/evidence",
         title="Run evidence",
         description="The normalised evidence bundle behind a verdict.",
         handler="get_run_evidence",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://findings",
         title="Findings",
         description="Findings and their workflow state.",
         handler="list_findings",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://coverage",
         title="Coverage",
         description="OWASP Agentic Top 10 coverage and latest verdict histogram.",
         handler="coverage",
+        read_only=True,
     ),
     ResourceSpec(
         uri_template="agentsec://audit",
         title="Audit log",
         description="Recent gateway and CLI actions, including refusals.",
         handler="audit_tail",
+        read_only=True,
     ),
 )
 

@@ -26,6 +26,7 @@ from agentsec.config import load_settings
 from agentsec.errors import AgentSecError
 from agentsec.mcp.contract import RESOURCES, TOOLS, ToolSpec, tool_by_name
 from agentsec.mcp.prompts import PROMPTS
+from agentsec.models.run import Run
 from agentsec.service.harness import BatchResult, HarnessService
 
 #: Set to "1" to refuse every non-read-only tool. This is the read-only report
@@ -34,8 +35,266 @@ from agentsec.service.harness import BatchResult, HarnessService
 ENV_READ_ONLY = "AGENTSEC_MCP_READ_ONLY"
 
 
+_READ_ONLY_RUN_SCHEMA = "agentsec.mcp.read_only.run.v1"
+_READ_ONLY_EVIDENCE_SCHEMA = "agentsec.mcp.read_only.evidence.v1"
+
+
+_READ_ONLY_RESOURCE_HANDLERS = {
+    "list_targets",
+    "get_target_schema",
+    "list_scenarios",
+    "get_run",
+    "get_run_evidence",
+    "list_findings",
+    "coverage",
+    "audit_tail",
+}
+
+
 def _read_only_mode() -> bool:
     return os.environ.get(ENV_READ_ONLY, "").strip().lower() in {"1", "true", "yes"}
+
+
+def _read_only_run_output(run: Run) -> dict[str, Any]:
+    verdict = run.verdict
+    execution = run.execution
+    return {
+        "schema_version": _READ_ONLY_RUN_SCHEMA,
+        "run_id": run.run_id,
+        "scenario_id": run.scenario_id,
+        "target_id": run.target_id,
+        "profile": run.profile,
+        "status": str(run.status),
+        "created_at": run.created_at.isoformat(),
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "dry_run": run.dry_run,
+        "refusal_reason": run.refusal_reason,
+        "has_evidence": bool(run.evidence_ref),
+        "scenario_digest": run.scenario_digest,
+        "initiated_by": run.initiated_by,
+        "verdict": (
+            {
+                "purple_verdict": str(verdict.purple_verdict),
+                "prevention": str(verdict.prevention),
+                "detection": str(verdict.detection),
+                "evidence": str(verdict.evidence),
+                "response": str(verdict.response),
+                "rationale": verdict.rationale,
+            }
+            if verdict is not None
+            else None
+        ),
+        "execution": (
+            {
+                "executor": execution.executor,
+                "started_at": execution.started_at.isoformat(),
+                "finished_at": execution.finished_at.isoformat() if execution.finished_at else None,
+                "ok": execution.ok,
+                "steps_completed": execution.steps_completed,
+                "error": execution.error,
+            }
+            if execution is not None
+            else None
+        ),
+    }
+
+
+def _redact_meta(meta: Any) -> Any:
+    if not isinstance(meta, dict):
+        return None
+    return {
+        k: v
+        for k, v in meta.items()
+        if k not in {"query", "tenant", "tenant_id", "principal", "principal_id"}
+    }
+
+
+def _redact_mapping(values: dict[str, Any], *, drop: set[str] | None = None) -> dict[str, Any]:
+    forbidden = drop or set()
+    redacted: dict[str, Any] = {}
+    for key, value in values.items():
+        if key in forbidden:
+            continue
+        norm = str(key).lower()
+        if "token" in norm or "secret" in norm or "password" in norm:
+            continue
+        if isinstance(value, dict):
+            redacted[key] = _redact_mapping(value, drop=drop)
+        elif isinstance(value, list):
+            redacted[key] = [
+                _redact_mapping(v, drop=drop) if isinstance(v, dict) else v
+                for v in value
+            ]
+        else:
+            redacted[key] = value
+    return redacted
+
+
+def _read_only_evidence_output(evidence: dict[str, Any]) -> dict[str, Any]:
+    sources = evidence.get("sources", {})
+    transcript = sources.get("transcript") if isinstance(sources, dict) else None
+    otel = sources.get("otel") if isinstance(sources, dict) else None
+    wazuh = sources.get("wazuh") if isinstance(sources, dict) else None
+    tool_audit = sources.get("tool_audit") if isinstance(sources, dict) else None
+    state_diff = sources.get("state_diff") if isinstance(sources, dict) else None
+
+    redacted_turns = []
+    if isinstance(transcript, dict):
+        turns = transcript.get("turns", [])
+        if isinstance(turns, list):
+            for turn in turns:
+                if not isinstance(turn, dict):
+                    continue
+                redacted_turns.append(
+                    {
+                        "role": turn.get("role"),
+                        "step_id": turn.get("step_id"),
+                        "timestamp": turn.get("timestamp"),
+                    }
+                )
+
+    redacted_otel = []
+    if isinstance(otel, dict):
+        spans = otel.get("spans", [])
+        if isinstance(spans, list):
+            for span in spans:
+                if not isinstance(span, dict):
+                    continue
+                redacted_otel.append({
+                    "name": span.get("name"),
+                    "status": span.get("status"),
+                    "start_time": span.get("start_time"),
+                    "end_time": span.get("end_time"),
+                    "trace_id": span.get("trace_id"),
+                    "span_id": span.get("span_id"),
+                    "parent_span_id": span.get("parent_span_id"),
+                })
+
+    redacted_wazuh = []
+    if isinstance(wazuh, dict):
+        alerts = wazuh.get("alerts", [])
+        if isinstance(alerts, list):
+            for alert in alerts:
+                if not isinstance(alert, dict):
+                    continue
+                redacted_wazuh.append(
+                    {
+                        "rule_id": alert.get("rule_id"),
+                        "timestamp": alert.get("timestamp"),
+                        "rule_description": alert.get("rule_description"),
+                        "rule_level": alert.get("rule_level"),
+                        "rule_groups": alert.get("rule_groups"),
+                        "fields": _redact_mapping(alert.get("fields", {}), drop={"tenant", "tenant_id"}),
+                    }
+                )
+
+    redacted_tool_audit = []
+    if isinstance(tool_audit, dict):
+        records = tool_audit.get("records", [])
+        if isinstance(records, list):
+            for record in records:
+                if not isinstance(record, dict):
+                    continue
+                redacted_tool_audit.append(
+                    {
+                        "tool": record.get("tool"),
+                        "decision": record.get("decision"),
+                        "arguments_digest": record.get("arguments_digest"),
+                        "timestamp": record.get("timestamp"),
+                        "policy": record.get("policy"),
+                        "span_id": record.get("span_id"),
+                    }
+                )
+
+    redacted_state = []
+    if isinstance(state_diff, dict):
+        changes = state_diff.get("changes", [])
+        if isinstance(changes, list):
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+                redacted_state.append(
+                    {
+                        "collection": change.get("collection"),
+                        "operation": change.get("operation"),
+                        "count": change.get("count"),
+                    }
+                )
+
+    return {
+        "schema_version": _READ_ONLY_EVIDENCE_SCHEMA,
+        "run_id": evidence.get("run_id"),
+        "collected_at": evidence.get("collected_at"),
+        "window": evidence.get("window"),
+        "collector_errors": _redact_mapping(
+            {"errors": evidence.get("collector_errors", [])}, drop={"path"}
+        ).get("errors", []),
+        "sources": {
+            "transcript": {
+                "turns": redacted_turns,
+                "meta": _redact_meta(transcript.get("meta") if isinstance(transcript, dict) else None),
+            },
+            "otel": {
+                "spans": redacted_otel,
+                "meta": _redact_meta(otel.get("meta") if isinstance(otel, dict) else None),
+            },
+            "wazuh": {
+                "alerts": redacted_wazuh,
+                "meta": _redact_meta(wazuh.get("meta") if isinstance(wazuh, dict) else None),
+            },
+            "tool_audit": {
+                "records": redacted_tool_audit,
+                "meta": _redact_meta(
+                    tool_audit.get("meta") if isinstance(tool_audit, dict) else None
+                ),
+            },
+            "state_diff": {
+                "changes": redacted_state,
+                "meta": _redact_meta(
+                    state_diff.get("meta") if isinstance(state_diff, dict) else None
+                ),
+            },
+        },
+    }
+
+
+def _serialize_read_only_resource(handler_name: str, value: Any) -> Any:
+    if not _read_only_mode():
+        return _jsonable(value)
+
+    if handler_name not in _READ_ONLY_RESOURCE_HANDLERS:
+        raise AgentSecError(
+            f"read-only output policy for resource handler '{handler_name}' is not defined",
+            details={"handler": handler_name},
+        )
+
+    if handler_name in {
+        "list_targets",
+        "get_target_schema",
+        "list_scenarios",
+        "list_findings",
+        "coverage",
+        "audit_tail",
+    }:
+        return _jsonable(value)
+
+    if handler_name == "get_run":
+        if not isinstance(value, Run):
+            raise AgentSecError("read-only run payload is malformed", details={"handler": handler_name})
+        return _read_only_run_output(value)
+
+    if handler_name == "get_run_evidence":
+        if not isinstance(value, dict):
+            raise AgentSecError(
+                "read-only evidence payload is malformed", details={"handler": handler_name}
+            )
+        return _read_only_evidence_output(value)
+
+    raise AgentSecError(
+        f"read-only output policy for resource handler '{handler_name}' is incomplete",
+        details={"handler": handler_name},
+    )
 
 
 def _jsonable(value: Any) -> Any:
@@ -43,6 +302,8 @@ def _jsonable(value: Any) -> Any:
         # Return the normalised report, not the raw Run objects: the report is
         # already the redacted, stable shape both interfaces consume.
         return value.report
+    if _read_only_mode() and isinstance(value, Run):
+        return _read_only_run_output(value)
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
     if isinstance(value, list):
@@ -104,7 +365,11 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
     service = HarnessService(settings, actor=os.environ.get("AGENTSEC_ACTOR", "mcp"))
     server = FastMCP("agentsec")
 
-    for tool in TOOLS:
+    read_only = _read_only_mode()
+    active_tools = [tool for tool in TOOLS if (read_only is False or tool.read_only)]
+    active_resources = [resource for resource in RESOURCES if (read_only is False or resource.read_only)]
+
+    for tool in active_tools:
         server.add_tool(
             _make_tool_callable(service, tool),
             name=tool.name,
@@ -113,7 +378,7 @@ def build_server():  # noqa: ANN201 - FastMCP is an optional import
             structured_output=True,
         )
 
-    for resource in RESOURCES:
+    for resource in active_resources:
         _register_resource(server, service, resource)
 
     for prompt in PROMPTS:
@@ -234,7 +499,11 @@ def _register_resource(server, service: HarnessService, resource) -> None:  # no
             if handler is None:
                 # A few resources are served straight off the store (audit_tail).
                 handler = getattr(service.store, handler_name)
-            return json.dumps(_jsonable(handler(**kwargs)), indent=2, default=str)
+            return json.dumps(
+                _serialize_read_only_resource(handler_name, handler(**kwargs)),
+                indent=2,
+                default=str,
+            )
         except AgentSecError as exc:
             # Resources cannot signal failure structurally, so return the error
             # body rather than raising through the protocol.

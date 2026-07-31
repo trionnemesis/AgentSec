@@ -249,6 +249,20 @@ def test_read_only_mode_refuses_execution(service, monkeypatch) -> None:  # noqa
     assert any(t["id"] == "demo-agent-fixture" for t in result)
 
 
+def test_read_only_mode_registers_only_read_only_tools(monkeypatch) -> None:
+    from agentsec.mcp.server import ENV_READ_ONLY, build_server
+
+    monkeypatch.setenv(ENV_READ_ONLY, "1")
+    server = build_server()
+    names = set(server._tool_manager._tools)
+
+    assert "agentsec_start_run" not in names
+    assert "agentsec_promote_finding" not in names
+    assert "agentsec_create_regression_draft" not in names
+    assert "agentsec_generate_report" not in names
+    assert "agentsec_validate_detection" not in names
+
+
 def test_dispatch_returns_the_normalised_report_not_raw_runs(service) -> None:  # noqa: ANN001
     """A BatchResult carries Run objects; the gateway must hand back the
     already-redacted report shape both interfaces consume."""
@@ -261,3 +275,90 @@ def test_dispatch_returns_the_normalised_report_not_raw_runs(service) -> None:  
     )
     assert result["exit_code"] == 0
     assert result["runs"][0]["purple_verdict"] == "secure"
+
+
+def test_read_only_mode_returns_redacted_run_summary(service, monkeypatch) -> None:  # noqa: ANN001
+    """Run output in read-only mode must not expose raw refs or run internals."""
+    from agentsec.mcp.contract import tool_by_name
+    from agentsec.mcp.server import ENV_READ_ONLY, _dispatch
+
+    result = service.start_run(
+        target_id="demo-agent-fixture", scenario_ids=["AGT-XPIA-001"], profile="pr"
+    )
+    run_id = result.runs[0].run_id
+
+    monkeypatch.setenv(ENV_READ_ONLY, "1")
+    run_payload = _dispatch(service, tool_by_name("agentsec_get_run"), {"run_id": run_id})
+
+    assert run_payload["schema_version"] == "agentsec.mcp.read_only.run.v1"
+    assert run_payload["run_id"] == run_id
+    assert "raw_ref" not in (run_payload.get("execution") or {})
+    assert "evidence_ref" not in run_payload
+    assert "approval_id" not in run_payload
+
+
+def test_read_only_mode_sanitises_evidence_output() -> None:
+    """Transcript content and principal fields are removed from read-only evidence."""
+    from agentsec.mcp.server import _read_only_evidence_output
+
+    raw = {
+        "run_id": "RUN-20260728-001",
+        "collected_at": "2026-07-28T09:00:10Z",
+        "window": {"start": "2026-07-28T09:00:00Z", "end": "2026-07-28T09:01:00Z"},
+        "collector_errors": [],
+        "sources": {
+            "transcript": {
+                "turns": [
+                    {
+                        "role": "assistant",
+                        "content": "secret reply",
+                        "principal": "tenant-a",
+                        "step_id": "s1",
+                        "timestamp": "2026-07-28T09:00:30Z",
+                    }
+                ]
+            },
+            "wazuh": {
+                "alerts": [
+                    {"rule_id": "100", "fields": {"tenant": "tenant-a", "data": "ok"}},
+                ]
+            },
+            "tool_audit": {
+                "records": [
+                    {
+                        "tool": "read_order",
+                        "decision": "allow",
+                        "principal": "tenant-b",
+                        "tenant_id": "tenant-b-id",
+                        "record_id": "x",
+                    }
+                ]
+            },
+            "state_diff": {
+                "changes": [{
+                    "collection": "users",
+                    "operation": "insert",
+                    "count": 1,
+                    "keys": {"tenant_id": "tenant-a", "field": "x"},
+                }],
+            },
+        },
+    }
+
+    sanitized = _read_only_evidence_output(raw)
+
+    turns = sanitized["sources"]["transcript"]["turns"]
+    assert "content" not in turns[0]
+    assert "principal" not in turns[0]
+
+    wazuh_fields = sanitized["sources"]["wazuh"]["alerts"][0]["fields"]
+    assert "tenant" not in wazuh_fields
+    assert "data" in wazuh_fields
+
+    record = sanitized["sources"]["tool_audit"]["records"][0]
+    assert "principal" not in record
+    assert "tenant_id" not in record
+    assert "record_id" not in record
+
+    state_change = sanitized["sources"]["state_diff"]["changes"][0]
+    assert "keys" not in state_change
