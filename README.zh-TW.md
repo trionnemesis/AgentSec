@@ -48,6 +48,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **離線 fixture 語料** | 完整流程可在筆電上執行，不需要 agent、不需要 SIEM、不需要網路 |
 | **CI 把關** | 輸出 JUnit 並回傳有意義的結束碼，另提供可重複使用的 GitHub workflow，從 agent 自己的 repo 呼叫 |
 | **受限的 MCP gateway** | 11 個窄工具與 8 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
+| **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
 
 **適用範圍**
@@ -152,7 +153,7 @@ claude mcp add agentsec -- agentsec-mcp
 }
 ```
 
-若只是要檢視結果，加上 `"AGENTSEC_MCP_READ_ONLY": "1"` 進入唯讀模式 —— 此時 `agentsec_start_run` 會在 dispatcher 直接被拒絕，而不只是「不建議使用」。本 repo 也在 [`.claude/`](.claude/README.md) 附上 Claude Code 的 skill 與權限 hook。
+若只是要檢視結果，加上 `"AGENTSEC_MCP_READ_ONLY": "1"` 進入唯讀模式 —— 此時 `agentsec_start_run` 會在 dispatcher 直接被拒絕，而不只是「不建議使用」，資源介面也會收斂成[發布子集](#資源)。本 repo 也在 [`.claude/`](.claude/README.md) 附上 Claude Code 的 skill 與權限 hook。
 
 ### 4. 在 CI 中為真實 Agent 把關
 
@@ -266,6 +267,10 @@ spec:
 
 `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
 
+每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，八個資源中只提供五個：`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
+
+有提供的部分是**投影，不是過濾**：每個 publisher 明確列出自己保留哪些欄位，所以明天在證據模型上新增的欄位，在有人決定它該被發布之前都不會出現在輸出裡。對話輪次轉為摘要值，自由格式的 map 保留 key、捨棄 value，主體（principal）、租戶與 actor 轉成穩定的代號 —— 跨租戶的橫向移動仍然看得出來，但不會印出那是誰。判定、各面向狀態、失敗的檢查、規則 ID、告警等級、工具名稱與決策則完整保留，因為讓讀者看不到 finding 的遮蔽並不值得部署。每一次投影都附帶一份「捨棄了什麼」的清單，理由和「未測試的面向回報 `not_tested`」相同：**被扣住的欄位不能讀起來像不存在的欄位**。細節見 [`docs/deployment.md`](docs/deployment.md)。
+
 ## CLI
 
 CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
@@ -293,7 +298,8 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 | `AGENTSEC_WORKSPACE` | 工作區根目錄，內含 `scenarios/`、`policy/`、`results/` | 目前目錄 |
 | `AGENTSEC_DB` | SQLite 結果檔路徑 | `<workspace>/results/agentsec.db` |
 | `AGENTSEC_ACTOR` | 寫入每一筆稽核紀錄；CI 應設為 `ci:<actor>` | `local` |
-| `AGENTSEC_MCP_READ_ONLY` | 設為 `1` 時，dispatcher 會拒絕所有非唯讀工具 | 未設定 |
+| `AGENTSEC_MCP_READ_ONLY` | 設為 `1` 時進入報表 gateway：dispatcher 拒絕所有非唯讀工具，資源也只提供允許清單內的那幾個 | 未設定 |
+| `AGENTSEC_PSEUDONYM_SALT` | 發布輸出中 principal / 租戶 / actor 代號所用的 salt | 原始碼內附的預設值 |
 | `AGENTSEC_ALLOW_EXTERNAL_HOSTS` | 以逗號分隔、豁免私有位址檢查的主機清單 | 未設定 |
 
 各目標的憑證只以**變數名稱**記錄在 `policy/targets.yaml`；憑證值永遠不會出現在情境、目標定義或工具參數中。請從 [`.env.example`](.env.example) 開始設定。
@@ -301,7 +307,8 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 ## 架構
 
 ```
-schemas/               scenario / target / evidence 的 JSON Schema —— 可攜的核心資產
+schemas/               scenario / target / evidence 與發布用儀表板彙整的 JSON Schema
+                       —— 可攜的核心資產
 scenarios/             情境目錄（四個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
 fixtures/              錄製語料，讓一切都能離線執行
@@ -313,7 +320,7 @@ src/agentsec/
 ├── execution/         # 紅隊執行器（replay、promptfoo）與目標轉接器
 ├── evidence/          # 蒐集器：OTel、Wazuh、工具稽核、DB 狀態差異
 ├── evaluation/        # 四個面向與判定解析器
-├── reporting/         # 正規化器 → JUnit / HTML / JSON
+├── reporting/         # 正規化器 → JUnit / HTML / JSON；發布投影
 ├── store/             # SQLite 執行紀錄、findings、稽核紀錄
 ├── service/           # HarnessService —— 內部 API
 └── mcp/               # gateway：工具契約、資源、prompts、server
@@ -347,6 +354,7 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 * **沒有自由文字的位址參數。** 工具綱要拒絕 `url`、`sql`、`command`、`path`、`token` 之類的參數，並設定 `additionalProperties: false`。
 * **端點必須是私有位址。** 若 `http` 目標的主機解析到公開位址，除非營運者把它列入 `AGENTSEC_ALLOW_EXTERNAL_HOSTS`，否則一律拒絕。
 * **模型不能核准自己。** 核准權杖有作用域、會過期、只能用一次，且只有 CLI 的 `agentsec approve` 能簽發。
+* **報表不會把它要回報的那次外洩再洩一次。** `AGT-TENANT-001` 證明跨租戶外洩的方式，是讓租戶 B 的訂單出現在租戶 A 的對話裡 —— 於是那份逐字稿同時是這個 finding 的**證據**，也**就是**被洩漏的那筆紀錄。因此發布輸出是投影而非過濾，而報表 gateway 根本不提供單次執行的證據與稽核紀錄。新增一個資源是一個決策，不是預設值：每個資源都必須指名自己的發布政策，少了政策 gateway 就拒絕啟動。
 * **拿不到的證據來源一律是 `error`，絕不會是 `pass`。** 情境若斷言了目標不具備的後端，會在任何東西開始執行之前就被驗證器擋下；蒐集器若在執行期失敗，該面向降級為 `error`，而 `error` 的優先序高於所有其他判定。報表不可能因為證據管線壞掉而變綠 —— 那正是這類工具最危險的一種 bug。
 * **判定過程中沒有語言模型。** 見 [ADR 0002](docs/adr/0002-deterministic-verdict.md)。
 
