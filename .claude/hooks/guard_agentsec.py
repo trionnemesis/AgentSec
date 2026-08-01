@@ -12,8 +12,8 @@ Refuses:
 * `agentsec run` from Bash (use the MCP tool, so the run is audited under an actor)
 * writes to policy/ or the fixture corpus (allowlist and recorded evidence are
   code-review artefacts, not agent output)
-* MCP calls carrying a URL, SQL, shell or credential argument — belt and braces
-  behind the closed tool schemas
+* AgentSec MCP calls carrying a URL, SQL, shell or credential argument — belt and
+  braces behind the closed tool schemas
 
 Reads a PreToolUse payload on stdin, writes a hook JSON response on stdout.
 Exit 0 always: a crashed hook must not become a silent bypass.
@@ -58,6 +58,11 @@ HOST_TOKEN = re.compile(
     re.VERBOSE,
 )
 
+# Redundant with the closed tool schemas and `tests/test_mcp_contract.py`, and kept
+# as a third layer because the cost is one set intersection. It only makes sense
+# against AgentSec's own surface: `query`, `headers` and `code` are ordinary
+# arguments on other servers' tools, and the refusal text below tells the caller to
+# pass a `target_id`, which only AgentSec has.
 FORBIDDEN_MCP_ARGS = {
     "url", "endpoint", "base_url", "host", "command", "cmd", "shell", "sql",
     "query", "script", "code", "token", "password", "secret", "api_key",
@@ -153,6 +158,29 @@ def check_write(path: str) -> None:
     allow()
 
 
+def is_agentsec_tool(tool_name: str) -> bool:
+    """Is ``mcp__<server>__<tool>`` AgentSec's own gateway?
+
+    Matched on either segment. The server segment is whatever the operator named
+    the entry in `.mcp.json`, so it can be renamed; the tool segment is fixed by
+    `mcp.contract.TOOLS` and is always `agentsec_*`. Requiring both would let a
+    rename silently drop the layer.
+
+    Requiring *neither* is what this replaces. `settings.json` matches the hook on
+    `mcp__.*`, so every MCP server in the session reached the argument check —
+    and `query`, `headers`, `code` and `url` are ordinary arguments elsewhere. A
+    browser navigation was refused with a message telling it to pass a
+    `target_id`, which is not a thing outside this repo. The check was written as
+    a third layer behind AgentSec's closed schemas; it defends nothing on a
+    server whose schemas it has never seen, and the false refusals are not free.
+    """
+    parts = tool_name.split("__")
+    if len(parts) < 3:
+        return False
+    server, tool = parts[1], "__".join(parts[2:])
+    return server == "agentsec" or tool.startswith("agentsec_")
+
+
 def check_mcp(tool_name: str, tool_input: dict) -> None:
     offenders = sorted(set(tool_input) & FORBIDDEN_MCP_ARGS)
     if offenders:
@@ -181,7 +209,7 @@ def main() -> None:
         check_bash(str(tool_input.get("command", "")))
     elif tool in {"Write", "Edit", "NotebookEdit"}:
         check_write(str(tool_input.get("file_path", "")))
-    elif tool.startswith("mcp__"):
+    elif is_agentsec_tool(tool):
         check_mcp(tool, tool_input)
 
     allow()

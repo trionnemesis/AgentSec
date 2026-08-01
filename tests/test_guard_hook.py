@@ -113,6 +113,30 @@ def test_refuses_mcp_calls_carrying_a_locator() -> None:
     ) is None
 
 
+def test_refuses_agentsec_tools_under_a_renamed_server() -> None:
+    """The `.mcp.json` key is the operator's to choose; the tool names are not."""
+    assert decide(
+        "mcp__purple__agentsec_start_run",
+        {"target_id": "demo-agent-fixture", "sql": "select 1"},
+    ) is not None
+
+
+@pytest.mark.parametrize(
+    ("tool", "tool_input"),
+    [
+        # `settings.json` matches the hook on `mcp__.*`, so every server in the
+        # session used to reach the AgentSec argument check. Each of these was
+        # refused with a message telling it to pass a `target_id`.
+        ("mcp__browser__navigate", {"url": "http://localhost:3000"}),
+        ("mcp__notion__search", {"query": "purple run"}),
+        ("mcp__fetch__get", {"url": "http://localhost:8080", "headers": {}}),
+        ("mcp__sqlite_docs__lookup", {"sql": "select 1"}),
+    ],
+)
+def test_leaves_other_mcp_servers_alone(tool: str, tool_input: dict) -> None:
+    assert decide(tool, tool_input) is None
+
+
 def test_malformed_payload_allows_rather_than_wedging_the_session() -> None:
     result = subprocess.run(
         [sys.executable, str(HOOK)], input="not json",
