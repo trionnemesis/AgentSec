@@ -22,12 +22,16 @@ exercised against a live system; 🔲 is not built.
 | CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
 | MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
 | OWASP Agentic Top 10 coverage reporting | ✅ | 4/10 categories covered by the bundled scenarios |
+| Publication projection for observed data | ✅ | `reporting/publish.py`; transcripts become digests, identities pseudonyms, free-form maps keep keys and lose values |
+| Resource allowlist for the report gateway | ✅ | `ResourceSpec.published`; evidence, audit and target authoring detail are not registered under `AGENTSEC_MCP_READ_ONLY=1` |
+| Fail-closed publication | ✅ | unknown output kind raises; a resource with no publication policy stops the gateway from booting |
+| Versioned dashboard rollup contract | ✅ | `schemas/dashboard.schema.json`, validated against the shipped corpus |
 
 ## Written, not yet proven against a live system
 
 | Component | Status | What is missing |
 |---|---|---|
-| MCP server (FastMCP binding) | 🟡 | contract and dispatch are tested; not run against a real client in CI |
+| MCP server (FastMCP binding) | 🟡 | a real stdio client drives a spawned server in the gateway CI job, so listing, dispatch and the projection are proven over the protocol; no client other than that test has ever connected |
 | Promptfoo executor | 🟡 | config generation and output parsing written; needs a real agent to validate |
 | Wazuh OpenSearch collector | 🟡 | query shape written against the `wazuh-alerts-*` mapping; untested live |
 | OTel HTTP collector | 🟡 | Tempo-style search API; untested live |
@@ -43,14 +47,29 @@ integrations are first drafts.
 - [ ] Run against one real staging agent end to end, and fix what that reveals
 - [ ] Wazuh rule pack for the four bundled scenarios (`100501`, `100610`, `100720`, `100810`)
 - [ ] A promptfoo custom provider that resolves `target_id` server-side
-- [ ] `agentsec init` to scaffold a workspace
-- [ ] Migration runner before `SCHEMA_VERSION` reaches 2
+- [ ] `agentsec init` for the selected repository, with a committed
+      `.agentsec/project.yaml` and one canonical workspace resolver
+      ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR B)
+- [ ] **Migration runner — now overdue.** `SCHEMA_VERSION` is already `2`, and
+      `store/sqlite.py:_init_schema` writes the version row only when it is
+      absent. A database created under version 1 therefore keeps reporting
+      version 1 for the rest of its life, and nothing reads that row to decide
+      anything. Any database predating the bump is silently mislabelled
 
 **Medium term — team adoption**
 
-- [ ] Read-only remote gateway with OAuth (deployment option C)
-- [ ] Evidence redaction on the export path — transcripts contain the leak
-- [ ] Live Artifact dashboard reading the normalised JSON
+- [ ] Read-only remote gateway with OAuth (deployment option C). The gateway
+      half is built — allowlisted resources, projected output, fail-closed
+      publication. What is missing is authentication: OAuth/OIDC, RBAC and the
+      TLS-terminating gateway in front
+- [ ] A dashboard resource a page can pin to — `agentsec://dashboard/latest`,
+      computed in memory and schema-valid ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR C)
+- [ ] Live Artifact dashboard reading it. The static HTML in
+      `docs/reviews/assets/` is a design reference rendered once, not a
+      connected page; see `docs/deployment.md` for why that distinction is
+      load-bearing ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR D)
+- [ ] Claude Desktop plugin/extension packaging, so a local Cowork session can
+      load this server at all ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR D)
 - [ ] PyRIT executor for nightly exploratory runs
 - [ ] pytest executor, so existing security tests join the same verdict model
 - [ ] Coverage against MITRE ATLAS alongside OWASP
