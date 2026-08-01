@@ -1,18 +1,45 @@
 # Deployment
 
-## The constraint that shapes everything
+## Five arrangements, and which one you are on
 
-A remote MCP connector is dialled **from Anthropic's infrastructure to your
-server**, not from the user's laptop into your network. Claude Desktop's local
-MCP is a separate mechanism and does not apply to claude.ai or Cowork surfaces.
+"Point a dashboard at our harness" is not one deployment. Five arrangements get
+called the same thing, and they differ in the only property that decides
+everything downstream: **which machine runs the MCP server, and who dials whom.**
 
-So "point a Live Artifact dashboard at our internal harness" is not a
-configuration detail. It means either publishing an authenticated endpoint to the
-internet, or accepting that the dashboard reads a different (sanitised) copy of
-the data than the executor writes.
+| | Arrangement | Where the server runs | Can it read the selected repository? |
+|---|---|---|---|
+| 1 | Claude Code, project-local `.mcp.json` | your machine, as a stdio child process | yes — `${CLAUDE_PROJECT_DIR}` |
+| 2 | Claude Desktop, local plugin/extension | your machine, as a stdio child of the desktop app | yes — the folder the app has open |
+| 3 | Cowork session running **locally** | your machine, via 2 | yes |
+| 4 | Cowork session running **remotely** | a container that is not your laptop | no |
+| 5 | Remote MCP connector | a server you host and expose | only what that server can reach |
 
-Verify the current connector behaviour against Anthropic's docs before you design
-around it — this is the part of the stack most likely to have moved.
+Rows 1–3 are the local case: no inbound network, no OAuth, no gateway, and the
+harness reads the repository you actually have open. This is **option B** below,
+and it is where to start.
+
+Row 4 is the row that gets missed. A session running in a remote container cannot
+reach a stdio MCP server on your laptop, and cannot read your working tree — not
+as a policy decision but because neither is present. Registering a local server
+does not change that; it registers it on a machine the session is not running on.
+
+Row 5 is the row that gets underestimated. A remote MCP connector is dialled
+**from Anthropic's infrastructure to your server**, not from your laptop into
+your network. So "let the dashboard read our internal harness" means either
+publishing an authenticated endpoint to the internet (**option A**) or accepting
+that the dashboard reads a different, sanitised copy of the data than the
+executor writes (**option C**).
+
+Rows 1 and 2 are different mechanisms, and only row 1 ships today: `.mcp.json` is
+Claude Code's project registration and is not a Desktop plugin. The packaging for
+row 2 is tracked in [#20](https://github.com/trionnemesis/AgentSec/issues/20) and
+does not exist yet — do not read `.mcp.json` as evidence that it does.
+
+Verify current connector and plugin behaviour against Anthropic's docs before
+designing around any of this. It is the part of the stack most likely to have
+moved, and the previous edition of this page got it wrong in exactly that way: it
+said local MCP "does not apply to Cowork surfaces", which is true of row 4 and
+false of rows 2–3.
 
 ---
 
@@ -54,7 +81,9 @@ flowchart TD
     SVC --> R["Static HTML report<br/>SQLite results"]
 ```
 
-Everything stays on one machine. No inbound network, no OAuth, no gateway.
+Everything stays on one machine. No inbound network, no OAuth, no gateway. This
+covers rows 1–3 of the table above, with one gap noted at the end of this
+section.
 
 ```bash
 pip install -e '.[mcp]'
@@ -67,11 +96,21 @@ claude mcp add agentsec -- agentsec-mcp    # or add to .mcp.json
   "mcpServers": {
     "agentsec": {
       "command": "agentsec-mcp",
-      "env": { "AGENTSEC_WORKSPACE": "/abs/path/to/agentsec" }
+      "env": { "AGENTSEC_WORKSPACE": "${CLAUDE_PROJECT_DIR}" }
     }
   }
 }
 ```
+
+That is the file this repository ships. `${CLAUDE_PROJECT_DIR}` binds the
+workspace to whichever project Claude Code has open, so the server reads the
+checkout you are looking at rather than one named in a committed absolute path.
+
+**The Desktop gap.** Row 2 has no equivalent yet. Claude Desktop loads local MCP
+servers through its plugin/extension mechanism, not through `.mcp.json`, so a
+Cowork session running locally cannot pick this server up by copying the block
+above. Packaging that is [#20](https://github.com/trionnemesis/AgentSec/issues/20)
+PR D, and until it lands, row 1 is the only supported local registration.
 
 **Validates, without any infrastructure commitment:** whether the Scenario
 Contract expresses your real threats; whether your agents emit enough telemetry
@@ -151,6 +190,22 @@ machine of whoever added it rather than serving a raw model in production.
 The published shapes are versioned — `reporting.publish.PUBLISH_SCHEMA_VERSION`,
 with the rollup described by `schemas/dashboard.schema.json` — so a Live Artifact
 or MCP App can pin against them.
+
+### The dashboard that exists, and the one that does not
+
+`docs/reviews/assets/purple-dashboard.html` (and its zh-TW edition) is a **design
+reference**: one self-contained file, rendered once from a real run, correct as of
+the day it was written and never again. It is attachable to a ticket and it is
+what the layout below is argued from. It is not connected to anything.
+
+A **Live Artifact** is the other thing: a page that holds an MCP connection and
+re-reads the dashboard resource, so what it shows is the store's current state
+rather than a snapshot. That does not exist yet. Two pieces are needed and only
+one is built — the versioned DTO is here, the resource that serves it and the
+page that reads it are #20 PR C and PR D.
+
+The distinction matters when reading the roadmap: "the dashboard" is finished as
+a picture and unstarted as a product.
 
 **Recommended sequencing:**
 
