@@ -105,9 +105,11 @@ jobs:
 
       # These skip in the main job, which deliberately has no `mcp` extra. They
       # assert the wire contract matches the declared one, so they have to run
-      # somewhere.
+      # somewhere. Name every file holding such a test: one that skips in the
+      # main job and is not collected here has never run at all, and reads as a
+      # pass in both.
       - name: gateway contract reaches the wire
-        run: pytest -q tests/test_mcp_gateway.py
+        run: pytest -q tests/test_mcp_gateway.py tests/test_packaging.py
 
       - name: read-only mode refuses execution
         env:
