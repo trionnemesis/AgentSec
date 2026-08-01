@@ -106,6 +106,35 @@ That is the file this repository ships. `${CLAUDE_PROJECT_DIR}` binds the
 workspace to whichever project Claude Code has open, so the server reads the
 checkout you are looking at rather than one named in a committed absolute path.
 
+### Registering the project
+
+```bash
+agentsec init            # writes .agentsec/project.yaml — review it, then commit it
+agentsec project show    # what the harness can see: skills, agents, hooks, settings, MCP config
+```
+
+Selection happens twice, and neither time through a tool argument. **Which**
+repository comes from the process boundary — the directory the server was
+started in, which is what `${CLAUDE_PROJECT_DIR}` binds. **What inside it**
+comes from `.agentsec/project.yaml`, a committed file naming relative locations
+only. Absolute paths, `..`, URLs, home-relative paths and shell metacharacters
+are refused before anything is read, and a symlink pointing out of the
+repository is refused after resolution, since a pattern cannot see one.
+
+Review it like `policy/targets.yaml`. It decides what the harness reads, the
+`project_id` is what every later result is filed under, and no credential
+belongs in it — credential *names* live in the target allowlist and their values
+only in the environment.
+
+`agentsec project show` is an inventory, never a verdict. `skill_assurance`
+reports `not_tested` in every case today, distinguishing *no skill surface* from
+*skills present, no evaluator*, because `skill_eval` is not built
+([ADR 0008](adr/0008-skill-assurance-bounded-context.md),
+[#14](https://github.com/trionnemesis/AgentSec/issues/14)). A surface that is
+unreadable, malformed or unsupported becomes an entry in `problems` rather than
+an absence — an empty inventory that means "we could not look" must not read
+like one that means "there is nothing there".
+
 **The Desktop gap.** Row 2 has no equivalent yet. Claude Desktop loads local MCP
 servers through its plugin/extension mechanism, not through `.mcp.json`, so a
 Cowork session running locally cannot pick this server up by copying the block

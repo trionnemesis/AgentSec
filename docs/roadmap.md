@@ -26,6 +26,7 @@ exercised against a live system; 🔲 is not built.
 | Resource allowlist for the report gateway | ✅ | `ResourceSpec.published`; evidence, audit and target authoring detail are not registered under `AGENTSEC_MCP_READ_ONLY=1` |
 | Fail-closed publication | ✅ | unknown output kind raises; a resource with no publication policy stops the gateway from booting |
 | Versioned dashboard rollup contract | ✅ | `schemas/dashboard.schema.json`, validated against the shipped corpus |
+| Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml` + `project/`; relative locations only, traversal and symlink escape refused, nothing absolute in the output |
 
 ## Written, not yet proven against a live system
 
@@ -47,7 +48,7 @@ integrations are first drafts.
 - [ ] Run against one real staging agent end to end, and fix what that reveals
 - [ ] Wazuh rule pack for the four bundled scenarios (`100501`, `100610`, `100720`, `100810`)
 - [ ] A promptfoo custom provider that resolves `target_id` server-side
-- [ ] `agentsec init` for the selected repository, with a committed
+- [x] `agentsec init` for the selected repository, with a committed
       `.agentsec/project.yaml` and one canonical workspace resolver
       ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR B)
 - [ ] **Migration runner — now overdue.** `SCHEMA_VERSION` is already `2`, and

@@ -3,6 +3,10 @@
 A "workspace" is a directory holding scenarios, policy and results. The CLI, the
 MCP gateway and CI all point at the same workspace, which is how they stay
 consistent without sharing a process.
+
+The root itself is resolved by :func:`agentsec.project.resolver.resolve_root`,
+which is also what project discovery uses. One canonicalisation, one set of
+checks: a root that is refused for discovery cannot be accepted for execution.
 """
 
 from __future__ import annotations
@@ -12,8 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from agentsec.errors import ConfigError
+from agentsec.project.resolver import ENV_WORKSPACE, resolve_root
 
-ENV_WORKSPACE = "AGENTSEC_WORKSPACE"
+#: Re-exported: callers have always imported it from here.
+__all__ = ["ENV_ACTOR", "ENV_DB", "ENV_WORKSPACE", "Settings", "load_settings",
+           "package_schema_dir"]
+
 ENV_DB = "AGENTSEC_DB"
 ENV_ACTOR = "AGENTSEC_ACTOR"
 
@@ -57,9 +65,7 @@ class Settings:
 
 
 def load_settings(workspace: str | Path | None = None) -> Settings:
-    root = Path(workspace or os.environ.get(ENV_WORKSPACE) or Path.cwd()).resolve()
-    if not root.exists():
-        raise ConfigError(f"workspace does not exist: {root}")
+    root = resolve_root(workspace)
 
     db_env = os.environ.get(ENV_DB)
     db_path = Path(db_env).resolve() if db_env else root / "results" / "agentsec.db"

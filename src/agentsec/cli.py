@@ -35,9 +35,11 @@ app = typer.Typer(
 targets_app = typer.Typer(help="Inspect allowlisted targets.", no_args_is_help=True)
 scenarios_app = typer.Typer(help="Inspect the scenario catalogue.", no_args_is_help=True)
 finding_app = typer.Typer(help="Work with findings.", no_args_is_help=True)
+project_app = typer.Typer(help="Inspect the selected project.", no_args_is_help=True)
 app.add_typer(targets_app, name="targets")
 app.add_typer(scenarios_app, name="scenarios")
 app.add_typer(finding_app, name="finding")
+app.add_typer(project_app, name="project")
 
 EXIT_OK = 0
 EXIT_BLOCKING = 1
@@ -420,6 +422,75 @@ def validate_detection(
         _echo_json(
             _service(workspace).validate_detection(scenario_id=scenario, target_id=target)
         )
+    except AgentSecError as exc:
+        _fail(exc)
+
+
+# --------------------------------------------------------------------------
+# project
+# --------------------------------------------------------------------------
+
+
+@app.command()
+def init(
+    project_id: Annotated[
+        str | None,
+        typer.Option("--project-id", help="Stable id for this repository. Defaults to its name."),
+    ] = None,
+    name: Annotated[str | None, typer.Option("--name")] = None,
+    force: Annotated[bool, typer.Option("--force", help="Overwrite an existing manifest.")] = False,
+    workspace: WorkspaceOpt = None,
+) -> None:
+    """Write `.agentsec/project.yaml` for the selected repository.
+
+    The file is a starting point, not an installation: commit it after reading
+    it. It is reviewed like the target allowlist, because it decides what the
+    harness will read.
+    """
+    from agentsec.project import (
+        MANIFEST_PATH,
+        default_manifest_text,
+        manifest_path,
+        resolve_root,
+        suggest_project_id,
+    )
+
+    try:
+        root = resolve_root(workspace)
+    except AgentSecError as exc:
+        _fail(exc)
+        return
+
+    path = manifest_path(root)
+    if path.exists() and not force:
+        typer.secho(
+            f"{MANIFEST_PATH} already exists. Edit it, or pass --force to replace it.",
+            fg=typer.colors.YELLOW, err=True,
+        )
+        raise typer.Exit(EXIT_ERROR)
+
+    text = default_manifest_text(
+        project_id=project_id or suggest_project_id(root),
+        name=name or root.name,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    typer.secho(f"wrote {MANIFEST_PATH}", fg=typer.colors.GREEN)
+    typer.echo("Review it, then commit it. Run `agentsec project show` to see what it discovers.")
+
+
+@project_app.command("show")
+def project_show(workspace: WorkspaceOpt = None) -> None:
+    """Inventory the selected project: skills, agents, hooks, settings, MCP config.
+
+    An inventory, never a verdict. `skill_assurance` reports `not_tested` in
+    every case today, with a reason distinguishing "nothing to test" from
+    "nothing to test with".
+    """
+    from agentsec.project import discover
+
+    try:
+        _echo_json(discover(workspace).to_dict())
     except AgentSecError as exc:
         _fail(exc)
 
