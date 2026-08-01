@@ -189,7 +189,41 @@ configuration* and *observed data*:
 | `agentsec://audit` | full rows | not registered |
 | `agentsec://targets/{target_id}` | principals, executors, capabilities | not registered |
 | `agentsec://runs/{run_id}` | projected run: no `evidence_ref`, no `raw_ref`, no approval token | same projection |
+| `agentsec://dashboard/latest` | composed rollup, computed in memory | same document |
 | `agentsec://coverage`, `findings`, `scenarios`, `targets` | served | served |
+
+### The document a dashboard polls
+
+`agentsec://dashboard/latest` composes three planes and keeps them apart:
+
+```jsonc
+{
+  "kind": "dashboard",
+  "project":          { "status": "declared", "project_id": "…", "surfaces": { … } },
+  "purple":           { /* the four-axis rollup — schemas/dashboard.schema.json */ },
+  "skill_assurance":  { "status": "not_tested", "reason": "no_evaluator" }
+}
+```
+
+Composition, not merging. A Skill outcome never enters `verdict_counts`,
+`axis_counts` or a `PurpleVerdict`: the two planes answer different questions and
+a single number averaging them answers neither. `skill_assurance` is
+`not_tested` in every case today, because `skill_eval` is not built
+([ADR 0008](adr/0008-skill-assurance-bounded-context.md),
+[#14](https://github.com/trionnemesis/AgentSec/issues/14)), and it says which
+absence it means rather than reporting an empty pass.
+
+Two properties a page's author cannot verify for themselves, so both are
+enforced here:
+
+* **The read is a read.** It is computed from the store in memory and writes
+  nothing — deliberately not implemented by calling `agentsec_generate_report`,
+  whose whole purpose is to write an HTML and a JSON file. An artifact that
+  refreshes itself must not leave a trail of reports behind it.
+* **The shape is the shape.** Every response is validated against
+  `schemas/project-dashboard.schema.json` before it is served, and a document
+  that does not match is refused. A consumer that pinned to the schema cannot
+  see a silently-changed field; it can see an error.
 
 Raw evidence is a local capability on purpose. An investigator working an
 incident reads the bundle off the execution host — as a file, or through the

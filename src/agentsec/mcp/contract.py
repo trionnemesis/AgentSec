@@ -389,6 +389,18 @@ RESOURCES: tuple[ResourceSpec, ...] = (
         publish="findings",
     ),
     ResourceSpec(
+        uri_template="agentsec://dashboard/latest",
+        title="Project dashboard",
+        description=(
+            "The latest state of this project as one document: identity, the "
+            "four-axis purple rollup, and the Skill Assurance summary, each in "
+            "its own property. Computed in memory — reading it starts no run and "
+            "writes no file. Schema: schemas/project-dashboard.schema.json."
+        ),
+        handler="dashboard",
+        publish="dashboard",
+    ),
+    ResourceSpec(
         uri_template="agentsec://coverage",
         title="Coverage",
         description="OWASP Agentic Top 10 coverage and latest verdict histogram.",

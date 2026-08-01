@@ -120,6 +120,22 @@ def test_all_resources_use_the_agentsec_scheme() -> None:
         assert resource.uri_template.startswith("agentsec://"), resource.uri_template
 
 
+def test_every_resource_names_a_publication_policy_that_exists() -> None:
+    """The same check `build_server` makes, in the job that runs without the mcp extra.
+
+    A resource whose output has no policy must fail on the machine of whoever
+    added it. Asserting it here as well means the failure does not wait for the
+    one CI job that installs the gateway.
+    """
+    from agentsec.reporting.publish import PUBLISHERS
+
+    for resource in RESOURCES:
+        assert resource.publish in PUBLISHERS, (
+            f"resource '{resource.uri_template}' names publication policy "
+            f"'{resource.publish}', which does not exist"
+        )
+
+
 def test_tool_names_are_namespaced() -> None:
     for tool in TOOLS:
         assert tool.name.startswith("agentsec_"), tool.name

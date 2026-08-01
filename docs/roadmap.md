@@ -27,6 +27,7 @@ exercised against a live system; 🔲 is not built.
 | Fail-closed publication | ✅ | unknown output kind raises; a resource with no publication policy stops the gateway from booting |
 | Versioned dashboard rollup contract | ✅ | `schemas/dashboard.schema.json`, validated against the shipped corpus |
 | Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml` + `project/`; relative locations only, traversal and symlink escape refused, nothing absolute in the output |
+| Composed project dashboard resource | ✅ | `agentsec://dashboard/latest`; project, purple and Skill Assurance planes kept separate, validated against `schemas/project-dashboard.schema.json` on every read |
 
 ## Written, not yet proven against a live system
 
@@ -63,7 +64,7 @@ integrations are first drafts.
       half is built — allowlisted resources, projected output, fail-closed
       publication. What is missing is authentication: OAuth/OIDC, RBAC and the
       TLS-terminating gateway in front
-- [ ] A dashboard resource a page can pin to — `agentsec://dashboard/latest`,
+- [x] A dashboard resource a page can pin to — `agentsec://dashboard/latest`,
       computed in memory and schema-valid ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR C)
 - [ ] Live Artifact dashboard reading it. The static HTML in
       `docs/reviews/assets/` is a design reference rendered once, not a

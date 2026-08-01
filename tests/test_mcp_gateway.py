@@ -226,6 +226,36 @@ def test_report_gateway_over_stdio_lists_and_reads_only_what_it_should(
     assert str(service.settings.workspace) not in probe["reads"][f"agentsec://runs/{run_id}"]
 
 
+def test_the_dashboard_resource_is_served_and_changes_nothing(
+    service: HarnessService,
+) -> None:
+    """The document a Live Artifact polls, over the protocol it will poll it with.
+
+    Two things a page's author cannot check for themselves: that the read is a
+    read, and that what arrives matches the schema they pinned to. The first is
+    asserted by comparing the results tree before and after; the second is
+    asserted by `publish`, which refuses to serve a document that does not match.
+    """
+    service.start_run(target_id="demo-agent-fixture", profile="nightly")
+    results = service.settings.results_dir
+    before = {str(p): p.stat().st_mtime for p in sorted(results.rglob("*")) if p.is_file()}
+
+    probe = _stdio(
+        service.settings.workspace,
+        ["agentsec://dashboard/latest"],
+        AGENTSEC_MCP_READ_ONLY="1",
+    )
+
+    assert "agentsec://dashboard/latest" in probe["resources"]
+    body = json.loads(probe["reads"]["agentsec://dashboard/latest"])
+    assert body["kind"] == "dashboard"
+    assert body["purple"]["exit_code"] == 1
+    assert body["skill_assurance"]["status"] == "not_tested"
+    assert body["redaction"]["policy"]
+    # A poll that leaves files behind is one nobody can automate.
+    assert {str(p): p.stat().st_mtime for p in sorted(results.rglob("*")) if p.is_file()} == before
+
+
 def test_evidence_over_stdio_is_projected_on_the_full_gateway(
     service: HarnessService,
 ) -> None:

@@ -463,6 +463,7 @@ def test_report_gateway_allowlist_excludes_the_internal_surfaces() -> None:
 
     # It is still a useful product, not an empty one.
     assert published == {
+        "agentsec://dashboard/latest",
         "agentsec://targets",
         "agentsec://scenarios",
         "agentsec://runs/{run_id}",
