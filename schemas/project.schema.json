@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/project.schema.json",
+  "title": "AgentSec Project Manifest",
+  "description": "`.agentsec/project.yaml`: the committed, reviewed description of one repository. It exists because no MCP tool accepts a path (ADR 0003), so directory selection has to happen at the process boundary and in a file a human merged. Every location is relative to the repository root; absolute paths, `..`, URLs, home-relative paths and shell metacharacters are refused by agentsec.project.resolver.check_location before anything is read. Credentials never appear here — credential names live in policy/targets.yaml and their values only in the environment.",
+  "type": "object",
+  "required": ["apiVersion", "kind", "project_id", "name"],
+  "additionalProperties": false,
+  "properties": {
+    "apiVersion": { "const": "agentsec.dev/v1alpha1" },
+    "kind": { "const": "Project" },
+    "project_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$",
+      "description": "Stable identity for this repository, committed rather than derived from the checkout so it survives a clone into another directory, a worktree and a CI runner using a hashed path. Callers name this id; they never name a location."
+    },
+    "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "description": { "type": "string", "maxLength": 500 },
+    "surfaces": {
+      "type": "object",
+      "description": "Where this repository keeps the surfaces AgentSec inspects. Every value is a relative location; omit one to accept the default.",
+      "additionalProperties": false,
+      "properties": {
+        "skills": { "$ref": "#/$defs/location", "default": ".claude/skills" },
+        "agents": { "$ref": "#/$defs/location", "default": ".claude/agents" },
+        "hooks": { "$ref": "#/$defs/location", "default": ".claude/hooks" },
+        "settings": { "$ref": "#/$defs/location", "default": ".claude/settings.json" },
+        "instructions": { "$ref": "#/$defs/location", "default": "CLAUDE.md" },
+        "mcp_config": { "$ref": "#/$defs/location", "default": ".mcp.json" }
+      }
+    }
+  },
+  "$defs": {
+    "location": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "^(?!/)(?!~)(?![A-Za-z]:)(?!\\.\\./)(?!.*/\\.\\./)(?!.*/\\.\\.$)[^\\\\\\u0000-\\u001f;|&`$<>]+$",
+      "description": "A location relative to the repository root. The pattern refuses absolute paths, drive letters, home-relative paths, `..` segments, backslashes, control characters and shell metacharacters. It cannot see symlinks, which is why safe_child re-checks containment after resolving."
+    }
+  }
+}

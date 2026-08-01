@@ -330,9 +330,11 @@ schemas/               JSON Schema for scenario, target, evidence and the publis
 scenarios/             The scenario catalogue (four worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus so everything runs offline
+.agentsec/             Project manifest: stable id and reviewed relative locations
 
 src/agentsec/
 ├── models/            # typed contracts crossing every layer boundary
+├── project/           # selected-project resolution and surface discovery
 ├── scenario/          # loader, three-layer validator, catalogue + coverage
 ├── policy/            # allowlist, profiles, approvals, the single policy guard
 ├── execution/         # red executors (replay, promptfoo) and target adapters

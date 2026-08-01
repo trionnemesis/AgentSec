@@ -312,9 +312,11 @@ schemas/               scenario / target / evidence 與發布用儀表板彙整�
 scenarios/             情境目錄（四個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
 fixtures/              錄製語料，讓一切都能離線執行
+.agentsec/             專案宣告檔：穩定 id 與經審查的相對位置
 
 src/agentsec/
 ├── models/            # 跨越所有層邊界的型別化契約
+├── project/           # 選定專案的解析與表面探索
 ├── scenario/          # 載入器、三層驗證器、目錄與覆蓋率
 ├── policy/            # 允許清單、profile、核准，以及唯一的政策守門點
 ├── execution/         # 紅隊執行器（replay、promptfoo）與目標轉接器

@@ -1,0 +1,26 @@
+# AgentSec project manifest. Committed, and reviewed like the target allowlist.
+#
+# Two rules a reviewer enforces:
+#   1. Locations are relative to this file's repository. No absolute paths, no
+#      `..`, no URLs, no commands.
+#   2. No credentials, ever. Credential *names* live in policy/targets.yaml and
+#      their values only in the environment.
+apiVersion: agentsec.dev/v1alpha1
+kind: Project
+
+# Stable identity for this repository. Callers name this id; they never name a
+# path. Keep it unchanged across clones, worktrees and CI checkouts — that is
+# what makes results from different machines comparable.
+project_id: agentsec
+name: AgentSec
+description: Purple-team harness for AI agents. This manifest lets the harness inventory its own agent surfaces, which is also the first case it is tested against.
+
+# Where this repository keeps the surfaces AgentSec inspects. Delete a line to
+# accept the default shown; keep one only if this repository differs.
+surfaces:
+  skills: .claude/skills
+  agents: .claude/agents
+  hooks: .claude/hooks
+  settings: .claude/settings.json
+  instructions: CLAUDE.md
+  mcp_config: .mcp.json

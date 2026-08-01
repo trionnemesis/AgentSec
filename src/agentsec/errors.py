@@ -81,3 +81,30 @@ class InvalidTransition(AgentSecError):
 
 class ConfigError(AgentSecError):
     code = "config_error"
+
+
+class ProjectError(ConfigError):
+    """The project manifest is present but does not describe a usable project."""
+
+    code = "project_invalid"
+
+
+class ProjectNotInitialised(ConfigError):
+    """No ``.agentsec/project.yaml``. Run ``agentsec init``.
+
+    Distinct from a malformed manifest on purpose: one is a repository nobody has
+    onboarded yet, the other is a repository whose onboarding is wrong, and only
+    the second is a reason to distrust what is already there.
+    """
+
+    code = "project_not_initialised"
+
+
+class UnsafePath(ProjectError):
+    """A declared location escapes the project root, or is not a location at all.
+
+    Raised before the path is read. A manifest naming ``../../secret`` must be
+    refused rather than read and then rejected.
+    """
+
+    code = "path_escapes_project"
