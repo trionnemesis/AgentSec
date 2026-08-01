@@ -268,14 +268,21 @@ Run this first when a detection gap looks suspicious: on first adoption, most ar
 
 ### Resources
 
-`agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
+`agentsec://dashboard/latest` ・ `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
 
 Every resource is a read, so "read-only" was never the question that separated
 them — the question is who holds the other end. With `AGENTSEC_MCP_READ_ONLY=1`
-the gateway becomes a *report* gateway and serves five of the eight: `targets`,
-`scenarios`, `runs/{run_id}`, `findings`, `coverage`. Per-run evidence, the audit
-log and the target authoring schema are working surfaces for whoever operates the
-harness, and are not registered at all rather than rendered carefully.
+the gateway becomes a *report* gateway and serves six of the nine:
+`dashboard/latest`, `targets`, `scenarios`, `runs/{run_id}`, `findings`,
+`coverage`. Per-run evidence, the audit log and the target authoring schema are
+working surfaces for whoever operates the harness, and are not registered at all
+rather than rendered carefully.
+
+`agentsec://dashboard/latest` is the one a dashboard polls: project identity, the
+four-axis purple rollup and the Skill Assurance summary, each in its own property
+and described by [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json).
+It is computed in memory — reading it starts no run and writes no file — and a
+document that does not match that schema is refused rather than served.
 
 What is served is **projected, not filtered**: each publisher names the fields it
 keeps, so a field added to an evidence model tomorrow is absent from published
@@ -299,6 +306,8 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | `agentsec preview` | Show what a run would do, without doing it | `--target`, `--profile`, `--scenario` |
 | `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--output junit`, `--output-file`, `--dry-run`, `--html` |
 | `agentsec report` | Render recent runs as HTML / JSON / JUnit | `--target`, `--profile`, `--format`, `--limit` |
+| `agentsec dashboard` | Print the composed dashboard document — reads only, writes nothing | `--target`, `--profile` |
+| `agentsec init \| project show` | Write the project manifest; inventory what it declares | `--project-id`, `--name`, `--force` |
 | `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason` |
 | `agentsec validate-detection` | Check detection expectations are checkable against a target | `--scenario`, `--target` |
 | `agentsec compare` | Diff two runs check-by-check | `RUN_A RUN_B` |
@@ -325,8 +334,8 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ## Architecture
 
 ```
-schemas/               JSON Schema for scenario, target, evidence and the published
-                       dashboard rollup — the portable assets
+schemas/               JSON Schema for scenario, target, evidence, the project
+                       manifest and the published dashboards — the portable assets
 scenarios/             The scenario catalogue (four worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus so everything runs offline

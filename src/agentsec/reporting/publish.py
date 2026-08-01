@@ -31,10 +31,15 @@ reason an untested axis reports ``not_tested`` instead of rounding up to a pass.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
+
+from jsonschema import Draft202012Validator
+from referencing import Registry, Resource
 
 from agentsec.errors import AgentSecError
 from agentsec.models.evidence import Evidence
@@ -108,6 +113,17 @@ class RedactionError(AgentSecError):
     """No publication policy exists for this output type."""
 
     code = "redaction_policy_missing"
+
+
+class PublicationInvalid(AgentSecError):
+    """A projected document does not match the schema consumers pin to.
+
+    Refusing to serve is the fail-closed answer: a consumer that pinned to the
+    published schema cannot see a silently-changed shape, but it can see an
+    error.
+    """
+
+    code = "publication_schema_invalid"
 
 
 def _salt() -> bytes:
@@ -500,6 +516,58 @@ def publish_report(report: dict[str, Any]) -> dict[str, Any]:
     return {"schema_version": PUBLISH_SCHEMA_VERSION, **report}
 
 
+@lru_cache(maxsize=1)
+def _dashboard_validator() -> Draft202012Validator:
+    """The composite schema, with the purple rollup resolvable by ``$id``."""
+    from agentsec.config import package_schema_dir
+
+    schemas = package_schema_dir()
+    rollup = json.loads((schemas / "dashboard.schema.json").read_text(encoding="utf-8"))
+    composite = json.loads(
+        (schemas / "project-dashboard.schema.json").read_text(encoding="utf-8")
+    )
+    registry = Registry().with_resource(rollup["$id"], Resource.from_contents(rollup))
+    return Draft202012Validator(composite, registry=registry)
+
+
+def publish_dashboard(document: dict[str, Any]) -> dict[str, Any]:
+    """The composed project dashboard, projected and then checked against its schema.
+
+    Three planes, named one at a time. Naming them is what keeps a fourth from
+    appearing on a dashboard because someone added it to the service — the same
+    reason every other publisher here lists its fields instead of filtering.
+
+    The schema check is the second half. A consumer pins to
+    ``project-dashboard.schema.json``, so serving a document that does not match
+    it breaks that consumer in a way no test of ours would catch; refusing to
+    serve is the failure they can see. It also means the purple plane is checked
+    against the rollup contract on every read, which is where a field that
+    quietly changed type would otherwise slip through.
+    """
+    body = {
+        "schema_version": PUBLISH_SCHEMA_VERSION,
+        "kind": "dashboard",
+        "generated_at": document.get("generated_at"),
+        "project": document.get("project"),
+        # Already the one shape every output renders from, and it stamps its own
+        # version. Republishing it is a no-op by design; see publish_report.
+        "purple": document.get("purple"),
+        "skill_assurance": document.get("skill_assurance"),
+        "redaction": {"policy": PUBLISH_POLICY, "dropped": []},
+    }
+    errors = sorted(_dashboard_validator().iter_errors(body), key=str)
+    if errors:
+        detail = "; ".join(
+            f"{'/'.join(str(p) for p in e.absolute_path) or '(root)'}: {e.message}"
+            for e in errors[:5]
+        )
+        raise PublicationInvalid(
+            f"dashboard does not match its published schema: {detail}",
+            details={"schema": "project-dashboard.schema.json"},
+        )
+    return body
+
+
 PUBLISHERS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "run": publish_run,
     "runs": publish_runs,
@@ -509,6 +577,7 @@ PUBLISHERS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "audit": publish_audit,
     "declared": publish_declared,
     "report": publish_report,
+    "dashboard": publish_dashboard,
 }
 
 

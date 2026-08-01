@@ -479,6 +479,27 @@ def init(
     typer.echo("Review it, then commit it. Run `agentsec project show` to see what it discovers.")
 
 
+@app.command()
+def dashboard(
+    target: Annotated[str | None, typer.Option("--target", "-t")] = None,
+    profile: Annotated[str | None, typer.Option("--profile", "-p")] = None,
+    workspace: WorkspaceOpt = None,
+) -> None:
+    """Print the composed project dashboard — the same document the MCP resource serves.
+
+    Reads only. Unlike `agentsec report`, this writes no HTML and no JSON: it is
+    the shape a dashboard polls, and a poll that leaves files behind is one
+    nobody can automate.
+    """
+    from agentsec.reporting.publish import publish
+
+    try:
+        service = _service(workspace)
+        _echo_json(publish("dashboard", service.dashboard(target_id=target, profile=profile)))
+    except AgentSecError as exc:
+        _fail(exc)
+
+
 @project_app.command("show")
 def project_show(workspace: WorkspaceOpt = None) -> None:
     """Inventory the selected project: skills, agents, hooks, settings, MCP config.

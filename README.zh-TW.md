@@ -265,9 +265,11 @@ spec:
 
 ### 資源
 
-`agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
+`agentsec://dashboard/latest` ・ `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
 
-每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，八個資源中只提供五個：`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
+每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，九個資源中只提供六個：`dashboard/latest`、`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
+
+`agentsec://dashboard/latest` 是儀表板會輪詢的那一個：專案身分、四面向的 purple 彙整，以及 Skill Assurance 摘要，三者各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。
 
 有提供的部分是**投影，不是過濾**：每個 publisher 明確列出自己保留哪些欄位，所以明天在證據模型上新增的欄位，在有人決定它該被發布之前都不會出現在輸出裡。對話輪次轉為摘要值，自由格式的 map 保留 key、捨棄 value，主體（principal）、租戶與 actor 轉成穩定的代號 —— 跨租戶的橫向移動仍然看得出來，但不會印出那是誰。判定、各面向狀態、失敗的檢查、規則 ID、告警等級、工具名稱與決策則完整保留，因為讓讀者看不到 finding 的遮蔽並不值得部署。每一次投影都附帶一份「捨棄了什麼」的清單，理由和「未測試的面向回報 `not_tested`」相同：**被扣住的欄位不能讀起來像不存在的欄位**。細節見 [`docs/deployment.md`](docs/deployment.md)。
 
@@ -281,6 +283,8 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 | `agentsec preview` | 顯示執行會做什麼，但不執行 | `--target`、`--profile`、`--scenario` |
 | `agentsec run` | 執行情境，遇到阻擋級 finding 時以非零結束 | `--target`、`--profile`、`--output junit`、`--output-file`、`--dry-run`、`--html` |
 | `agentsec report` | 將近期執行輸出成 HTML / JSON / JUnit | `--target`、`--profile`、`--format`、`--limit` |
+| `agentsec dashboard` | 輸出組合後的儀表板文件 —— 只讀取，不寫任何檔案 | `--target`、`--profile` |
+| `agentsec init \| project show` | 寫出專案宣告檔；盤點它宣告了什麼 | `--project-id`、`--name`、`--force` |
 | `agentsec approve` | 簽發有作用域、會過期、只能用一次的核准權杖 | `--scenario`、`--target`、`--ttl`、`--reason` |
 | `agentsec validate-detection` | 檢查偵測期待在該目標上是否檢查得了 | `--scenario`、`--target` |
 | `agentsec compare` | 逐項比對兩次執行 | `RUN_A RUN_B` |
@@ -307,8 +311,8 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 ## 架構
 
 ```
-schemas/               scenario / target / evidence 與發布用儀表板彙整的 JSON Schema
-                       —— 可攜的核心資產
+schemas/               scenario / target / evidence、專案宣告檔與發布用儀表板的
+                       JSON Schema —— 可攜的核心資產
 scenarios/             情境目錄（四個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
 fixtures/              錄製語料，讓一切都能離線執行

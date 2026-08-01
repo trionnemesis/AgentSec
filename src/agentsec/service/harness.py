@@ -22,8 +22,10 @@ from typing import Any
 from agentsec.config import Settings, load_settings
 from agentsec.errors import (
     AgentSecError,
+    ConfigError,
     InvalidTransition,
     PolicyViolation,
+    ProjectNotInitialised,
     ScenarioError,
     TargetNotFound,
 )
@@ -40,6 +42,7 @@ from agentsec.policy.allowlist import load_allowlist
 from agentsec.policy.approvals import ApprovalStore
 from agentsec.policy.guard import PolicyGuard
 from agentsec.policy.profiles import Profile, load_profiles
+from agentsec.project import MANIFEST_PATH, discover
 from agentsec.reporting.html import write_html_report
 from agentsec.reporting.junit import render_junit
 from agentsec.reporting.normalizer import (
@@ -49,6 +52,7 @@ from agentsec.reporting.normalizer import (
     normalize_run,
     verdict_history,
 )
+from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.loader import scenario_digest
 from agentsec.scenario.validator import validate_scenario
@@ -670,21 +674,16 @@ class HarnessService:
             "fixed_checks": fixed,
         }
 
-    def generate_report(
-        self,
-        *,
-        target_id: str | None = None,
-        profile: str | None = None,
-        limit: int = 50,
-        formats: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Render stored runs. Omit ``profile`` to report across every profile.
+    def _rollup(
+        self, *, target_id: str | None, profile: str | None, limit: int
+    ) -> tuple[dict[str, Any], list[RunSummary]]:
+        """The batch rollup, computed in memory and written nowhere.
 
-        ``profile`` filters the runs as well as labelling the report — a report
-        headed "profile pr" that also counted nightly runs would be worse than one
-        that says "all".
+        Shared by ``generate_report``, which then renders it to files, and by
+        ``dashboard``, which does not. One computation rather than two: a
+        dashboard that disagreed with the report it sits next to would be worse
+        than no dashboard.
         """
-        formats = formats or ["html", "json"]
         runs = self.store.list_runs(target_id=target_id, profile=profile, limit=limit)
 
         history = []
@@ -706,6 +705,96 @@ class HarnessService:
         # The runs the rollup dropped are not noise — they are the trend. Kept
         # separately so the counts stay "where does this stand now".
         batch["history"] = verdict_history(history)
+        return batch, summaries
+
+    def dashboard(
+        self, *, target_id: str | None = None, profile: str | None = None, limit: int = 200
+    ) -> dict[str, Any]:
+        """The document a dashboard reads: three planes, composed and kept apart.
+
+        Reading this changes nothing. No run starts, no finding moves, no file is
+        written — deliberately not implemented by calling ``generate_report``,
+        which writes an HTML and a JSON file as its whole purpose. An artifact
+        that refreshes itself must not leave a trail of reports behind it, and a
+        read that mutates is a read nobody can safely automate.
+
+        The planes stay separate because they answer different questions.
+        ``purple`` is the four-axis verdict over attack-detection contracts;
+        ``skill_assurance`` is whether this repository's skills behave, which is
+        its own bounded context (ADR 0008). A UI may show them side by side. A
+        single number averaging them would answer neither.
+        """
+        batch, _ = self._rollup(target_id=target_id, profile=profile, limit=limit)
+        project, assurance = self._project_planes()
+        return {
+            "schema_version": PUBLISH_SCHEMA_VERSION,
+            "kind": "dashboard",
+            "generated_at": datetime.now(UTC).isoformat(),
+            "project": project,
+            "purple": batch,
+            "skill_assurance": assurance,
+        }
+
+    def _project_planes(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Project identity and Skill Assurance, or an honest account of why not.
+
+        A workspace with no manifest is a legitimate state — the harness ran
+        against it long before `agentsec init` existed. It is not, however, an
+        anonymous healthy project: the dashboard says `not_initialised` and the
+        Skill plane says `not_tested`, because "we do not know which repository
+        this is" must never render as a clean result.
+        """
+        try:
+            discovery = discover(self.settings.workspace)
+        except ProjectNotInitialised:
+            return (
+                {
+                    "status": "not_initialised",
+                    "detail": f"no {MANIFEST_PATH}; run `agentsec init` in this repository",
+                },
+                {
+                    "status": "not_tested",
+                    "reason": "project_not_initialised",
+                    "detail": "the project has no manifest, so its skills were never located",
+                },
+            )
+        except ConfigError as exc:
+            return (
+                {"status": "invalid", "detail": exc.message[:500]},
+                {
+                    "status": "not_tested",
+                    "reason": "project_invalid",
+                    "detail": "the project manifest does not load; its surfaces were not read",
+                },
+            )
+
+        counts = discovery.to_dict()["counts"]
+        return (
+            {
+                "status": "declared",
+                "project_id": discovery.project_id,
+                "name": discovery.name,
+                "surfaces": counts,
+            },
+            {**discovery.skill_assurance(), "counts": counts},
+        )
+
+    def generate_report(
+        self,
+        *,
+        target_id: str | None = None,
+        profile: str | None = None,
+        limit: int = 50,
+        formats: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Render stored runs. Omit ``profile`` to report across every profile.
+
+        ``profile`` filters the runs as well as labelling the report — a report
+        headed "profile pr" that also counted nightly runs would be worse than one
+        that says "all".
+        """
+        formats = formats or ["html", "json"]
+        batch, summaries = self._rollup(target_id=target_id, profile=profile, limit=limit)
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         written: dict[str, str] = {}
 
