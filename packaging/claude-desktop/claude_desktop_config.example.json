@@ -1,0 +1,16 @@
+{
+  "//": "Manual registration, for when you are not installing the bundle. Merge the",
+  "//2": "mcpServers entry into your existing claude_desktop_config.json rather than",
+  "//3": "replacing the file. AGENTSEC_MCP_READ_ONLY=1 is the whole point of this",
+  "//4": "entry: it is the report gateway, and it cannot start a run.",
+  "mcpServers": {
+    "agentsec-report": {
+      "command": "agentsec-mcp",
+      "env": {
+        "AGENTSEC_WORKSPACE": "/absolute/path/to/your/repository",
+        "AGENTSEC_ACTOR": "claude-desktop",
+        "AGENTSEC_MCP_READ_ONLY": "1"
+      }
+    }
+  }
+}

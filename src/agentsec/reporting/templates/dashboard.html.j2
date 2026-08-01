@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentSec — {{ d.project.project_id or 'unnamed project' }}</title>
+<style>
+{% include "_theme.css.j2" %}
+
+  /* --- dashboard-specific -------------------------------------------------- */
+  .masthead { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; align-items: baseline;
+              justify-content: space-between; margin-bottom: .25rem; }
+  .planes { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            margin: 1.25rem 0; }
+  .plane { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+           padding: 1rem 1.15rem; }
+  .plane h3 { margin: 0 0 .35rem; font-size: .95rem; }
+  .plane .why { color: var(--muted); font-size: .82rem; margin: .5rem 0 0; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: .25rem .75rem; font-size: .875rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; }
+  .finding { border-left: 3px solid var(--warn); padding: .4rem 0 .4rem .75rem; margin: .6rem 0; }
+  .finding[hidden] { display: none; }
+  select.chip { appearance: none; padding-inline-end: 1.4rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>{{ d.project.name or 'AgentSec' }}</h1>
+      <div class="sub" style="margin-bottom:0">
+        {% if d.project.status == 'declared' %}
+          project <code>{{ d.project.project_id }}</code>
+        {% else %}
+          <span class="pill skip">project {{ d.project.status.replace('_', ' ') }}</span>
+        {% endif %}
+        · target <code>{{ d.purple.target_id }}</code>
+        · profile <code>{{ d.purple.profile }}</code>
+      </div>
+    </div>
+    <div class="sub" style="margin-bottom:0">
+      last refresh <time datetime="{{ d.generated_at }}">{{ d.generated_at }}</time><br>
+      schema <code>{{ d.schema_version }}</code>
+    </div>
+  </div>
+
+  {% if d.project.status != 'declared' %}
+    <div class="banner" style="color:var(--warn);background:var(--warn-bg)">
+      This dashboard does not know which repository it is describing.
+      {{ d.project.detail }}
+    </div>
+  {% endif %}
+
+  {% if d.purple.blocking_count %}
+    <div class="banner bad">
+      {{ d.purple.blocking_count }} blocking finding{{ '' if d.purple.blocking_count == 1 else 's' }} —
+      CI exit code {{ d.purple.exit_code }}
+    </div>
+  {% else %}
+    <div class="banner ok">No blocking findings — CI exit code {{ d.purple.exit_code }}</div>
+  {% endif %}
+
+  {# Two planes, side by side and never added together. A Skill outcome is not a
+     PurpleVerdict and does not belong in a verdict count; see ADR 0008. #}
+  <div class="planes">
+    <div class="plane">
+      <h3>Purple — attack &amp; detection</h3>
+      <dl class="kv">
+        <dt>scenarios</dt><dd>{{ d.purple.total_runs }}</dd>
+        <dt>secure</dt><dd>{{ d.purple.secure }}</dd>
+        <dt>gaps</dt><dd>{{ d.purple.total_runs - d.purple.secure }}</dd>
+        <dt>blocking</dt><dd>{{ d.purple.blocking_count }}</dd>
+      </dl>
+      <p class="why">Did the attack work, and would the blue side have seen it?</p>
+    </div>
+    <div class="plane">
+      <h3>
+        Skill Assurance
+        <span class="pill {{ status_class(d.skill_assurance.status) }}">{{ d.skill_assurance.status }}</span>
+      </h3>
+      <dl class="kv">
+        <dt>reason</dt><dd><code>{{ d.skill_assurance.reason }}</code></dd>
+        {% if d.skill_assurance.counts %}
+          <dt>skills found</dt><dd>{{ d.skill_assurance.counts.get('supported_skills', 0) }}</dd>
+        {% endif %}
+      </dl>
+      <p class="why">{{ d.skill_assurance.detail }}</p>
+    </div>
+    {% if d.project.surfaces %}
+      <div class="plane">
+        <h3>Surfaces</h3>
+        <dl class="kv">
+          {% for key, n in d.project.surfaces.items() if key != 'supported_skills' %}
+            <dt>{{ key.replace('_', ' ') }}</dt><dd>{{ n }}</dd>
+          {% endfor %}
+        </dl>
+        <p class="why">What the harness can see in this repository, not what it has judged.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  {% if d.purple.superseded_runs %}
+    <p class="sub">
+      Counts show each scenario's latest run. {{ d.purple.superseded_runs }} earlier
+      run{{ '' if d.purple.superseded_runs == 1 else 's' }} are kept out of the totals and
+      shown as trend below.
+    </p>
+  {% endif %}
+
+  <h2>The four axes</h2>
+  <p class="sub">
+    An attack that got through is one problem; an attack nobody saw is a different one.
+    An axis a scenario never asserted stays <code>not_tested</code> — it never rounds up
+    to a pass, here or anywhere else.
+  </p>
+  {% set axis_questions = {
+    'prevention': 'Did the agent refuse to do the bad thing?',
+    'detection': 'If it did — or tried — did the blue side see it, in time?',
+    'evidence': 'Could an investigator reconstruct the incident afterwards?',
+    'response': 'Did the documented or automated reaction actually happen?'
+  } %}
+  {% set glyphs = {'pass': '●', 'fail': '▲', 'error': '■', 'not_tested': '○'} %}
+  <div class="meters">
+    {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
+      {% set counts = d.purple.axis_counts[axis] %}
+      {% set total = counts.values() | sum %}
+      <div class="meter">
+        <div class="meter-label">
+          <span class="name">{{ axis | capitalize }}</span>
+          <span class="q">{{ axis_questions[axis] }}</span>
+        </div>
+        {% if total %}
+          <div class="track" role="img" aria-label="{{ axis }}:
+            {%- for status in ['pass', 'fail', 'error', 'not_tested'] %}
+              {{- ' ' }}{{ counts[status] }} {{ status }}{{ ',' if not loop.last }}
+            {%- endfor %}">
+            {% for status in ['pass', 'fail', 'error', 'not_tested'] %}
+              {% if counts[status] %}
+                <div class="seg {{ status_class(status) }}" style="flex:{{ counts[status] }}"
+                     title="{{ counts[status] }} scenario(s): {{ status }}">
+                  <span class="glyph" aria-hidden="true">{{ glyphs[status] }}</span>
+                  {{ counts[status] }} {{ status.replace('_', ' ') }}
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="empty">no runs</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2>Scenarios</h2>
+
+  <div class="filters" id="filters">
+    <span class="lbl">Verdict</span>
+    <button type="button" class="chip" data-verdict="all" aria-pressed="true">all {{ d.purple.total_runs }}</button>
+    <button type="button" class="chip" data-verdict="gap" aria-pressed="false">gaps {{ d.purple.total_runs - d.purple.secure }}</button>
+    <button type="button" class="chip" data-verdict="secure" aria-pressed="false">secure {{ d.purple.secure }}</button>
+    <button type="button" class="chip" data-verdict="blocking" aria-pressed="false">blocking {{ d.purple.blocking_count }}</button>
+
+    {% set severities = d.purple.runs | map(attribute='severity') | unique | list %}
+    {% if severities | length > 1 %}
+      <span class="lbl" style="margin-left:.75rem">Severity</span>
+      <button type="button" class="chip" data-severity="all" aria-pressed="true">any</button>
+      {% for sev in ['critical', 'high', 'medium', 'low', 'info'] if sev in severities %}
+        <button type="button" class="chip" data-severity="{{ sev }}" aria-pressed="false">{{ sev }}</button>
+      {% endfor %}
+    {% endif %}
+
+    {# "Tested" is a filter and not a footnote: a reader looking for what nobody
+       checked should be able to ask for exactly that. #}
+    <span class="lbl" style="margin-left:.75rem">Tested</span>
+    <button type="button" class="chip" data-tested="all" aria-pressed="true">any</button>
+    <button type="button" class="chip" data-tested="partial" aria-pressed="false">has not_tested</button>
+    <button type="button" class="chip" data-tested="errored" aria-pressed="false">has error</button>
+
+    {% if d.purple.runs %}
+      <span class="lbl" style="margin-left:.75rem">Scenario</span>
+      <select class="chip" id="scenario-filter" aria-label="Filter by scenario">
+        <option value="all">all scenarios</option>
+        {% for r in d.purple.runs %}
+          <option value="{{ r.scenario_id }}">{{ r.scenario_id }}</option>
+        {% endfor %}
+      </select>
+    {% endif %}
+  </div>
+
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr>
+          <th>Scenario</th><th>Prevention</th><th>Detection</th><th>Evidence</th>
+          <th>Response</th><th>Verdict</th>{% if d.purple.history %}<th>Trend</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in d.purple.runs %}
+        {% set axes = [r.prevention, r.detection, r.evidence, r.response] %}
+        <tr class="run-row" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
+            data-scenario="{{ r.scenario_id }}"
+            data-blocking="{{ 'true' if r.blocking else 'false' }}"
+            data-untested="{{ 'true' if 'not_tested' in axes else 'false' }}"
+            data-errored="{{ 'true' if 'error' in axes else 'false' }}">
+          <td><code>{{ r.scenario_id }}</code><br><span class="sub">{{ r.scenario_title }}</span></td>
+          {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
+            <td class="axis"><span class="pill {{ status_class(r[axis]) }}">{{ r[axis] }}</span></td>
+          {% endfor %}
+          <td>
+            <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
+            {% if r.blocking %}<br><span class="pill fail">blocking</span>{% endif %}
+          </td>
+          {% if d.purple.history %}
+            {% set past = d.purple.history.get(r.scenario_id, []) %}
+            <td>
+              {% if past | length > 1 %}
+                <span class="spark" role="img"
+                      aria-label="{{ past | length }} runs, oldest to newest:
+                      {%- for h in past %}{{ ' ' }}{{ h.verdict }}{{ ',' if not loop.last }}{% endfor %}">
+                  {% for h in past %}
+                    <span class="tick {{ verdict_class(h.verdict) }}{{ ' now' if loop.last }}"
+                          title="{{ h.run_id }} · {{ h.profile }} · {{ h.verdict }}"></span>
+                  {% endfor %}
+                </span>
+                {% if past[-1].verdict != past[-2].verdict %}
+                  <br><span class="sub">was {{ past[-2].verdict }}</span>
+                {% endif %}
+              {% else %}
+                <span class="sub">first run</span>
+              {% endif %}
+            </td>
+          {% endif %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="empty" id="no-match" hidden>No scenario matches this filter.</p>
+
+  <h2>What failed</h2>
+  {% if not d.purple.runs %}
+    <p class="empty">No runs are stored for this project yet.</p>
+  {% endif %}
+  {% for r in d.purple.runs if r.purple_verdict != 'secure' or r.collector_errors %}
+    <details class="run-detail" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
+             data-scenario="{{ r.scenario_id }}"
+             data-blocking="{{ 'true' if r.blocking else 'false' }}"
+             data-untested="{{ 'true' if 'not_tested' in [r.prevention, r.detection, r.evidence, r.response] else 'false' }}"
+             data-errored="{{ 'true' if 'error' in [r.prevention, r.detection, r.evidence, r.response] else 'false' }}"
+             open>
+      <summary>
+        <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
+        <code>{{ r.scenario_id }}</code> — {{ r.scenario_title }}
+      </summary>
+      <p class="sub">
+        run <code>{{ r.run_id }}</code> · severity {{ r.severity }} · gate {{ r.gate }}
+        {% if r.owasp %} · OWASP {{ r.owasp | join(', ') }}{% endif %}
+      </p>
+      <p>{{ r.rationale }}</p>
+
+      {% if r.collector_errors %}
+        <p><strong>Evidence could not be collected:</strong></p>
+        {% for e in r.collector_errors %}
+          <div class="check"><div class="a">{{ e.source }}</div><div class="o">{{ e.message }}</div></div>
+        {% endfor %}
+      {% endif %}
+
+      {# Evaluator-authored fields only. `assertion`, `observed` and `reason` are
+         written by the evaluator from the committed contract; the transcript that
+         produced them is not in this document and must not be rendered from one. #}
+      {% for c in r.failed_checks %}
+        <div class="check">
+          <div class="a">[{{ c.axis }}] {{ c.assertion }}</div>
+          <div class="o">observed: {{ c.observed }}</div>
+          {% if c.reason %}<div class="r">why it matters: {{ c.reason }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </details>
+  {% endfor %}
+
+  {% if findings %}
+    <h2>Open findings</h2>
+    <p class="sub">
+      A finding cannot reach <code>verified</code> without a linked regression test,
+      and a detection gap additionally needs a linked detection rule.
+    </p>
+    {% for f in findings %}
+      <div class="finding">
+        <div class="a">
+          <span class="pill {{ 'fail' if f.status in ('new', 'reproduced') else 'warn' }}">{{ f.status }}</span>
+          <code>{{ f.finding_id }}</code> — {{ f.title }}
+        </div>
+        <div class="o">
+          {{ f.severity }} · scenario <code>{{ f.scenario_id }}</code> · target
+          <code>{{ f.target_id }}</code> · {{ f.verdict }}
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <footer>
+    Verdicts are produced by the deterministic AgentSec evaluator from the scenario
+    contract and collected evidence. No language model participates in the pass/fail
+    decision.<br>
+    This page reads <code>agentsec://dashboard/latest</code>{% if findings %} and
+    <code>agentsec://findings</code>{% endif %} on a report gateway. Opening,
+    filtering and refreshing it start no run, write no file and change no finding —
+    the gateway it binds to has no tool that could.
+    {% if d.redaction %}
+      Published under policy <code>{{ d.redaction.policy }}</code>.
+    {% endif %}
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var bar = document.getElementById("filters");
+  if (!bar) { return; }
+  var state = { verdict: "all", severity: "all", tested: "all", scenario: "all" };
+  var items = document.querySelectorAll(".run-row, .run-detail");
+  var note = document.getElementById("no-match");
+
+  function matches(el) {
+    var data = el.dataset;
+    if (state.severity !== "all" && data.severity !== state.severity) { return false; }
+    if (state.scenario !== "all" && data.scenario !== state.scenario) { return false; }
+    if (state.tested === "partial" && data.untested !== "true") { return false; }
+    if (state.tested === "errored" && data.errored !== "true") { return false; }
+    if (state.verdict === "blocking") { return data.blocking === "true"; }
+    if (state.verdict === "secure") { return data.verdict === "secure"; }
+    if (state.verdict === "gap") { return data.verdict !== "secure"; }
+    return true;
+  }
+
+  function apply() {
+    var visibleRows = 0;
+    items.forEach(function (el) {
+      var ok = matches(el);
+      el.hidden = !ok;
+      if (ok && el.classList.contains("run-row")) { visibleRows++; }
+    });
+    if (note) { note.hidden = visibleRows !== 0; }
+  }
+
+  bar.querySelectorAll(".chip").forEach(function (chip) {
+    if (chip.tagName === "SELECT") { return; }
+    var group = ["verdict", "severity", "tested"].filter(function (g) {
+      return chip.dataset[g] !== undefined;
+    })[0];
+    if (!group) { return; }
+    chip.addEventListener("click", function () {
+      bar.querySelectorAll(".chip").forEach(function (other) {
+        if (other.dataset[group] !== undefined) { other.setAttribute("aria-pressed", "false"); }
+      });
+      chip.setAttribute("aria-pressed", "true");
+      state[group] = chip.dataset[group];
+      apply();
+    });
+  });
+
+  var picker = document.getElementById("scenario-filter");
+  if (picker) {
+    picker.addEventListener("change", function () {
+      state.scenario = picker.value;
+      apply();
+    });
+  }
+}());
+</script>
+</body>
+</html>

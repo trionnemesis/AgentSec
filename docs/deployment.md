@@ -30,10 +30,10 @@ publishing an authenticated endpoint to the internet (**option A**) or accepting
 that the dashboard reads a different, sanitised copy of the data than the
 executor writes (**option C**).
 
-Rows 1 and 2 are different mechanisms, and only row 1 ships today: `.mcp.json` is
-Claude Code's project registration and is not a Desktop plugin. The packaging for
-row 2 is tracked in [#20](https://github.com/trionnemesis/AgentSec/issues/20) and
-does not exist yet — do not read `.mcp.json` as evidence that it does.
+Rows 1 and 2 are different mechanisms and ship separately. `.mcp.json` is Claude
+Code's project registration and is not a Desktop plugin; row 2 lives in
+[`packaging/claude-desktop/`](../packaging/claude-desktop/) and registers the
+server **read-only**. Do not read one as evidence for the other.
 
 Verify current connector and plugin behaviour against Anthropic's docs before
 designing around any of this. It is the part of the stack most likely to have
@@ -135,11 +135,20 @@ unreadable, malformed or unsupported becomes an entry in `problems` rather than
 an absence — an empty inventory that means "we could not look" must not read
 like one that means "there is nothing there".
 
-**The Desktop gap.** Row 2 has no equivalent yet. Claude Desktop loads local MCP
-servers through its plugin/extension mechanism, not through `.mcp.json`, so a
-Cowork session running locally cannot pick this server up by copying the block
-above. Packaging that is [#20](https://github.com/trionnemesis/AgentSec/issues/20)
-PR D, and until it lands, row 1 is the only supported local registration.
+**Claude Desktop is a separate registration.** Desktop loads local MCP servers
+through its plugin/extension mechanism, not through `.mcp.json`, so a locally-run
+Cowork session cannot pick this server up by copying the block above.
+[`packaging/claude-desktop/`](../packaging/claude-desktop/) has both paths — a
+bundle manifest and a `claude_desktop_config.json` entry — and both pin
+`AGENTSEC_MCP_READ_ONLY=1`.
+
+That last point is the design, not a default. The Desktop registration is a
+*report* gateway: eight read-only tools, six published resources, and no
+`agentsec_start_run` to plan around. Runs are started from the execution host —
+Claude Code through `.mcp.json`, or the CLI — where the audit actor and the
+approval check apply. `tests/test_packaging.py` starts a server from the
+registration's own environment and asserts the execution tools are absent, so
+the claim is checked rather than described.
 
 **Validates, without any infrastructure commitment:** whether the Scenario
 Contract expresses your real threats; whether your agents emit enough telemetry
@@ -254,21 +263,34 @@ The published shapes are versioned — `reporting.publish.PUBLISH_SCHEMA_VERSION
 with the rollup described by `schemas/dashboard.schema.json` — so a Live Artifact
 or MCP App can pin against them.
 
-### The dashboard that exists, and the one that does not
+### Three dashboards, and which one you are looking at
 
-`docs/reviews/assets/purple-dashboard.html` (and its zh-TW edition) is a **design
-reference**: one self-contained file, rendered once from a real run, correct as of
-the day it was written and never again. It is attachable to a ticket and it is
-what the layout below is argued from. It is not connected to anything.
+| | What it is | Freshness |
+|---|---|---|
+| `docs/reviews/assets/purple-dashboard.html` | a **design reference**, rendered once from a real run | correct on the day it was written and never again |
+| `agentsec dashboard --html out.html` | a **snapshot** of the store, from the same template as the Artifact | correct at the moment it was written |
+| The **Live Artifact** | the same page holding an MCP connection to `agentsec://dashboard/latest` | re-read on every refresh |
 
-A **Live Artifact** is the other thing: a page that holds an MCP connection and
-re-reads the dashboard resource, so what it shows is the store's current state
-rather than a snapshot. That does not exist yet. Two pieces are needed and only
-one is built — the versioned DTO is here, the resource that serves it and the
-page that reads it are #20 PR C and PR D.
+The template is shared on purpose. A reader comparing a snapshot attached to a
+ticket with the live page is then comparing data rather than two renderers.
 
-The distinction matters when reading the roadmap: "the dashboard" is finished as
-a picture and unstarted as a product.
+The page renders from the *published* document — the one `publish("dashboard", …)`
+returned — and never reaches back into the store. That is what makes "this page
+cannot show you an evidence bundle" a property of the plumbing rather than of the
+template's good manners, and `tests/test_packaging.py` asserts it by taking the
+transcripts the runs actually produced and checking that none of them appears in
+the rendered page.
+
+What survives is the evaluator's account: which assertion failed, what it
+observed, why it matters. Assertion text quotes values the scenario author
+committed, so `ORD-B-77421` does appear on the page — as declared configuration
+inside a failed check, not as transcript content. Redaction that costs the reader
+the finding would not be worth deploying.
+
+**Refresh is structurally read-only.** Opening, filtering and refreshing the
+Artifact start no run, write no file and move no finding — not by policy but
+because the gateway it binds to has no tool that could, and the one resource it
+polls is computed in memory.
 
 **Recommended sequencing:**
 

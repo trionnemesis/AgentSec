@@ -49,6 +49,34 @@ def render_html_report(batch: dict[str, Any], coverage: dict[str, Any] | None = 
     return template.render(batch=batch, coverage=coverage)
 
 
+def render_dashboard(
+    document: dict[str, Any], findings: list[dict[str, Any]] | None = None
+) -> str:
+    """The Live Artifact page, rendered from the published dashboard document.
+
+    Takes the *published* document — the one `publish("dashboard", …)` returned —
+    rather than the service's internal dict, so the page can only render fields
+    that survived projection. Nothing here reaches back into the store, which is
+    what makes "this page cannot leak an evidence bundle" a property of the
+    plumbing rather than of the template's good manners.
+
+    The same file is the source for a hosted Live Artifact and for a page written
+    to disk: one is served by a gateway and re-read on refresh, the other is a
+    snapshot of the moment it was written. Both render from this template, so a
+    reader comparing them is comparing data rather than two renderers.
+    """
+    template = _environment().get_template("dashboard.html.j2")
+    return template.render(d=document, findings=findings or [])
+
+
+def write_dashboard(
+    path: Path, document: dict[str, Any], findings: list[dict[str, Any]] | None = None
+) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_dashboard(document, findings), encoding="utf-8")
+    return path
+
+
 def write_html_report(
     path: Path, batch: dict[str, Any], coverage: dict[str, Any] | None = None
 ) -> Path:

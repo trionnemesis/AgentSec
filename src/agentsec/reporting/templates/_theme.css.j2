@@ -1,0 +1,99 @@
+  :root {
+    --bg: #ffffff; --fg: #16181d; --muted: #5b6472; --line: #e3e6eb;
+    --card: #f7f8fa; --accent: #5b4bd6; --accent-soft: rgba(91, 75, 214, .12);
+    /* `warn` is stepped well clear of `fail`: at #b26a00 the two sat ~5 ΔE apart
+       under deuteranopia and ~11 in normal vision, which is not enough to carry a
+       pass/fail distinction. Every status is also labelled in text, never colour
+       alone, for the cases no palette can fix. */
+    --pass: #0f7a4a; --fail: #b3261e; --warn: #8f6200; --skip: #707784;
+    --pass-bg: #e2f2e9; --fail-bg: #fbe8e6; --warn-bg: #f9eeda; --skip-bg: #e9e9ee;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e8eaed; --muted: #9aa4b2; --line: #2a2f37;
+      --card: #1c1f25; --accent: #9b8cff; --accent-soft: rgba(155, 140, 255, .16);
+      --pass: #3fbf78; --fail: #ef6b64; --warn: #d9a441; --skip: #8b93a1;
+      --pass-bg: #12301f; --fail-bg: #34181a; --warn-bg: #322612; --skip-bg: #22242f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 4rem; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .75rem; }
+  .sub { color: var(--muted); font-size: .875rem; margin-bottom: 1.5rem; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .75rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: .85rem 1rem; }
+  .card .n { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .card .l { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  th, td { text-align: left; padding: .6rem .8rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--card); font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
+  tbody tr:last-child td { border-bottom: none; }
+  tr[hidden] { display: none; }
+  code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .pill { display: inline-block; padding: .12rem .5rem; border-radius: 999px; font-size: .75rem;
+          font-weight: 600; white-space: nowrap; }
+  .pass { color: var(--pass); background: var(--pass-bg); }
+  .fail { color: var(--fail); background: var(--fail-bg); }
+  .warn { color: var(--warn); background: var(--warn-bg); }
+  .skip { color: var(--skip); background: var(--skip-bg); }
+  .axis { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  details { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem; margin: .6rem 0; background: var(--card); }
+  details[hidden] { display: none; }
+  details summary { cursor: pointer; font-weight: 600; }
+  summary:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .check { border-left: 3px solid var(--fail); padding: .35rem 0 .35rem .7rem; margin: .55rem 0; }
+  .check .a { font-weight: 600; }
+  .check .o, .check .r { color: var(--muted); font-size: .85rem; }
+  .banner { border-radius: 10px; padding: .9rem 1.1rem; margin: 1.25rem 0; font-weight: 600; }
+  .banner.ok { color: var(--pass); background: var(--pass-bg); }
+  .banner.bad { color: var(--fail); background: var(--fail-bg); }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+
+  /* --- axis rollup ------------------------------------------------------- */
+  .meters { display: grid; gap: 1rem; }
+  .meter { display: grid; grid-template-columns: 11rem 1fr; gap: 1rem; align-items: center; }
+  .meter-label .name { font-weight: 650; }
+  .meter-label .q { display: block; font-size: .8rem; color: var(--muted); line-height: 1.35; }
+  .track { display: flex; gap: 2px; height: 2.2rem; }
+  .seg { display: flex; align-items: center; justify-content: center; gap: .3rem;
+         font-size: .78rem; font-weight: 650; font-variant-numeric: tabular-nums;
+         border-radius: 2px; min-width: 0; overflow: hidden; white-space: nowrap; }
+  .seg:first-child { border-start-start-radius: 8px; border-end-start-radius: 8px; }
+  .seg:last-child { border-start-end-radius: 8px; border-end-end-radius: 8px; }
+  .glyph { font-size: .8em; }
+
+  /* --- filters ----------------------------------------------------------- */
+  .filters { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .25rem 0 .9rem; }
+  .filters .lbl { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em;
+                  color: var(--muted); margin-right: .3rem; }
+  .chip { font: inherit; font-size: .8rem; padding: .22rem .65rem; border-radius: 999px;
+          cursor: pointer; border: 1px solid var(--line); background: transparent;
+          color: var(--fg); }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent);
+                               color: var(--accent); font-weight: 650; }
+  .empty { color: var(--muted); font-size: .875rem; padding: .8rem; }
+
+  /* --- trend ------------------------------------------------------------- */
+  .spark { display: inline-flex; gap: 2px; vertical-align: middle; }
+  .tick { width: 9px; height: 16px; border-radius: 2px; display: inline-block; }
+  .tick.pass { background: var(--pass); }
+  .tick.fail { background: var(--fail); }
+  .tick.warn { background: var(--warn); }
+  .tick.skip { background: var(--skip); }
+  .tick.now { outline: 2px solid var(--fg); outline-offset: 1px; }
+
+  @media (max-width: 640px) {
+    .meter { grid-template-columns: 1fr; gap: .4rem; }
+  }
+  @media print {
+    .filters { display: none; }
+    details { break-inside: avoid; }
+    details:not([open]) > *:not(summary) { display: revert; }
+  }

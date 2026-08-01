@@ -483,19 +483,30 @@ def init(
 def dashboard(
     target: Annotated[str | None, typer.Option("--target", "-t")] = None,
     profile: Annotated[str | None, typer.Option("--profile", "-p")] = None,
+    html: Annotated[
+        Path | None,
+        typer.Option("--html", help="Also write the dashboard page to this path."),
+    ] = None,
     workspace: WorkspaceOpt = None,
 ) -> None:
     """Print the composed project dashboard — the same document the MCP resource serves.
 
-    Reads only. Unlike `agentsec report`, this writes no HTML and no JSON: it is
-    the shape a dashboard polls, and a poll that leaves files behind is one
-    nobody can automate.
+    Reads only. Unlike `agentsec report`, this writes nothing unless `--html`
+    names a file: it is the shape a dashboard polls, and a poll that leaves
+    files behind is one nobody can automate. `--html` renders the same page a
+    hosted Live Artifact shows, as a snapshot for a ticket or a CI artifact.
     """
+    from agentsec.reporting.html import write_dashboard
     from agentsec.reporting.publish import publish
 
     try:
         service = _service(workspace)
-        _echo_json(publish("dashboard", service.dashboard(target_id=target, profile=profile)))
+        document = publish("dashboard", service.dashboard(target_id=target, profile=profile))
+        if html is not None:
+            findings = [f for f in service.list_findings() if f["status"] != "closed"]
+            write_dashboard(html, document, publish("findings", findings)["findings"])
+            typer.secho(f"wrote {html}", fg=typer.colors.GREEN, err=True)
+        _echo_json(document)
     except AgentSecError as exc:
         _fail(exc)
 
