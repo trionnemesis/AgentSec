@@ -25,9 +25,14 @@ as a subprocess and returns a decision the harness enforces.
 - **Writes to `policy/targets.yaml`, `policy/approvals.yaml` and `fixtures/`.**
   The allowlist is reviewed like a firewall change, and the fixture corpus is
   recorded evidence. Both are proposed to a human, not written by an agent.
-- **MCP calls carrying `url`, `sql`, `command`, `token` and similar.** Redundant
-  with the closed tool schemas and `tests/test_mcp_contract.py` — kept as the
-  third layer because the cost is one dictionary lookup.
+- **AgentSec MCP calls carrying `url`, `sql`, `command`, `token` and similar.**
+  Redundant with the closed tool schemas and `tests/test_mcp_contract.py` — kept
+  as the third layer because the cost is one dictionary lookup. Scoped to this
+  gateway on purpose: `settings.json` matches the hook on `mcp__.*` so that a
+  renamed `.mcp.json` entry cannot slip past it, and the hook itself decides
+  which calls are AgentSec's. Other servers in the session are left alone, since
+  `query` and `headers` are ordinary arguments there and refusing them defends
+  nothing.
 
 The hook exits 0 on any internal error. A crashed hook must fail open loudly
 rather than wedge the session, and the permission rules in `settings.json` remain
