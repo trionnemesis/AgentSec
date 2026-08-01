@@ -161,8 +161,8 @@ def check_write(path: str) -> None:
 def is_agentsec_tool(tool_name: str) -> bool:
     """Is ``mcp__<server>__<tool>`` AgentSec's own gateway?
 
-    Matched on either segment. The server segment is whatever the operator named
-    the entry in `.mcp.json`, so it can be renamed; the tool segment is fixed by
+    Matched on either half. The server name is whatever the operator called the
+    entry in `.mcp.json`, so it can be renamed; the tool name is fixed by
     `mcp.contract.TOOLS` and is always `agentsec_*`. Requiring both would let a
     rename silently drop the layer.
 
@@ -173,12 +173,19 @@ def is_agentsec_tool(tool_name: str) -> bool:
     `target_id`, which is not a thing outside this repo. The check was written as
     a third layer behind AgentSec's closed schemas; it defends nothing on a
     server whose schemas it has never seen, and the false refusals are not free.
+
+    `__` is the delimiter *and* a legal character in a server name, so the split
+    is ambiguous: `mcp__purple__team__agentsec_start_run` is a server called
+    `purple__team` under one reading and a tool called `team__agentsec_start_run`
+    under another. Rather than guess which, every segment is tested. The
+    ambiguity can only add matches, and a false positive here costs one refusal
+    on a tool named after AgentSec, while a false negative silently removes the
+    layer from the gateway it was written for.
     """
-    parts = tool_name.split("__")
-    if len(parts) < 3:
+    segments = tool_name.split("__")
+    if len(segments) < 3 or segments[0] != "mcp":
         return False
-    server, tool = parts[1], "__".join(parts[2:])
-    return server == "agentsec" or tool.startswith("agentsec_")
+    return any(s == "agentsec" or s.startswith("agentsec_") for s in segments[1:])
 
 
 def check_mcp(tool_name: str, tool_input: dict) -> None:

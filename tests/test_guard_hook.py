@@ -113,12 +113,21 @@ def test_refuses_mcp_calls_carrying_a_locator() -> None:
     ) is None
 
 
-def test_refuses_agentsec_tools_under_a_renamed_server() -> None:
-    """The `.mcp.json` key is the operator's to choose; the tool names are not."""
-    assert decide(
+@pytest.mark.parametrize(
+    "tool",
+    [
         "mcp__purple__agentsec_start_run",
-        {"target_id": "demo-agent-fixture", "sql": "select 1"},
-    ) is not None
+        # `__` delimits the name and is legal inside a server name, so this is
+        # either the server `purple__team` or the tool `team__agentsec_start_run`
+        # depending on where the split falls. Under either reading it is the
+        # AgentSec gateway, and the hook must not lose it to the ambiguity.
+        "mcp__purple__team__agentsec_start_run",
+        "mcp__agentsec__purple__agentsec_start_run",
+    ],
+)
+def test_refuses_agentsec_tools_under_a_renamed_server(tool: str) -> None:
+    """The `.mcp.json` key is the operator's to choose; the tool names are not."""
+    assert decide(tool, {"target_id": "demo-agent-fixture", "sql": "select 1"}) is not None
 
 
 @pytest.mark.parametrize(
@@ -131,6 +140,9 @@ def test_refuses_agentsec_tools_under_a_renamed_server() -> None:
         ("mcp__notion__search", {"query": "purple run"}),
         ("mcp__fetch__get", {"url": "http://localhost:8080", "headers": {}}),
         ("mcp__sqlite_docs__lookup", {"sql": "select 1"}),
+        # Testing every segment is what keeps the renamed-server case above from
+        # slipping through; it must not turn into matching everything.
+        ("mcp__notion__data__search", {"query": "purple run"}),
     ],
 )
 def test_leaves_other_mcp_servers_alone(tool: str, tool_input: dict) -> None:
