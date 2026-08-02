@@ -1,0 +1,39 @@
+{
+  "manifest_version": "0.1",
+  "name": "agentsec-report",
+  "display_name": "AgentSec (report)",
+  "version": "0.1.0",
+  "description": "Read-only AgentSec report gateway: purple-team verdicts, four-axis coverage and findings for the selected repository. Cannot start a run.",
+  "long_description": "Registers the AgentSec MCP server in read-only mode, so a local Cowork session or a Live Artifact can read results without being able to execute anything. Execution tools are not registered in this mode — not refused at dispatch, absent from the listing — and the resource set is the published allowlist. To run scenarios, use the Claude Code project registration in .mcp.json or the CLI on the execution host.",
+  "author": { "name": "trionnemesis" },
+  "homepage": "https://github.com/trionnemesis/AgentSec",
+  "documentation": "https://github.com/trionnemesis/AgentSec/blob/main/docs/deployment.md",
+  "license": "MIT",
+  "keywords": ["security", "purple-team", "ai-agents", "read-only"],
+  "server": {
+    "type": "python",
+    "entry_point": "agentsec-mcp",
+    "mcp_config": {
+      "command": "agentsec-mcp",
+      "args": [],
+      "env": {
+        "AGENTSEC_WORKSPACE": "${user_config.workspace}",
+        "AGENTSEC_ACTOR": "claude-desktop",
+        "AGENTSEC_MCP_READ_ONLY": "1"
+      }
+    }
+  },
+  "user_config": {
+    "workspace": {
+      "type": "directory",
+      "title": "Project directory",
+      "description": "The repository to read results for. It needs a committed .agentsec/project.yaml — run `agentsec init` there first. Selection happens here, at the process boundary, because no AgentSec tool accepts a path.",
+      "required": true
+    }
+  },
+  "tools_generated": true,
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": { "python": ">=3.11" }
+  }
+}

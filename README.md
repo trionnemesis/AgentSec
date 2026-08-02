@@ -306,7 +306,7 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | `agentsec preview` | Show what a run would do, without doing it | `--target`, `--profile`, `--scenario` |
 | `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--output junit`, `--output-file`, `--dry-run`, `--html` |
 | `agentsec report` | Render recent runs as HTML / JSON / JUnit | `--target`, `--profile`, `--format`, `--limit` |
-| `agentsec dashboard` | Print the composed dashboard document — reads only, writes nothing | `--target`, `--profile` |
+| `agentsec dashboard` | Print the composed dashboard document; `--html` also writes the page | `--target`, `--profile`, `--html` |
 | `agentsec init \| project show` | Write the project manifest; inventory what it declares | `--project-id`, `--name`, `--force` |
 | `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason` |
 | `agentsec validate-detection` | Check detection expectations are checkable against a target | `--scenario`, `--target` |
@@ -355,6 +355,7 @@ src/agentsec/
 └── mcp/               # gateway: tool contract, resources, prompts, server
 
 docs/                  Architecture, contract guide, deployment options, roadmap, ADRs
+packaging/             Claude Desktop registration for the read-only report gateway
 .claude/               Skill, permissions and guard hook for the Claude Code workbench
 ```
 

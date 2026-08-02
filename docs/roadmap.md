@@ -66,12 +66,17 @@ integrations are first drafts.
       TLS-terminating gateway in front
 - [x] A dashboard resource a page can pin to — `agentsec://dashboard/latest`,
       computed in memory and schema-valid ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR C)
-- [ ] Live Artifact dashboard reading it. The static HTML in
-      `docs/reviews/assets/` is a design reference rendered once, not a
-      connected page; see `docs/deployment.md` for why that distinction is
-      load-bearing ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR D)
-- [ ] Claude Desktop plugin/extension packaging, so a local Cowork session can
-      load this server at all ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR D)
+- [x] The dashboard page itself — `agentsec dashboard --html`, the same template
+      a hosted Live Artifact renders
+      ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR D)
+- [x] Claude Desktop plugin/extension packaging, so a local Cowork session can
+      load this server read-only
+      ([`packaging/claude-desktop/`](../packaging/claude-desktop/))
+- [ ] **Host it.** The page and the resource exist; publishing the Artifact and
+      binding it to a Desktop-registered gateway is a manual step today, and the
+      end-to-end path has been followed by hand rather than by a test. The
+      checklist is in `packaging/claude-desktop/README.md`; three of its seven
+      steps are asserted by `tests/test_packaging.py` and four need a person
 - [ ] PyRIT executor for nightly exploratory runs
 - [ ] pytest executor, so existing security tests join the same verdict model
 - [ ] Coverage against MITRE ATLAS alongside OWASP

@@ -283,7 +283,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 | `agentsec preview` | 顯示執行會做什麼，但不執行 | `--target`、`--profile`、`--scenario` |
 | `agentsec run` | 執行情境，遇到阻擋級 finding 時以非零結束 | `--target`、`--profile`、`--output junit`、`--output-file`、`--dry-run`、`--html` |
 | `agentsec report` | 將近期執行輸出成 HTML / JSON / JUnit | `--target`、`--profile`、`--format`、`--limit` |
-| `agentsec dashboard` | 輸出組合後的儀表板文件 —— 只讀取，不寫任何檔案 | `--target`、`--profile` |
+| `agentsec dashboard` | 輸出組合後的儀表板文件；加 `--html` 則同時寫出頁面 | `--target`、`--profile`、`--html` |
 | `agentsec init \| project show` | 寫出專案宣告檔；盤點它宣告了什麼 | `--project-id`、`--name`、`--force` |
 | `agentsec approve` | 簽發有作用域、會過期、只能用一次的核准權杖 | `--scenario`、`--target`、`--ttl`、`--reason` |
 | `agentsec validate-detection` | 檢查偵測期待在該目標上是否檢查得了 | `--scenario`、`--target` |
@@ -332,6 +332,7 @@ src/agentsec/
 └── mcp/               # gateway：工具契約、資源、prompts、server
 
 docs/                  架構、契約撰寫指南、部署選項、藍圖、ADR
+packaging/             唯讀報表 gateway 的 Claude Desktop 註冊設定
 .claude/               Claude Code 工作台的 skill、權限設定與守門 hook
 ```
 
