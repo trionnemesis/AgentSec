@@ -62,6 +62,14 @@
     <div class="banner ok">No blocking findings — CI exit code {{ d.purple.exit_code }}</div>
   {% endif %}
 
+  {% if d.purple.fixture_derived %}
+    <div class="banner info">
+      Every verdict in view was proven against a replayed fixture corpus, not a live
+      run — a <code>secure</code> here means the recording shows no evidence of the
+      attack succeeding, not that a live staging agent was attacked.
+    </div>
+  {% endif %}
+
   {# Two planes, side by side and never added together. A Skill outcome is not a
      PurpleVerdict and does not belong in a verdict count; see ADR 0008. #}
   <div class="planes">
@@ -99,6 +107,27 @@
         <p class="why">What the harness can see in this repository, not what it has judged.</p>
       </div>
     {% endif %}
+    <div class="plane">
+      <h3>
+        Static posture
+        <span class="pill {{ status_class(d.static_posture.status) }}">{{ d.static_posture.status }}</span>
+      </h3>
+      <dl class="kv">
+        {% if d.static_posture.status == 'ingested' %}
+          <dt>source</dt>
+          <dd><code>{{ d.static_posture.source_tool }}{% if d.static_posture.source_version %} {{ d.static_posture.source_version }}{% endif %}</code></dd>
+          {% for state in ['covered', 'not_tested', 'n/a'] %}
+            <dt>{{ state.replace('_', ' ') }}</dt><dd>{{ d.static_posture.counts.get(state, 0) }}</dd>
+          {% endfor %}
+        {% else %}
+          <dt>reason</dt><dd><code>{{ d.static_posture.reason }}</code></dd>
+        {% endif %}
+      </dl>
+      <p class="why">
+        A scanner's grade is never a verdict here — it names a surface; only a scenario
+        with a verdict can say whether an attack through it would be seen.
+      </p>
+    </div>
   </div>
 
   {% if d.purple.superseded_runs %}
@@ -281,6 +310,54 @@
     </details>
   {% endfor %}
 
+  {% if d.static_posture.findings %}
+    <h2>Static posture findings</h2>
+    <p class="sub">
+      Ingested from <code>{{ d.static_posture.source_tool }}</code>{% if d.static_posture.source_version %} {{ d.static_posture.source_version }}{% endif %}.
+      <code>not_tested</code> is the default: a surface a scanner flagged with no
+      scenario exercising it has been scanned, not tested.
+      {% if d.static_posture.problems %}
+        {{ d.static_posture.problems | length }} finding(s) named a file outside the
+        project root and were refused rather than correlated.
+      {% endif %}
+    </p>
+
+    <div class="filters" id="posture-filters">
+      <span class="lbl">Coverage</span>
+      <button type="button" class="chip" data-coverage="all" aria-pressed="true">all {{ d.static_posture.findings | length }}</button>
+      <button type="button" class="chip" data-coverage="not_tested" aria-pressed="false">flagged but untested {{ d.static_posture.counts.get('not_tested', 0) }}</button>
+      <button type="button" class="chip" data-coverage="covered" aria-pressed="false">covered {{ d.static_posture.counts.get('covered', 0) }}</button>
+      <button type="button" class="chip" data-coverage="n/a" aria-pressed="false">n/a {{ d.static_posture.counts.get('n/a', 0) }}</button>
+    </div>
+
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>Rule</th><th>Severity</th><th>Category</th><th>File</th><th>Coverage</th></tr>
+        </thead>
+        <tbody>
+        {% for f in d.static_posture.findings %}
+          <tr class="posture-row" data-coverage="{{ f.coverage }}">
+            <td><code>{{ f.rule_id }}</code><br><span class="sub">{{ f.title }}</span></td>
+            <td>
+              <span class="pill {{ 'fail' if f.severity in ('critical', 'high') else ('warn' if f.severity == 'medium' else 'skip') }}">
+                {{ f.severity }}
+              </span>
+            </td>
+            <td>{{ f.category }}</td>
+            <td><code>{{ f.file }}</code></td>
+            <td>
+              <span class="pill {{ 'pass' if f.coverage == 'covered' else 'skip' }}">{{ f.coverage }}</span>
+              {% if f.scenario_ids %}<br><span class="sub">{{ f.scenario_ids | join(', ') }}</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <p class="empty" id="posture-no-match" hidden>No finding matches this filter.</p>
+  {% endif %}
+
   {% if findings %}
     <h2>Open findings</h2>
     <p class="sub">
@@ -369,6 +446,36 @@
       apply();
     });
   }
+}());
+
+(function () {
+  "use strict";
+  var bar = document.getElementById("posture-filters");
+  if (!bar) { return; }
+  var rows = document.querySelectorAll(".posture-row");
+  var note = document.getElementById("posture-no-match");
+  var coverage = "all";
+
+  function apply() {
+    var visible = 0;
+    rows.forEach(function (el) {
+      var ok = coverage === "all" || el.dataset.coverage === coverage;
+      el.hidden = !ok;
+      if (ok) { visible++; }
+    });
+    if (note) { note.hidden = visible !== 0; }
+  }
+
+  bar.querySelectorAll(".chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      bar.querySelectorAll(".chip").forEach(function (other) {
+        other.setAttribute("aria-pressed", "false");
+      });
+      chip.setAttribute("aria-pressed", "true");
+      coverage = chip.dataset.coverage;
+      apply();
+    });
+  });
 }());
 </script>
 </body>

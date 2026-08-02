@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentsec.dev/schemas/project-dashboard.schema.json",
   "title": "AgentSec Project Dashboard",
-  "description": "What `agentsec://dashboard/latest` returns: one document composing three planes that stay separate. `project` identifies the repository, `purple` is the existing four-axis rollup described by dashboard.schema.json, and `skill_assurance` is the Skill Assurance summary from its own bounded context (ADR 0008). Composition, not merging — a Skill outcome never appears in verdict_counts, axis_counts or a PurpleVerdict, because the two planes answer different questions and a single number that averages them answers neither. Computed in memory on every read; nothing is written to serve this document.",
+  "description": "What `agentsec://dashboard/latest` returns: one document composing four planes that stay separate. `project` identifies the repository, `purple` is the existing four-axis rollup described by dashboard.schema.json, `skill_assurance` is the Skill Assurance summary from its own bounded context (ADR 0008), and `static_posture` is a static scanner's report ingested and correlated against what actually ran (issue #25). Composition, not merging — neither a Skill outcome nor a static finding ever appears in verdict_counts, axis_counts or a PurpleVerdict, because each plane answers a different question and a single number that averages them answers none. Computed in memory on every read; nothing is written to serve this document.",
   "type": "object",
   "required": [
     "schema_version",
@@ -10,7 +10,8 @@
     "generated_at",
     "project",
     "purple",
-    "skill_assurance"
+    "skill_assurance",
+    "static_posture"
   ],
   "additionalProperties": false,
   "properties": {
@@ -24,6 +25,7 @@
     "project": { "$ref": "#/$defs/project" },
     "purple": { "$ref": "https://agentsec.dev/schemas/dashboard.schema.json" },
     "skill_assurance": { "$ref": "#/$defs/skillAssurance" },
+    "static_posture": { "$ref": "#/$defs/staticPosture" },
     "redaction": {
       "type": "object",
       "description": "Publication manifest. Present on every projected document, so a reader can tell a withheld field from an absent one.",
@@ -72,6 +74,59 @@
         "counts": {
           "type": "object",
           "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "staticPosture": {
+      "type": "object",
+      "description": "A static scanner's report (AgentShield JSON or SARIF), ingested and correlated against the surfaces this project discovered and the scenarios that actually ran (issue #25). `not_tested` when no report is configured or present; `error` on an unrecognised shape; never a PurpleVerdict, an axis, or a grade a `secure` can be derived from — see ADR 0002 and the non-negotiables in #25.",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["not_tested", "ingested", "error"],
+          "description": "Deliberately not `pass`/`fail`: this plane reports whether a report was ingested, never whether the repository is secure. Spelled differently from PurpleVerdict/AxisStatus/skillAssurance.status on purpose, so a reader cannot mistake this for a verdict-shaped plane."
+        },
+        "reason": { "type": "string", "maxLength": 120 },
+        "detail": { "type": "string", "maxLength": 500 },
+        "source_tool": { "type": ["string", "null"] },
+        "source_version": { "type": ["string", "null"] },
+        "counts": {
+          "type": "object",
+          "description": "Per finding: covered / not_tested / n/a. not_tested is the default — being scanned is not coverage.",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "problems": {
+          "type": "array",
+          "description": "Findings whose 'file' resolved outside the project root — refused by project.resolver.safe_child rather than silently marked n/a.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rule_id": { "type": "string" },
+              "file": { "type": "string" },
+              "detail": { "type": "string" }
+            }
+          }
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule_id", "severity", "category", "file", "coverage"],
+            "properties": {
+              "rule_id": { "type": "string" },
+              "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+              "category": { "type": "string" },
+              "file": { "type": "string" },
+              "title": { "type": "string" },
+              "source_tool": { "type": "string" },
+              "coverage": { "enum": ["covered", "not_tested", "n/a"] },
+              "scenario_ids": {
+                "type": "array",
+                "items": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" }
+              }
+            }
+          }
         }
       }
     }

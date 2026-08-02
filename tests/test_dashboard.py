@@ -51,7 +51,7 @@ def test_the_dashboard_matches_its_published_schema(dashboard: dict) -> None:
     assert dashboard["redaction"]["policy"]
     assert set(dashboard) == {
         "schema_version", "kind", "generated_at", "project", "purple",
-        "skill_assurance", "redaction",
+        "skill_assurance", "static_posture", "redaction",
     }
 
 

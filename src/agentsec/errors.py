@@ -108,3 +108,13 @@ class UnsafePath(ProjectError):
     """
 
     code = "path_escapes_project"
+
+
+class PostureIngestionError(AgentSecError):
+    """A configured static posture report exists but is not a shape this
+    version recognises (neither AgentShield JSON nor SARIF).
+
+    An unrecognised shape is an ``error``, never an empty pass — see issue #25.
+    """
+
+    code = "posture_report_invalid"

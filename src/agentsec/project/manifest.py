@@ -88,6 +88,23 @@ class ProjectManifest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
     surfaces: Surfaces = Field(default_factory=Surfaces)
+    static_posture_report: str | None = Field(
+        default=None,
+        description=(
+            "Where a static scanner's report (AgentShield JSON or SARIF) lives, "
+            "relative to this file's repository. Unlike `surfaces`, this has no "
+            "default: most repositories have not run a scanner, and inventing a "
+            "location no report lives at would make `not_tested` look like a "
+            "path resolution error instead of an honest absence."
+        ),
+    )
+
+    @field_validator("static_posture_report")
+    @classmethod
+    def _report_location_is_safe(cls, value: str | None) -> str | None:
+        if value is not None:
+            check_location(value, field="static_posture_report")
+        return value
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -95,6 +112,7 @@ class ProjectManifest(BaseModel):
             "name": self.name,
             "description": self.description,
             "surfaces": self.surfaces.as_dict(),
+            "static_posture_report": self.static_posture_report,
         }
 
 
