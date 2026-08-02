@@ -44,8 +44,11 @@ def _minimal(**spec_overrides) -> dict:  # noqa: ANN003
 
 
 def test_every_shipped_scenario_parses_and_validates() -> None:
+    """4 original + 4 AGT-CONFIG-* (issue #26): the agent-configuration attack
+    channel, none of which touch the demo-agent-fixture selection — see
+    test_pipeline.py's verdict matrix, which is pinned unchanged."""
     catalog = ScenarioCatalog.from_dir(SCENARIO_DIR, strict=True)
-    assert len(catalog) == 4
+    assert len(catalog) == 8
     assert not catalog.load_errors
     for entry in catalog:
         report = validate_scenario(entry.scenario)
@@ -77,8 +80,8 @@ def test_owasp_coverage_denominator_is_the_full_top_ten() -> None:
     coverage = catalog.coverage()
     assert coverage["total_categories"] == 10
     assert len(OWASP_AGENTIC_TOP10) == 10
-    assert coverage["covered_categories"] == 4
-    assert coverage["coverage_ratio"] == pytest.approx(0.4)
+    assert coverage["covered_categories"] == 8
+    assert coverage["coverage_ratio"] == pytest.approx(0.8)
 
 
 # ---------------------------------------------------------------- semantic rules

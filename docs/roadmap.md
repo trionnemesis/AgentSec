@@ -7,7 +7,7 @@ exercised against a live system; 🔲 is not built.
 
 | Component | Status | Notes |
 |---|---|---|
-| Scenario schema + Attack–Detection Contract | ✅ | `schemas/scenario.schema.json`, 4 worked examples |
+| Scenario schema + Attack–Detection Contract | ✅ | `schemas/scenario.schema.json`, 8 worked examples |
 | Three-layer validator | ✅ | JSON Schema → Pydantic → 15 semantic rules |
 | Target allowlist + private-address guard | ✅ | `production` not expressible; public hosts refused |
 | Policy guard (risk ceiling, quarantine, approvals) | ✅ | single decision point for CLI, MCP and CI |
@@ -21,7 +21,10 @@ exercised against a live system; 🔲 is not built.
 | Report normaliser → JUnit / HTML / JSON | ✅ | HTML is self-contained and theme-aware |
 | CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
 | MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
-| OWASP Agentic Top 10 coverage reporting | ✅ | 4/10 categories covered by the bundled scenarios |
+| OWASP Agentic Top 10 coverage reporting | ✅ | 8/10 categories covered by the bundled scenarios |
+| `AGT-CONFIG-*` agent-configuration attack family | ✅ | 4 scenarios — poisoned project instructions, hidden-Unicode agent definitions, hook command injection, credential-shaped MCP addition ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); validated clean, `gate: warning` until stable across nightlies against a real target |
+| Static posture ingestion (AgentShield JSON / SARIF) | ✅ | `static_posture` plane, correlated against discovered surfaces and executed verdicts, never a fifth axis or a `PurpleVerdict` ([#25](https://github.com/trionnemesis/AgentSec/issues/25)) |
+| Run provenance (`recorded` / `live` / `mixed`) | ✅ | `RunSummary.provenance`; a fixture-derived `secure` is labelled as such, never presented like a live one ([#27](https://github.com/trionnemesis/AgentSec/issues/27)) |
 | Publication projection for observed data | ✅ | `reporting/publish.py`; transcripts become digests, identities pseudonyms, free-form maps keep keys and lose values |
 | Resource allowlist for the report gateway | ✅ | `ResourceSpec.published`; evidence, audit and target authoring detail are not registered under `AGENTSEC_MCP_READ_ONLY=1` |
 | Fail-closed publication | ✅ | unknown output kind raises; a resource with no publication policy stops the gateway from booting |
@@ -47,7 +50,11 @@ integrations are first drafts.
 **Near term — earn the CI gate**
 
 - [ ] Run against one real staging agent end to end, and fix what that reveals
-- [ ] Wazuh rule pack for the four bundled scenarios (`100501`, `100610`, `100720`, `100810`)
+- [ ] Wazuh rule pack for the four original bundled scenarios (`100501`, `100610`, `100720`, `100810`)
+- [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..004` (`100901`–`100904`) —
+      proposed for review, not committed: `hooks/guard_agentsec.py` refuses agent writes to
+      `fixtures/`. Until recorded, the family validates clean but does not run in nightly
+      (scoped to `environments: [ci, staging]`, so it does not select against `demo-agent-fixture`)
 - [ ] A promptfoo custom provider that resolves `target_id` server-side
 - [x] `agentsec init` for the selected repository, with a committed
       `.agentsec/project.yaml` and one canonical workspace resolver
