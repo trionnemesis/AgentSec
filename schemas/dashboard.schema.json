@@ -59,6 +59,20 @@
       "enum": [0, 1],
       "description": "1 when any counted run is blocking. This is the CI gate."
     },
+    "provenance_counts": {
+      "type": "object",
+      "description": "How many counted runs were proven against a replayed fixture versus a live system. Additive in 1.1: absent on documents produced before provenance existed, so a consumer must not assume it is present.",
+      "additionalProperties": false,
+      "properties": {
+        "recorded": { "type": "integer", "minimum": 0 },
+        "live": { "type": "integer", "minimum": 0 },
+        "mixed": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "fixture_derived": {
+      "type": "boolean",
+      "description": "True when every counted run's evidence is `recorded` — the whole rollup was proven against replayed fixtures, not a live attack. Drives the banner a reader must see before trusting a `secure` count. False on an empty batch."
+    },
     "superseded_runs": {
       "type": "integer",
       "minimum": 0,
@@ -185,7 +199,26 @@
           "type": "array",
           "items": { "type": "string", "pattern": "^AAI[0-9]{3}$" }
         },
-        "tags": { "type": "array", "items": { "type": "string" } }
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "provenance": {
+          "type": "object",
+          "description": "How this run's evidence was actually produced. Presentation only — never changes purple_verdict or any axis. Additive in 1.1; absent on documents produced before provenance existed.",
+          "additionalProperties": false,
+          "properties": {
+            "executor": { "type": "string" },
+            "adapter": { "type": "string" },
+            "evidence": {
+              "type": "string",
+              "enum": ["recorded", "live", "mixed"],
+              "description": "recorded: every contributing source was file-backed (a replayed fixture). live: every contributing source queried a live system. mixed: some of each — named rather than hidden."
+            },
+            "backends": {
+              "type": "object",
+              "description": "Collector name -> backend kind, for collectors that actually contributed. Backend kinds only, never an endpoint or credential.",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
       }
     }
   }

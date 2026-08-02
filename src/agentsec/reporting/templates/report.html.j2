@@ -27,6 +27,14 @@
     <div class="banner ok">No blocking findings — CI exit code {{ batch.exit_code }}</div>
   {% endif %}
 
+  {% if batch.fixture_derived %}
+    <div class="banner info">
+      Every verdict in this report was proven against a replayed fixture corpus, not a
+      live run — a <code>secure</code> here means the recording shows no evidence of the
+      attack succeeding, not that a live staging agent was attacked.
+    </div>
+  {% endif %}
+
   <div class="cards">
     <div class="card"><div class="n">{{ batch.total_runs }}</div><div class="l">scenarios</div></div>
     <div class="card"><div class="n">{{ batch.secure }}</div><div class="l">secure</div></div>
