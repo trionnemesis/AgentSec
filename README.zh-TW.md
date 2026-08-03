@@ -50,13 +50,15 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **受限的 MCP gateway** | 11 個窄工具與 8 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
+| **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、以及實際執行過的判定互相比對 —— 分數永遠不是判定，未能對應到任何情境的發現預設為 `not_tested` |
+| **執行來源（provenance）** | 每個判定都會標示 `recorded` / `live` / `mixed`，由實際使用的執行器與證據後端推導而來 —— 用 fixture 產生的 `secure` 絕不會被誤讀成對真實 agent 驗證出來的結果 |
 
 **適用範圍**
 
 * **環境**：`local`、`ci`、`staging` —— `production` 不在列舉值中，因此沒有任何開關可以打開它
 * **涵蓋的 Agent 能力**：RAG、工具呼叫、持久記憶、多租戶、寄送郵件
-* **對應框架**：OWASP Agentic Top 10（內建情境覆蓋 4/10 個類別：`AAI001`、`AAI003`、`AAI004`、`AAI009`）與 OWASP LLM Top 10
-* **內建情境**：跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴
+* **對應框架**：OWASP Agentic Top 10（內建情境覆蓋 8/10 個類別：`AAI001`、`AAI002`、`AAI003`、`AAI004`、`AAI006`、`AAI007`、`AAI008`、`AAI009`）與 OWASP LLM Top 10
+* **內建情境**：跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴，以及針對 agent「設定」下手的攻擊家族 —— 被下毒的 `CLAUDE.md`、隱藏零寬 Unicode 的 agent 定義檔、hook 指令注入，以及工作階段中途新增的 MCP 伺服器（共八個情境）
 
 | 判定 | 意義 | 優先序 |
 |---|---|---|
@@ -107,7 +109,7 @@ pip install -e '.[dev]'
 ### 2. 執行離線流程
 
 ```bash
-agentsec validate                              # 檢查四個內建情境
+agentsec validate                              # 檢查內建情境
 agentsec preview --target demo-agent-fixture   # 「會」執行什麼，以及為什麼
 agentsec run --target demo-agent-fixture --profile nightly --html
 ```
@@ -269,7 +271,7 @@ spec:
 
 每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，九個資源中只提供六個：`dashboard/latest`、`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
 
-`agentsec://dashboard/latest` 是儀表板會輪詢的那一個：專案身分、四面向的 purple 彙整，以及 Skill Assurance 摘要，三者各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。
+`agentsec://dashboard/latest` 是儀表板會輪詢的那一個：專案身分、四面向的 purple 彙整、Skill Assurance 摘要，以及比對掃描工具發現與實際執行結果的靜態態勢面向，各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。
 
 有提供的部分是**投影，不是過濾**：每個 publisher 明確列出自己保留哪些欄位，所以明天在證據模型上新增的欄位，在有人決定它該被發布之前都不會出現在輸出裡。對話輪次轉為摘要值，自由格式的 map 保留 key、捨棄 value，主體（principal）、租戶與 actor 轉成穩定的代號 —— 跨租戶的橫向移動仍然看得出來，但不會印出那是誰。判定、各面向狀態、失敗的檢查、規則 ID、告警等級、工具名稱與決策則完整保留，因為讓讀者看不到 finding 的遮蔽並不值得部署。每一次投影都附帶一份「捨棄了什麼」的清單，理由和「未測試的面向回報 `not_tested`」相同：**被扣住的欄位不能讀起來像不存在的欄位**。細節見 [`docs/deployment.md`](docs/deployment.md)。
 
@@ -313,7 +315,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 ```
 schemas/               scenario / target / evidence、專案宣告檔與發布用儀表板的
                        JSON Schema —— 可攜的核心資產
-scenarios/             情境目錄（四個完整範例）
+scenarios/             情境目錄（八個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
 fixtures/              錄製語料，讓一切都能離線執行
 .agentsec/             專案宣告檔：穩定 id 與經審查的相對位置
@@ -326,6 +328,8 @@ src/agentsec/
 ├── execution/         # 紅隊執行器（replay、promptfoo）與目標轉接器
 ├── evidence/          # 蒐集器：OTel、Wazuh、工具稽核、DB 狀態差異
 ├── evaluation/        # 四個面向與判定解析器
+├── posture/           # 靜態掃描工具（AgentShield／SARIF）匯入與覆蓋率比對
+│                      # —— 僅作為輸入，絕不是判定
 ├── reporting/         # 正規化器 → JUnit / HTML / JSON；發布投影
 ├── store/             # SQLite 執行紀錄、findings、稽核紀錄
 ├── service/           # HarnessService —— 內部 API
@@ -364,6 +368,8 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 * **被拒絕的請求同樣寫入稽核。** 呼叫端*試圖*做什麼，才是那筆值得留下的紀錄。
 * **報表不會把它要回報的那次外洩再洩一次。** `AGT-TENANT-001` 證明跨租戶外洩的方式，是讓租戶 B 的訂單出現在租戶 A 的對話裡 —— 於是那份逐字稿同時是這個 finding 的**證據**，也**就是**被洩漏的那筆紀錄。因此發布輸出是投影而非過濾，而報表 gateway 根本不提供單次執行的證據與稽核紀錄。新增一個資源是一個決策，不是預設值：每個資源都必須指名自己的發布政策，少了政策 gateway 就拒絕啟動。
 * **拿不到的證據來源一律是 `error`，絕不會是 `pass`。** 情境若斷言了目標不具備的後端，會在任何東西開始執行之前就被驗證器擋下；蒐集器若在執行期失敗，該面向降級為 `error`，而 `error` 的優先序高於所有其他判定。報表不可能因為證據管線壞掉而變綠 —— 那正是這類工具最危險的一種 bug。
+* **靜態掃描工具的分數永遠不是判定。** 匯入 AgentShield 或任何輸出 SARIF 的掃描工具報告時，會組成一個獨立的 `static_posture` 面向；它絕不會擴大 `PurpleVerdict`、絕不會變成第五個面向，乾淨的分數也不能讓一個未測試的情境讀起來像 `secure`。
+* **判定會標示自己是怎麼被證明的。** 每次執行都帶有 `provenance`（`recorded` / `live` / `mixed`），所以用內建 fixture 語料產生的 `secure`，絕不會被呈現得像是對真實 agent 驗證出來的結果。
 * **判定過程中沒有語言模型。** 見 [ADR 0002](docs/adr/0002-deterministic-verdict.md)。
 
 ## 狀態
@@ -376,7 +382,7 @@ Alpha。決定性核心 —— schema → 政策 → replay → 證據 → 判�
 
 * 🐛 **Bug，或你認為判錯的結果** → [開一個 issue](https://github.com/trionnemesis/AgentSec/issues)，附上 run id 與證據包
 * 🎯 **情境點子** —— 目前目錄漏掉的攻擊型態 → 開 issue，或直接送上 YAML 與 fixture 的 PR
-* 🔍 **偵測規則** —— 為內建情境補上規則（`100501`、`100610`、`100720`、`100810`）
+* 🔍 **偵測規則** —— 為內建情境補上規則（`100501`、`100610`、`100720`、`100810`，或是 `AGT-CONFIG-*` 家族提議中的 `100901`–`100904`，詳見 [`docs/roadmap.md`](docs/roadmap.md)）
 * 🔧 **程式碼** → fork 後開 PR；請先跑 `make check`，並閱讀 [CONTRIBUTING.md](CONTRIBUTING.md) 中會在 review 時被強制執行的四條規則
 
 如果這個專案對你有幫助，按一顆 ⭐ 是最簡單的幫忙方式。

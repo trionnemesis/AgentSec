@@ -50,13 +50,15 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | **Constrained MCP gateway** | 11 narrow tools and 8 read-only resources; no shell, no SQL, no free-text URL |
 | **Publication boundary** | A read-only report gateway serves a projected subset — turn digests, pseudonymous principals, no evidence or audit URIs — so a dashboard cannot re-commit the breach it reports |
 | **Finding workflow** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`, with transitions enforced |
+| **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against discovered surfaces and executed verdicts — a grade is never a verdict, and an uncorrelated finding defaults to `not_tested` |
+| **Run provenance** | Every verdict carries `recorded` / `live` / `mixed`, derived from the executor and evidence backends actually used — a fixture-derived `secure` cannot be mistaken for one proven against a live agent |
 
 **Scope**
 
 * **Environments**: `local`, `ci`, `staging` — `production` is absent from the enum, so there is no flag to set
 * **Agent capabilities exercised**: RAG, tool calling, persistent memory, multi-tenancy, email
-* **Frameworks mapped**: OWASP Agentic Top 10 (4/10 categories covered by the bundled scenarios: `AAI001`, `AAI003`, `AAI004`, `AAI009`) and OWASP LLM Top 10
-* **Bundled scenarios**: cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion
+* **Frameworks mapped**: OWASP Agentic Top 10 (8/10 categories covered by the bundled scenarios: `AAI001`, `AAI002`, `AAI003`, `AAI004`, `AAI006`, `AAI007`, `AAI008`, `AAI009`) and OWASP LLM Top 10
+* **Bundled scenarios**: cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, plus the agent-configuration attack family — a poisoned `CLAUDE.md`, a hidden-Unicode agent definition, hook command injection, and a mid-session MCP addition (eight scenarios total)
 
 | Verdict | Meaning | Precedence |
 |---|---|---|
@@ -279,8 +281,9 @@ working surfaces for whoever operates the harness, and are not registered at all
 rather than rendered carefully.
 
 `agentsec://dashboard/latest` is the one a dashboard polls: project identity, the
-four-axis purple rollup and the Skill Assurance summary, each in its own property
-and described by [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json).
+four-axis purple rollup, the Skill Assurance summary, and a static posture plane
+correlating a scanner's findings against what actually ran, each in its own
+property and described by [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json).
 It is computed in memory — reading it starts no run and writes no file — and a
 document that does not match that schema is refused rather than served.
 
@@ -336,7 +339,7 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ```
 schemas/               JSON Schema for scenario, target, evidence, the project
                        manifest and the published dashboards — the portable assets
-scenarios/             The scenario catalogue (four worked examples)
+scenarios/             The scenario catalogue (eight worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus so everything runs offline
 .agentsec/             Project manifest: stable id and reviewed relative locations
@@ -349,6 +352,8 @@ src/agentsec/
 ├── execution/         # red executors (replay, promptfoo) and target adapters
 ├── evidence/          # collectors: OTel, Wazuh, tool audit, DB state diff
 ├── evaluation/        # the four axes and the verdict resolver
+├── posture/           # static scanner ingestion (AgentShield/SARIF) + coverage
+│                      # correlation — input only, never a verdict
 ├── reporting/         # normaliser → JUnit / HTML / JSON; publication projections
 ├── store/             # SQLite runs, findings, audit log
 ├── service/           # HarnessService — the internal API
@@ -387,6 +392,8 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 * **Refusals are audited.** What a caller *tried* to do is the interesting record.
 * **A report cannot re-commit the breach it reports.** `AGT-TENANT-001` proves a cross-tenant leak by getting tenant B's order into tenant A's transcript, which makes that transcript both the evidence *and* the leaked record. Published output is therefore projected rather than filtered, and the report gateway declines to serve per-run evidence and the audit log at all. Adding a resource is a decision, not a default: every one names a publication policy, and the gateway refuses to start if a policy is missing.
 * **An uncollectable evidence source is an `error`, never a `pass`.** A scenario asserting on a backend the target does not have is rejected by the validator before anything runs; a collector that fails at run time degrades its axis to `error`, which outranks every other verdict. The report cannot turn green because the evidence pipeline broke — which is the most dangerous bug available to this kind of tool.
+* **A static scanner's grade is never a verdict.** Ingesting AgentShield's or any SARIF-emitting scanner's report composes a separate `static_posture` plane; it never widens `PurpleVerdict`, never becomes a fifth axis, and a clean grade cannot make an untested scenario read as `secure`.
+* **A verdict says how it was proven.** Every run carries `provenance` (`recorded` / `live` / `mixed`), so a `secure` produced against the bundled fixture corpus is never presented like one proven against a live agent.
 * **No language model in the verdict.** See [ADR 0002](docs/adr/0002-deterministic-verdict.md).
 
 ## Status
@@ -399,7 +406,7 @@ All forms of participation are welcome — you don't have to write code:
 
 * 🐛 **Bug, or a verdict you believe is wrong** → [open an issue](https://github.com/trionnemesis/AgentSec/issues) with the run id and the evidence bundle
 * 🎯 **A scenario idea** — an attack shape the catalogue misses → issue, or a PR with the YAML and fixtures
-* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`)
+* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`, or the proposed `100901`–`100904` for the `AGT-CONFIG-*` family — see [`docs/roadmap.md`](docs/roadmap.md))
 * 🔧 **Code** → fork and open a PR; run `make check` first, and read [CONTRIBUTING.md](CONTRIBUTING.md) for the four rules that get enforced in review
 
 If this project helps you, a ⭐ is the easiest way to help others find it.
