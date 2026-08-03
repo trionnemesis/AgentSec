@@ -47,7 +47,12 @@ from agentsec.models.run import Run
 
 #: Bumped when a published shape changes in a way a consumer would notice.
 #: A Live Artifact or MCP App can pin against it; see ``schemas/dashboard.schema.json``.
-PUBLISH_SCHEMA_VERSION = "1.0.0"
+#: 1.1.0 added `provenance` per run and `provenance_counts`/`fixture_derived` on
+#: the rollup (#27) — additive only, so a consumer pinned to 1.x still validates.
+#: 1.2.0 added the `static_posture` plane to the composed dashboard (#25) — a
+#: new *required* key on the `dashboard` kind, so a consumer pinned there does
+#: notice; `report`/`purple` on their own are unaffected.
+PUBLISH_SCHEMA_VERSION = "1.2.0"
 
 #: Names the ruleset, so a stored export says which policy produced it.
 PUBLISH_POLICY = "observed-data-v1"
@@ -408,6 +413,58 @@ def publish_evidence(bundle: dict[str, Any]) -> dict[str, Any]:
 # -- findings, coverage, audit -----------------------------------------------
 
 
+def publish_posture(document: dict[str, Any] | None) -> dict[str, Any]:
+    """Project the static-posture plane (issue #25).
+
+    Embedded directly in ``static_posture``, the same as ``skill_assurance`` —
+    not wrapped in the standalone-resource envelope, so the composed dashboard
+    stays a flat, schema-checked shape rather than an envelope inside an
+    envelope. ``StaticPostureFinding`` never captures the matched snippet in
+    the first place (see ``models/posture.py``), so there is nothing further
+    to strip from a finding beyond capping its scanner-authored title: rule
+    id, severity, category, file path and coverage state pass through
+    unchanged. Optional keys are omitted rather than sent as ``null``, so a
+    status of ``not_tested`` does not carry an empty ``findings: []`` a reader
+    could mistake for "scanned, nothing found".
+    """
+    document = document or {"status": "not_tested", "reason": "no_report"}
+    body: dict[str, Any] = {"status": document.get("status", "not_tested")}
+    if document.get("reason") is not None:
+        body["reason"] = document["reason"]
+    if document.get("detail") is not None:
+        body["detail"] = scrub(document["detail"])
+    if document.get("source_tool") is not None:
+        body["source_tool"] = document["source_tool"]
+    if document.get("source_version") is not None:
+        body["source_version"] = document["source_version"]
+    if "counts" in document:
+        body["counts"] = dict(document["counts"])
+    if document.get("problems"):
+        body["problems"] = [
+            {
+                "rule_id": p.get("rule_id"),
+                "file": p.get("file"),
+                "detail": scrub(p.get("detail")),
+            }
+            for p in document["problems"]
+        ]
+    if "findings" in document:
+        body["findings"] = [
+            {
+                "rule_id": f.get("rule_id"),
+                "severity": f.get("severity"),
+                "category": f.get("category"),
+                "file": f.get("file"),
+                "title": scrub(f.get("title")),
+                "source_tool": f.get("source_tool"),
+                "coverage": f.get("coverage"),
+                "scenario_ids": list(f.get("scenario_ids") or []),
+            }
+            for f in document["findings"]
+        ]
+    return body
+
+
 def publish_findings(findings: list[dict[str, Any]]) -> dict[str, Any]:
     """Findings are workflow records: ids, statuses and operator-written notes."""
     return _envelope(
@@ -553,6 +610,10 @@ def publish_dashboard(document: dict[str, Any]) -> dict[str, Any]:
         # version. Republishing it is a no-op by design; see publish_report.
         "purple": document.get("purple"),
         "skill_assurance": document.get("skill_assurance"),
+        # A fourth plane, composed beside the other three and never merged into
+        # any of them (issue #25). Its own publisher, because unlike the other
+        # two it names files and needs its own (already-minimal) redaction.
+        "static_posture": publish_posture(document.get("static_posture")),
         "redaction": {"policy": PUBLISH_POLICY, "dropped": []},
     }
     errors = sorted(_dashboard_validator().iter_errors(body), key=str)
@@ -578,6 +639,7 @@ PUBLISHERS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "declared": publish_declared,
     "report": publish_report,
     "dashboard": publish_dashboard,
+    "posture": publish_posture,
 }
 
 

@@ -25,9 +25,11 @@ from agentsec.errors import (
     ConfigError,
     InvalidTransition,
     PolicyViolation,
+    PostureIngestionError,
     ProjectNotInitialised,
     ScenarioError,
     TargetNotFound,
+    UnsafePath,
 )
 from agentsec.evaluation.evaluator import PurpleEvaluator
 from agentsec.evidence.collector import EvidenceCollector
@@ -42,7 +44,9 @@ from agentsec.policy.allowlist import load_allowlist
 from agentsec.policy.approvals import ApprovalStore
 from agentsec.policy.guard import PolicyGuard
 from agentsec.policy.profiles import Profile, load_profiles
-from agentsec.project import MANIFEST_PATH, discover
+from agentsec.posture.adapter import load_posture_report, resolve_report_path
+from agentsec.posture.coverage import compute_posture_coverage, coverage_counts
+from agentsec.project import MANIFEST_PATH, Discovery, discover
 from agentsec.reporting.html import write_html_report
 from agentsec.reporting.junit import render_junit
 from agentsec.reporting.normalizer import (
@@ -330,7 +334,10 @@ class HarnessService:
             )
             runs.append(run)
             collector_errors = self._collector_errors_for(run)
-            summaries.append(normalize_run(run, scenario, prof, collector_errors))
+            evidence_backends = self._evidence_backends_for(run)
+            summaries.append(
+                normalize_run(run, scenario, prof, collector_errors, target, evidence_backends)
+            )
 
         report = normalize_batch(summaries, profile=profile, target_id=target_id)
         return BatchResult(runs=runs, summaries=summaries, report=report)
@@ -676,15 +683,22 @@ class HarnessService:
 
     def _rollup(
         self, *, target_id: str | None, profile: str | None, limit: int
-    ) -> tuple[dict[str, Any], list[RunSummary]]:
+    ) -> tuple[dict[str, Any], list[RunSummary], set[str]]:
         """The batch rollup, computed in memory and written nowhere.
 
         Shared by ``generate_report``, which then renders it to files, and by
         ``dashboard``, which does not. One computation rather than two: a
         dashboard that disagreed with the report it sits next to would be worse
         than no dashboard.
+
+        The third element is every scenario id with at least one *real* verdict
+        (``Run.verdict is not None`` — a refused or dry-run attempt has none).
+        It exists for ``static_posture``'s coverage correlation, which must not
+        call a finding ``covered`` just because a scenario is catalogued and
+        tagged at the right surface; something has to have actually run.
         """
         runs = self.store.list_runs(target_id=target_id, profile=profile, limit=limit)
+        scenarios_with_a_verdict = {r.scenario_id for r in runs if r.verdict is not None}
 
         history = []
         for run in runs:
@@ -693,7 +707,12 @@ class HarnessService:
                 scenario = self.catalog.get(run.scenario_id)
             prof = self.profiles.get(run.profile) if run.profile in self.profiles.profiles else None
             history.append(
-                normalize_run(run, scenario, prof, self._collector_errors_for(run))
+                normalize_run(
+                    run, scenario, prof,
+                    self._collector_errors_for(run),
+                    self._target_for(run),
+                    self._evidence_backends_for(run),
+                )
             )
 
         # The rollup answers "where does this target stand now", not "what has CI
@@ -705,7 +724,7 @@ class HarnessService:
         # The runs the rollup dropped are not noise — they are the trend. Kept
         # separately so the counts stay "where does this stand now".
         batch["history"] = verdict_history(history)
-        return batch, summaries
+        return batch, summaries, scenarios_with_a_verdict
 
     def dashboard(
         self, *, target_id: str | None = None, profile: str | None = None, limit: int = 200
@@ -724,8 +743,10 @@ class HarnessService:
         its own bounded context (ADR 0008). A UI may show them side by side. A
         single number averaging them would answer neither.
         """
-        batch, _ = self._rollup(target_id=target_id, profile=profile, limit=limit)
-        project, assurance = self._project_planes()
+        batch, _, scenarios_with_a_verdict = self._rollup(
+            target_id=target_id, profile=profile, limit=limit
+        )
+        project, assurance, posture = self._project_planes(scenarios_with_a_verdict)
         return {
             "schema_version": PUBLISH_SCHEMA_VERSION,
             "kind": "dashboard",
@@ -733,16 +754,21 @@ class HarnessService:
             "project": project,
             "purple": batch,
             "skill_assurance": assurance,
+            "static_posture": posture,
         }
 
-    def _project_planes(self) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Project identity and Skill Assurance, or an honest account of why not.
+    def _project_planes(
+        self, scenarios_with_a_verdict: set[str] | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """Project identity, Skill Assurance and static posture, or an honest
+        account of why not.
 
         A workspace with no manifest is a legitimate state — the harness ran
         against it long before `agentsec init` existed. It is not, however, an
         anonymous healthy project: the dashboard says `not_initialised` and the
         Skill plane says `not_tested`, because "we do not know which repository
-        this is" must never render as a clean result.
+        this is" must never render as a clean result. Static posture follows the
+        same rule (#25): no manifest means nothing was ingested, not a clean scan.
         """
         try:
             discovery = discover(self.settings.workspace)
@@ -757,6 +783,11 @@ class HarnessService:
                     "reason": "project_not_initialised",
                     "detail": "the project has no manifest, so its skills were never located",
                 },
+                {
+                    "status": "not_tested",
+                    "reason": "project_not_initialised",
+                    "detail": "the project has no manifest, so no report location is known",
+                },
             )
         except ConfigError as exc:
             return (
@@ -765,6 +796,11 @@ class HarnessService:
                     "status": "not_tested",
                     "reason": "project_invalid",
                     "detail": "the project manifest does not load; its surfaces were not read",
+                },
+                {
+                    "status": "not_tested",
+                    "reason": "project_invalid",
+                    "detail": "the project manifest does not load; no report location is known",
                 },
             )
 
@@ -777,7 +813,60 @@ class HarnessService:
                 "surfaces": counts,
             },
             {**discovery.skill_assurance(), "counts": counts},
+            self._static_posture(discovery, scenarios_with_a_verdict or set()),
         )
+
+    def _static_posture(
+        self, discovery: Discovery, scenarios_with_a_verdict: set[str]
+    ) -> dict[str, Any]:
+        """The fourth plane (#25): ingest a static scanner's report, if one is
+        configured, and correlate it against what actually ran.
+
+        A grade is never a verdict here. This returns a status of its own —
+        never a ``PurpleVerdict`` — and the only way it reaches ``purple`` or
+        ``axis_counts`` is if someone adds a scenario that asserts on the
+        surface it names, which is a contract, not a scanner grade.
+        """
+        location = discovery.static_posture_report
+        if not location:
+            return {"status": "not_tested", "reason": "no_report"}
+
+        try:
+            path = resolve_report_path(self.settings.workspace, location)
+        except UnsafePath as exc:
+            return {"status": "error", "reason": "unsafe_location", "detail": exc.message[:500]}
+
+        if not path.is_file():
+            return {
+                "status": "not_tested",
+                "reason": "no_report",
+                "detail": f"{location} is declared but not present",
+            }
+
+        try:
+            report = load_posture_report(path)
+        except PostureIngestionError as exc:
+            detail = exc.message[:500]
+            version = exc.details.get("version")
+            if version:
+                detail = f"{detail} (version: {version})"
+            return {"status": "error", "reason": "unrecognised_schema", "detail": detail}
+
+        rows, problems = compute_posture_coverage(
+            report.findings,
+            root=self.settings.workspace,
+            discovery=discovery,
+            catalog=self.catalog,
+            scenarios_with_a_verdict=scenarios_with_a_verdict,
+        )
+        return {
+            "status": "ingested",
+            "source_tool": report.source_tool,
+            "source_version": report.source_version,
+            "counts": coverage_counts(rows),
+            "findings": [r.to_dict() for r in rows],
+            "problems": problems,
+        }
 
     def generate_report(
         self,
@@ -794,7 +883,7 @@ class HarnessService:
         that says "all".
         """
         formats = formats or ["html", "json"]
-        batch, summaries = self._rollup(target_id=target_id, profile=profile, limit=limit)
+        batch, summaries, _ = self._rollup(target_id=target_id, profile=profile, limit=limit)
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         written: dict[str, str] = {}
 
@@ -901,6 +990,38 @@ class HarnessService:
             {"source": e.get("source", ""), "message": e.get("message", "")}
             for e in bundle.get("collector_errors", [])
         ]
+
+    def _evidence_backends_for(self, run: Run) -> dict[str, str]:
+        """Collector name -> backend kind, for sources that actually contributed.
+
+        A collector that errored never reaches ``sources`` in the persisted
+        bundle (``EvidenceCollector.collect`` only sets the attribute on
+        success), so it is absent here too — never silently counted as
+        ``recorded`` or ``live``. Feeds ``reporting.normalizer.derive_provenance``.
+        """
+        if not run.evidence_ref:
+            return {}
+        try:
+            bundle = self.get_run_evidence(run.run_id)
+        except AgentSecError:
+            return {}
+        backends: dict[str, str] = {}
+        for name, source in (bundle.get("sources") or {}).items():
+            if name == "transcript" or not isinstance(source, dict):
+                continue
+            backend = (source.get("meta") or {}).get("backend")
+            if backend:
+                backends[name] = backend
+        return backends
+
+    def _target_for(self, run: Run) -> Target | None:
+        try:
+            return self.get_target(run.target_id)
+        except AgentSecError:
+            # A rollup covers history; a target renamed or removed since the run
+            # must not stop the report, it just leaves provenance's adapter
+            # field as "unknown" for that one run.
+            return None
 
     def _next_run_id(self) -> str:
         """RUN-YYYYMMDD-NNN, sequential within the day and claimed atomically."""

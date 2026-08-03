@@ -107,7 +107,7 @@ pip install -e '.[dev]'
 ### 2. Run the offline pipeline
 
 ```bash
-agentsec validate                              # lint the four bundled scenarios
+agentsec validate                              # lint the bundled scenarios
 agentsec preview --target demo-agent-fixture   # what *would* run, and why
 agentsec run --target demo-agent-fixture --profile nightly --html
 ```

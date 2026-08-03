@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/posture.schema.json",
+  "title": "AgentSec Ingested Static Posture Report",
+  "description": "The normalised shape `posture.adapter.load_posture_report` produces from AgentShield's native JSON or from SARIF, before correlation against the project's discovered surfaces. Input only: nothing here is a PurpleVerdict, an axis, or a grade a `secure` can be derived from (issue #25, ADR 0002). Deliberately does not carry matched source text — only rule id, severity, category and file path survive from whatever the scanner emitted.",
+  "type": "object",
+  "required": ["source_tool", "findings"],
+  "additionalProperties": false,
+  "properties": {
+    "source_tool": {
+      "type": "string",
+      "description": "Lowercased tool name, e.g. 'agentshield' or the SARIF driver's own name."
+    },
+    "source_version": { "type": ["string", "null"] },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["rule_id", "severity", "category", "file", "title", "source_tool"],
+      "additionalProperties": false,
+      "properties": {
+        "rule_id": { "type": "string" },
+        "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+        "category": { "type": "string" },
+        "file": {
+          "type": "string",
+          "description": "Project-relative path, refused by project.resolver.safe_child if it resolves outside the project root."
+        },
+        "title": { "type": "string" },
+        "source_tool": { "type": "string" },
+        "source_version": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -9,12 +9,85 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 from agentsec.models.run import AxisStatus, PurpleVerdict, Run
 from agentsec.models.scenario import Scenario
+from agentsec.models.target import Target
 from agentsec.policy.profiles import Profile
 from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
+
+EvidenceProvenance = Literal["recorded", "live", "mixed"]
+
+#: Backend kinds a collector or adapter can report. A file-backed collector or a
+#: fixture adapter *replayed* something someone recorded earlier; opensearch/http
+#: queried a live system while the run was happening. Nothing in between exists
+#: today, so a kind outside both sets cannot occur — see ``_evidence_kind``.
+_RECORDED_KINDS = frozenset({"file", "fixture"})
+_LIVE_KINDS = frozenset({"http", "opensearch"})
+
+
+@dataclass
+class Provenance:
+    """How a run's evidence was actually produced — never how it was judged.
+
+    Presentation only: adding this changes no verdict and no axis (ADR 0002 is
+    unamended). A ``secure`` produced entirely from replayed fixtures is still
+    ``secure``; this just says what it was proven against, the same way
+    AgentShield's ``runtimeConfidence`` tags a finding without changing its rule.
+    """
+
+    executor: str
+    adapter: str
+    evidence: EvidenceProvenance
+    backends: dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "executor": self.executor,
+            "adapter": self.adapter,
+            "evidence": self.evidence,
+            "backends": dict(self.backends),
+        }
+
+
+def _evidence_kind(kinds: set[str]) -> EvidenceProvenance:
+    if not kinds:
+        # Nothing here observed a live system. There is no "unknown" value in
+        # this enum, so absence of evidence defaults to the label that never
+        # overclaims — the same rule as an untested axis never rounding up.
+        return "recorded"
+    if kinds <= _RECORDED_KINDS:
+        return "recorded"
+    if kinds <= _LIVE_KINDS:
+        return "live"
+    return "mixed"
+
+
+def derive_provenance(
+    run: Run,
+    target: Target | None = None,
+    evidence_backends: dict[str, str] | None = None,
+) -> Provenance:
+    """Derived from ``Run.execution`` and the collectors that actually ran.
+
+    ``evidence_backends`` maps collector name -> backend kind (``file``,
+    ``http``, ``opensearch``) for sources that actually contributed. A collector
+    that errored contributes nothing and must already be absent from this map —
+    see ``HarnessService._evidence_backends_for`` — so it is never counted
+    towards either ``recorded`` or ``live``.
+    """
+    backends = dict(evidence_backends or {})
+    adapter = target.adapter.kind if target is not None else "unknown"
+    kinds = set(backends.values())
+    if adapter != "unknown":
+        kinds.add(adapter)
+    return Provenance(
+        executor=run.execution.executor if run.execution else "none",
+        adapter=adapter,
+        evidence=_evidence_kind(kinds),
+        backends=backends,
+    )
 
 
 @dataclass
@@ -40,6 +113,9 @@ class RunSummary:
     collector_errors: list[dict[str, str]] = field(default_factory=list)
     owasp: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    provenance: Provenance = field(
+        default_factory=lambda: Provenance(executor="none", adapter="unknown", evidence="recorded")
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +140,7 @@ class RunSummary:
             "collector_errors": self.collector_errors,
             "owasp": self.owasp,
             "tags": self.tags,
+            "provenance": self.provenance.to_dict(),
         }
 
 
@@ -72,6 +149,8 @@ def normalize_run(
     scenario: Scenario | None = None,
     profile: Profile | None = None,
     collector_errors: list[dict[str, str]] | None = None,
+    target: Target | None = None,
+    evidence_backends: dict[str, str] | None = None,
 ) -> RunSummary:
     verdict = run.verdict
     duration = 0.0
@@ -122,6 +201,7 @@ def normalize_run(
         collector_errors=collector_errors or [],
         owasp=list(scenario.metadata.references.owasp_agentic) if scenario else [],
         tags=list(scenario.metadata.tags) if scenario else [],
+        provenance=derive_provenance(run, target, evidence_backends),
     )
 
 
@@ -194,6 +274,15 @@ def normalize_batch(summaries: list[RunSummary], *, profile: str, target_id: str
 
     blocking = [s for s in summaries if s.blocking]
 
+    provenance_counts = {
+        kind: sum(1 for s in summaries if s.provenance.evidence == kind)
+        for kind in ("recorded", "live", "mixed")
+    }
+    # The banner a reader needs: every counted verdict came from a replayed
+    # fixture, not a live run. False on an empty batch — nothing has been
+    # proven against anything, so there is nothing to label "fixture-derived".
+    fixture_derived = bool(summaries) and provenance_counts["recorded"] == len(summaries)
+
     return {
         # Stamped here rather than at the gateway so the JSON written to disk
         # carries it too: a dashboard reading a file and a dashboard reading the
@@ -209,5 +298,7 @@ def normalize_batch(summaries: list[RunSummary], *, profile: str, target_id: str
         "blocking_count": len(blocking),
         "blocking_scenarios": [s.scenario_id for s in blocking],
         "exit_code": 1 if blocking else 0,
+        "provenance_counts": provenance_counts,
+        "fixture_derived": fixture_derived,
         "runs": [s.to_dict() for s in summaries],
     }

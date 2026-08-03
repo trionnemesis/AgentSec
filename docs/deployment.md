@@ -203,24 +203,65 @@ configuration* and *observed data*:
 
 ### The document a dashboard polls
 
-`agentsec://dashboard/latest` composes three planes and keeps them apart:
+`agentsec://dashboard/latest` composes four planes and keeps them apart:
 
 ```jsonc
 {
   "kind": "dashboard",
   "project":          { "status": "declared", "project_id": "…", "surfaces": { … } },
   "purple":           { /* the four-axis rollup — schemas/dashboard.schema.json */ },
-  "skill_assurance":  { "status": "not_tested", "reason": "no_evaluator" }
+  "skill_assurance":  { "status": "not_tested", "reason": "no_evaluator" },
+  "static_posture":   { "status": "not_tested", "reason": "no_report" }
 }
 ```
 
-Composition, not merging. A Skill outcome never enters `verdict_counts`,
-`axis_counts` or a `PurpleVerdict`: the two planes answer different questions and
-a single number averaging them answers neither. `skill_assurance` is
-`not_tested` in every case today, because `skill_eval` is not built
+Composition, not merging. A Skill outcome, and a static scanner's finding,
+never enter `verdict_counts`, `axis_counts` or a `PurpleVerdict`: each plane
+answers a different question, and a single number averaging them answers
+none. `skill_assurance` is `not_tested` in every case today, because
+`skill_eval` is not built
 ([ADR 0008](adr/0008-skill-assurance-bounded-context.md),
 [#14](https://github.com/trionnemesis/AgentSec/issues/14)), and it says which
-absence it means rather than reporting an empty pass.
+absence it means rather than reporting an empty pass. `static_posture` follows
+the same rule for a different reason: most repositories have not configured a
+scanner report at all.
+
+#### What an ingested static posture report may and may not do (#25)
+
+A static scanner such as [AgentShield](https://github.com/affaan-m/agentshield)
+answers *"is this configuration risky?"* by rule, with no proof of
+exploitation. AgentSec answers *"did an attack work, and would the blue side
+have seen it?"* from executed evidence. `static_posture` exists to name the gap
+between the two, never to close it by fiat:
+
+* **A grade is never a verdict.** Ingesting a report with grade `A` and zero
+  purple scenarios leaves the posture plane `ingested` and `purple` untouched
+  — the overall project is not `secure` because a scanner said so, and never
+  will be.
+* **Composition, not merging.** `static_posture` is a fourth property beside
+  `project` / `purple` / `skill_assurance`, with its own status enum
+  (`not_tested` / `ingested` / `error` — deliberately not `pass`/`fail`, so it
+  cannot be mistaken for a verdict-shaped plane). It is never a fifth axis.
+* **No scanner is a dependency.** Nothing here runs, installs or vendors one.
+  Ingestion reads a report file from the location declared in
+  `.agentsec/project.yaml: static_posture_report`; a missing report is
+  `not_tested`, never green and never an install prompt.
+* **Coverage, not a scan count.** Each finding is correlated against the
+  surfaces `agentsec project show` discovered and the scenarios that actually
+  produced a verdict (not merely exist in the catalogue), reported as
+  `covered`, `not_tested` or `n/a`. `not_tested` is the default: being scanned
+  is not the same as being tested.
+* **Findings are observed data.** They name files and can quote a scanner's
+  own rule description; the matched source text is never captured in the
+  first place (`models/posture.py`), and the publisher projects only rule id,
+  severity, category, file path and coverage state.
+* **A file outside the project root is refused, not ingested.** A finding
+  naming a location `project.resolver.safe_child` would refuse from a
+  manifest is recorded as a problem, the same as any other declared location
+  that tries to escape.
+
+See [issue #25](https://github.com/trionnemesis/AgentSec/issues/25) for the
+full non-negotiables and acceptance matrix.
 
 Two properties a page's author cannot verify for themselves, so both are
 enforced here:

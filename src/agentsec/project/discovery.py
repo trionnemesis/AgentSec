@@ -112,6 +112,11 @@ class Discovery:
     instructions: Surface | None = None
     mcp_servers: list[Surface] = field(default_factory=list)
     problems: list[Problem] = field(default_factory=list)
+    static_posture_report: str | None = None
+    """Manifest-declared location of a static scanner's report, if any (#25).
+    Carried here rather than re-read from the manifest so the harness's static
+    posture plane needs only one parse of `.agentsec/project.yaml`. Not part of
+    `to_dict()`: this document is an inventory of surfaces, not of reports."""
 
     @property
     def supported_skills(self) -> list[Surface]:
@@ -506,6 +511,7 @@ def discover(workspace: str | Path | None = None) -> Discovery:
         settings=walker.settings(),
         instructions=walker.instructions(),
         mcp_servers=walker.mcp_servers(),
+        static_posture_report=manifest.static_posture_report,
     )
     result.problems = sorted(walker.problems, key=lambda p: (p.kind, p.path))
     return result

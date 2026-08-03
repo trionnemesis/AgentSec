@@ -16,6 +16,10 @@
     },
     "name": { "type": "string", "minLength": 1, "maxLength": 120 },
     "description": { "type": "string", "maxLength": 500 },
+    "static_posture_report": {
+      "$ref": "#/$defs/location",
+      "description": "Where a static scanner's report (AgentShield JSON or SARIF) lives, relative to this repository. No default — most repositories have not run one, and `static_posture` reports `not_tested` rather than pointing at a location that does not exist. See issue #25."
+    },
     "surfaces": {
       "type": "object",
       "description": "Where this repository keeps the surfaces AgentSec inspects. Every value is a relative location; omit one to accept the default.",

@@ -36,6 +36,23 @@ def render_junit(summaries: list[RunSummary], *, suite_name: str = "agentsec") -
         },
     )
 
+    # A CI gate that is entirely fixture-derived is worth knowing about in the
+    # job log — the same fact the HTML dashboard banners.
+    fixture_derived = bool(summaries) and all(
+        s.provenance.evidence == "recorded" for s in summaries
+    )
+    props = ET.SubElement(suite, "properties")
+    ET.SubElement(
+        props, "property",
+        {"name": "agentsec.fixture_derived", "value": str(fixture_derived).lower()},
+    )
+    for kind in ("recorded", "live", "mixed"):
+        count = sum(1 for s in summaries if s.provenance.evidence == kind)
+        ET.SubElement(
+            props, "property",
+            {"name": f"agentsec.provenance.{kind}", "value": str(count)},
+        )
+
     for s in summaries:
         case = ET.SubElement(
             suite,
@@ -88,6 +105,8 @@ def _detail(s: RunSummary) -> str:
         f"verdict:   {s.verdict}",
         f"axes:      prevention={s.prevention} detection={s.detection} "
         f"evidence={s.evidence} response={s.response}",
+        f"provenance: executor={s.provenance.executor} adapter={s.provenance.adapter} "
+        f"evidence={s.provenance.evidence}",
         "",
     ]
     if s.collector_errors:
