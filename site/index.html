@@ -106,8 +106,11 @@
   }
   figure.diagram .scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   figure.diagram pre.mermaid { background: none; border: 0; padding: 0; margin: 0; text-align: center; }
-  /* Hide the raw graph source until mermaid has turned it into an SVG. */
-  figure.diagram:not(.ready) pre.mermaid { display: none; }
+  /* Hide the raw graph source until mermaid has turned it into an SVG. While it
+     renders the figure carries .rendering, because mermaid measures text to route
+     its edges and cannot do that inside a `display: none` subtree. */
+  figure.diagram:not(.rendering):not(.ready) pre.mermaid { display: none; }
+  figure.diagram.rendering pre.mermaid { visibility: hidden; }
   figure.diagram svg { max-width: 100%; height: auto; }
   figure.diagram figcaption { margin-top: 14px; text-align: center; color: var(--fg-dim); font-size: .88rem; }
   .diagram-fallback { text-align: center; color: var(--fg-dim); font-size: .92rem; margin: 0; }
@@ -402,13 +405,24 @@ spec:
   </div>
 </footer>
 
+<!-- Vendored (site/vendor/mermaid-11.4.1.min.js, MIT) rather than pulled from a
+     CDN: this page makes claims about not reaching for third-party code, and a
+     landing page for a security tool should not be the exception. -->
+<script src="vendor/mermaid-11.4.1.min.js" defer></script>
 <script type="module">
-  // Mermaid is loaded from a version-pinned CDN and only ever renders the graph
-  // literal above — no user input reaches it, and the page is fully readable
-  // without it (the fallback line links to the same diagram in the README).
+  // Mermaid only ever renders the graph literal above — no user input reaches
+  // it — and the page is fully readable without it (the fallback line links to
+  // the same diagram in the README).
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const loaded = new Promise((res) => {
+    if (window.mermaid) return res();
+    window.addEventListener('DOMContentLoaded', res, { once: true });
+  });
+  const figure = document.getElementById('pipeline-diagram');
   try {
-    const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs');
+    await loaded;
+    const mermaid = window.mermaid;
+    if (!mermaid) throw new Error('mermaid bundle did not load');
     mermaid.initialize({
       startOnLoad: false,
       securityLevel: 'strict',
@@ -420,10 +434,13 @@ spec:
         : { background: '#f6f8fa', primaryColor: '#ffffff', primaryTextColor: '#1f2328',
             primaryBorderColor: '#d8dee4', lineColor: '#0969da', tertiaryColor: '#ffffff' },
     });
+    figure?.classList.add('rendering');   // laid out but invisible, so text measures
     await mermaid.run({ querySelector: 'pre.mermaid' });
-    document.getElementById('pipeline-diagram')?.classList.add('ready');
+    figure?.classList.add('ready');
   } catch (err) {
-    console.warn('mermaid failed to load; showing the fallback link instead', err);
+    console.warn('mermaid failed to render; showing the fallback link instead', err);
+  } finally {
+    figure?.classList.remove('rendering');
   }
 </script>
 
