@@ -100,6 +100,18 @@
     background: var(--accent); color: #04121f; font-family: var(--mono); font-size: .8rem;
   }
   @media (prefers-color-scheme: light) { ol.steps > li > h3::before { color: #fff; } }
+  figure.diagram {
+    margin: 0; padding: 20px 16px; background: var(--bg-soft);
+    border: 1px solid var(--line); border-radius: 10px;
+  }
+  figure.diagram .scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  figure.diagram pre.mermaid { background: none; border: 0; padding: 0; margin: 0; text-align: center; }
+  /* Hide the raw graph source until mermaid has turned it into an SVG. */
+  figure.diagram:not(.ready) pre.mermaid { display: none; }
+  figure.diagram svg { max-width: 100%; height: auto; }
+  figure.diagram figcaption { margin-top: 14px; text-align: center; color: var(--fg-dim); font-size: .88rem; }
+  .diagram-fallback { text-align: center; color: var(--fg-dim); font-size: .92rem; margin: 0; }
+  figure.diagram.ready .diagram-fallback { display: none; }
   footer { padding: 40px 0 64px; color: var(--fg-dim); font-size: .9rem; }
   footer em { display: block; margin-top: 18px; max-width: 60ch; }
   .note { color: var(--fg-dim); font-size: .9rem; }
@@ -199,25 +211,25 @@
   <div class="wrap">
     <h2>How it works</h2>
     <p class="sub">Two human interfaces sit on top — Claude Code for authoring and investigation, a dashboard for viewing — and both reach the harness through an MCP gateway that validates, checks policy, delegates and audits. CI calls the same internal API directly, so the gate returns the identical verdict whether or not Claude is available.</p>
-    <pre><code>  Scenario YAML  ──▶  Scenario controller  ──▶  Policy guard
-  Attack–Detection      load · validate ·         allowlist · risk
-  Contract              select                    ceiling · approvals
-                                                        │
-                                                        ▼
-        Agent under test  ◀──────────────────  Red executor
-        (staging only)                         replay / promptfoo
-             │ emits
-             ▼
-  OTel · Wazuh · tool audit · DB  ──▶  Evidence collector
-                                       → normalised bundle
-                                                        │
-                                                        ▼
-                        SQLite store  ◀──  Purple evaluator
-                        runs · findings      4 axes → 1 verdict
-                        · audit
-                             │
-                             ▼
-                    Reports: JUnit / HTML / JSON</code></pre>
+    <figure class="diagram" id="pipeline-diagram">
+      <p class="diagram-fallback">The pipeline diagram needs JavaScript to render — it is also in
+        <a href="https://github.com/trionnemesis/AgentSec#how-it-works">the README</a>.</p>
+      <div class="scroller">
+      <pre class="mermaid">
+flowchart TD
+    A["Scenario YAML<br/>Attack–Detection Contract"] --> B["Scenario controller<br/>load · 3-layer validate · select"]
+    B --> C["Policy guard<br/>allowlist · risk ceiling · approvals"]
+    C --> D["Red executor<br/>replay / promptfoo"]
+    D --> E["Agent under test<br/>staging only"]
+    E -.emits.-> F["OTel · Wazuh · tool audit · DB"]
+    F --> G["Evidence collector<br/>→ normalised bundle"]
+    G --> H["Purple evaluator<br/>4 axes → 1 verdict"]
+    H --> I["SQLite store<br/>runs · findings · audit"]
+    I --> J["Reports<br/>JUnit / HTML / JSON"]
+      </pre>
+      </div>
+      <figcaption>The deterministic path, end to end. Nothing in it consults a language model.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -389,6 +401,31 @@ spec:
     <em>Attack generation is getting cheap and will keep getting cheaper. Knowing whether your blue side would have noticed does not.</em>
   </div>
 </footer>
+
+<script type="module">
+  // Mermaid is loaded from a version-pinned CDN and only ever renders the graph
+  // literal above — no user input reaches it, and the page is fully readable
+  // without it (the fallback line links to the same diagram in the README).
+  const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  try {
+    const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs');
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: 'base',
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      themeVariables: dark
+        ? { background: '#131a23', primaryColor: '#161d27', primaryTextColor: '#e6edf3',
+            primaryBorderColor: '#3b4a5e', lineColor: '#7cc4ff', tertiaryColor: '#161d27' }
+        : { background: '#f6f8fa', primaryColor: '#ffffff', primaryTextColor: '#1f2328',
+            primaryBorderColor: '#d8dee4', lineColor: '#0969da', tertiaryColor: '#ffffff' },
+    });
+    await mermaid.run({ querySelector: 'pre.mermaid' });
+    document.getElementById('pipeline-diagram')?.classList.add('ready');
+  } catch (err) {
+    console.warn('mermaid failed to load; showing the fallback link instead', err);
+  }
+</script>
 
 </body>
 </html>
