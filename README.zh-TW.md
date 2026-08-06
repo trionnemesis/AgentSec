@@ -208,7 +208,7 @@ claude mcp add agentsec -- agentsec-mcp
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.1.0
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.2.0
     with:
       target: order-agent-staging
       profile: pr

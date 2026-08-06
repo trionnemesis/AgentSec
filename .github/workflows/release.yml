@@ -1,6 +1,6 @@
 # Cut a release from a version tag.
 #
-#   git tag v0.1.0 && git push origin v0.1.0
+#   git tag v0.2.0 && git push origin v0.2.0
 #
 # Builds the sdist and wheel, refuses a tag that disagrees with
 # pyproject.toml, and publishes a GitHub Release with the artifacts
