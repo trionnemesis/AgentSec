@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://agentsec.dev/schemas/project-dashboard.schema.json",
   "title": "AgentSec Project Dashboard",
-  "description": "What `agentsec://dashboard/latest` returns: one document composing four planes that stay separate. `project` identifies the repository, `purple` is the existing four-axis rollup described by dashboard.schema.json, `skill_assurance` is the Skill Assurance summary from its own bounded context (ADR 0008), and `static_posture` is a static scanner's report ingested and correlated against what actually ran (issue #25). Composition, not merging — neither a Skill outcome nor a static finding ever appears in verdict_counts, axis_counts or a PurpleVerdict, because each plane answers a different question and a single number that averages them answers none. Computed in memory on every read; nothing is written to serve this document.",
+  "description": "What `agentsec://dashboard/latest` returns: one document composing five planes that stay separate. `project` identifies the repository, `repo_risk` is this repository's own agent configuration read statically and triaged against the catalogue (issue #32), `purple` is the four-axis rollup described by dashboard.schema.json, `skill_assurance` is the Skill Assurance summary from its own bounded context (ADR 0008), and `static_posture` is a third-party scanner's report ingested and correlated against what actually ran (issue #25). Composition, not merging — no repo risk, Skill outcome or static finding ever appears in verdict_counts, axis_counts or a PurpleVerdict, because each plane answers a different question and a single number that averages them answers none. Computed in memory on every read; nothing is written to serve this document.",
   "type": "object",
   "required": [
     "schema_version",
@@ -10,6 +10,7 @@
     "generated_at",
     "project",
     "purple",
+    "repo_risk",
     "skill_assurance",
     "static_posture"
   ],
@@ -24,6 +25,7 @@
     "generated_at": { "type": "string", "format": "date-time" },
     "project": { "$ref": "#/$defs/project" },
     "purple": { "$ref": "https://agentsec.dev/schemas/dashboard.schema.json" },
+    "repo_risk": { "$ref": "#/$defs/repoRisk" },
     "skill_assurance": { "$ref": "#/$defs/skillAssurance" },
     "static_posture": { "$ref": "#/$defs/staticPosture" },
     "redaction": {
@@ -58,6 +60,95 @@
       },
       "if": { "properties": { "status": { "const": "declared" } } },
       "then": { "required": ["status", "project_id", "name"] }
+    },
+    "repoRisk": {
+      "type": "object",
+      "description": "The repository risk plane (issue #32): this repository's own agent configuration — skills, agents, hooks, tool grants, MCP servers and memory stores — read statically by first-party rules and triaged against the scenario catalogue. Deliberately not verdict-shaped. A risk is a reason to run a scenario, not a result of having run one; nothing here has executed anything or given a detection control the chance to fire. The `verification` block is the whole point: it says whether a deterministic conclusion is available (`verified`), obtainable (`verifiable`), or out of reach (`not_verifiable`). The last is the common case and must never render as green.",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": ["inspected", "not_inspected", "error"],
+          "description": "Spelled differently from PurpleVerdict, AxisStatus, skillAssurance.status and staticPosture.status on purpose. `inspected` means the rules ran; it says nothing about whether the repository is safe. `not_inspected` means they did not, which is not a pass."
+        },
+        "reason": { "type": "string", "maxLength": 120 },
+        "detail": { "type": "string", "maxLength": 500 },
+        "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "project_id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{2,63}$" },
+        "counts": {
+          "type": "object",
+          "description": "total, plus by_severity and by_verification breakdowns.",
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "by_severity": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 0 }
+            },
+            "by_verification": {
+              "type": "object",
+              "additionalProperties": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "verify_queue": {
+          "type": "array",
+          "description": "Scenario ids that would settle a high or critical risk and have not run here yet — what `agentsec scan --verify` hands to the harness. Empty means nothing is waiting, which is not the same as nothing being wrong: a risk with no covering scenario never enters this queue.",
+          "items": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" }
+        },
+        "problems": {
+          "type": "array",
+          "description": "Surfaces the rules could not read. An unreadable file is stated, never counted as clean.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "kind": { "type": "string" },
+              "detail": { "type": "string" }
+            }
+          }
+        },
+        "risks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "rule_id", "severity", "surface_kind", "file", "verification"],
+            "properties": {
+              "id": { "type": "string" },
+              "rule_id": { "type": "string", "pattern": "^ASI-[A-Z0-9]+-[A-Z0-9-]+$" },
+              "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+              "surface_kind": {
+                "enum": [
+                  "skill", "agent", "hook", "settings", "instructions",
+                  "mcp_server", "tool_grant", "memory"
+                ]
+              },
+              "surface_id": { "type": "string" },
+              "file": { "type": "string" },
+              "title": { "type": "string", "maxLength": 200 },
+              "detail": { "type": "string", "maxLength": 500 },
+              "evidence": {
+                "type": "object",
+                "description": "Bounded facts the rule derived: counts, line numbers, Unicode codepoint names, the rule's own marker vocabulary. Never the matched text — see inspect/rules.py for why that constraint is load-bearing rather than stylistic."
+              },
+              "verification": {
+                "type": "object",
+                "required": ["state"],
+                "properties": {
+                  "state": {
+                    "enum": ["verified", "verifiable", "not_verifiable"],
+                    "description": "verified: a scenario covering this surface produced a verdict — the answer is in the purple plane. verifiable: such a scenario exists but has not run. not_verifiable: nothing in the catalogue exercises this surface, so the static rule is all anyone has."
+                  },
+                  "scenario_ids": {
+                    "type": "array",
+                    "items": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" }
+                  },
+                  "detail": { "type": "string", "maxLength": 300 }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "skillAssurance": {
       "type": "object",

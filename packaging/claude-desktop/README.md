@@ -54,13 +54,14 @@ are not subject to that churn and are asserted by
 | `agentsec_start_run` | **not registered** | registered, and needs an approval for high-risk scenarios |
 | `agentsec_promote_finding` | not registered | registered |
 | `agentsec_generate_report` | not registered — it writes files | registered |
-| Resources | the 6 published | all 9 |
+| Resources | the 7 published | all 10 |
 | `agentsec://runs/{id}/evidence` | not registered | registered, projected |
 | `agentsec://audit` | not registered | registered |
 
 `agentsec://dashboard/latest` is served here and is what a dashboard polls. It is
 computed in memory: reading it, filtering it and refreshing it write nothing and
-change nothing.
+change nothing. `agentsec://project/risks` is served too, for an Artifact that
+wants the repository view without the run history.
 
 ## Smoke test
 
@@ -74,8 +75,8 @@ they are written to be followed rather than claimed:
 | 1 | Open the repository folder in Claude Desktop / Cowork | the folder is the one with `.agentsec/project.yaml` |
 | 2 | Check the MCP server connected | `agentsec-report` is listed and connected |
 | 3 | Ask it to list its tools | 8 tools, none of them `agentsec_start_run` |
-| 4 | Ask it to read `agentsec://dashboard/latest` | a document with `project`, `purple` and `skill_assurance` |
-| 5 | Render the Artifact | project id, verdicts, four axes, findings, trend |
+| 4 | Ask it to read `agentsec://dashboard/latest` | a document with `project`, `repo_risk`, `purple`, `skill_assurance` and `static_posture` |
+| 5 | Render the Artifact | project id, repository risks, verdicts, four axes, findings, trend |
 | 6 | Note the modification times under `results/` | unchanged by steps 3–5 |
 | 7 | Refresh the Artifact | new `generated_at`, `results/` still unchanged |
 

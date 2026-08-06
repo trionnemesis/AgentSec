@@ -42,12 +42,13 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 
 | 能力 | 說明 |
 |---|---|
+| **Repository 掃描** | 指向一個本機 repo：找出其中的 agent、skill、MCP server、hook、工具授權與 memory／RAG 攻擊面，排序風險，並指出哪些風險有情境能真正驗證 |
 | **攻擊—偵測契約** | 單一 YAML 同時描述攻擊，以及預防／偵測／證據／應變四個面向的期待 |
 | **決定性判定** | 純函式評估器，決策路徑上沒有模型、沒有時鐘、沒有網路 —— 相同證據永遠得到相同判定 |
 | **證據蒐集** | OpenTelemetry span、Wazuh 告警、工具呼叫稽核、資料庫狀態差異，全部正規化成同一份綱要 |
 | **離線 fixture 語料** | 完整流程可在筆電上執行，不需要 agent、不需要 SIEM、不需要網路 |
 | **CI 把關** | 輸出 JUnit 並回傳有意義的結束碼，另提供可重複使用的 GitHub workflow，從 agent 自己的 repo 呼叫 |
-| **受限的 MCP gateway** | 11 個窄工具與 8 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
+| **受限的 MCP gateway** | 11 個窄工具與 10 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
 
@@ -104,7 +105,52 @@ cd AgentSec
 pip install -e '.[dev]'
 ```
 
-### 2. 執行離線流程
+### 2. 掃描你自己的 repository
+
+這是入口，也是唯一不需要任何前置設定的一步 —— 不需要 target、不需要 staging agent、不需要 SIEM：
+
+```bash
+cd /path/to/your/agent/repo
+agentsec init      # 產生 .agentsec/project.yaml，讀過之後再 commit
+agentsec scan      # 找出攻擊面，並排序風險
+```
+
+`scan` 會讀取這個 repository 交給 AI Agent 的東西 —— 專案指令、subagent 定義、
+skill、hook、預先授權的工具、MCP server 與 memory 儲存 —— 然後套用
+[`inspect/`](src/agentsec/inspect/) 裡的決定性規則。每一條風險都會說明「這裡有沒有東西
+能把它變成結論」：
+
+```
+  critical ASI-HOOK-SHELL-INTERPOLATION  .claude/hooks/pre.py
+      Hook interpolates a value into a shell command
+      verification: runnable now (AGT-CONFIG-003)
+  critical ASI-TOOL-PERMISSION-BYPASS  .claude/settings.json
+      Permission mode is bypassPermissions
+      verification: no scenario covers this
+  high     ASI-INSTR-EXFIL-DIRECTIVE  CLAUDE.md
+      Instruction pairs a secret source with an outbound sink
+      verification: runnable now (AGT-CONFIG-001)
+
+0 verified  5 runnable  4 unprovable here
+```
+
+**風險是「值得測」的理由，不是結果。** 這個階段沒有執行任何東西，也沒有給任何偵測控制
+發動的機會，所以 `scan` 永遠不會以 `1` 結束 —— 一個因為靜態比對就擋下 PR 的閘門，只會教
+團隊繞過閘門。第三種狀態才是誠實的那個：`no scenario covers this` 表示 AgentSec 找到了
+某件事，而且無法判定它 —— 那既不是通過，也不是失敗。
+
+把「可驗證」的那些變成判定是後半段，也正是 target 開始值得設定的時候：
+
+```bash
+agentsec scan --verify --target order-agent-staging
+```
+
+這會挑出剛好涵蓋 high 與 critical 風險的情境，交給 Purple Harness 執行，並回傳與
+`agentsec run` 完全相同的四面向判定。完整路徑見
+[`docs/feature-matrix.md`](docs/feature-matrix.md)，為什麼從這裡開始見
+[ADR 0009](docs/adr/0009-repository-first-golden-path.md)。
+
+### 3. 執行離線流程
 
 ```bash
 agentsec validate                              # 檢查四個內建情境
@@ -133,7 +179,7 @@ agentsec run --target demo-agent-fixture --profile nightly --html
 
 **關於「不需要 Wazuh」：** fixture 語料是以檔案提供錄製好的 Wazuh 告警與 OTel span，因此偵測面向在離線狀態下**確實有被評估** —— `AGT-MEMPOIS-001` 之所以是 `detection_gap`，是因為那份錄製告警裡找不到規則 `100720`，而不是因為沒檢查。但若要對**真實** agent 的偵測能力把關，就需要一個活的訊號來源，在 `policy/targets.yaml` 中逐一為目標宣告：Wazuh indexer（`kind: opensearch`）或 OTel。Wazuh 並非必要 —— 只斷言 `detection.otel` 的契約同樣合法 —— 但它目前是唯一已實作的 SIEM 蒐集器。
 
-### 3. 加入 Claude Code
+### 4. 加入 Claude Code
 
 ```bash
 pip install -e '.[mcp]'
@@ -155,7 +201,7 @@ claude mcp add agentsec -- agentsec-mcp
 
 若只是要檢視結果，加上 `"AGENTSEC_MCP_READ_ONLY": "1"` 進入唯讀模式 —— 此時 `agentsec_start_run` 會在 dispatcher 直接被拒絕，而不只是「不建議使用」，資源介面也會收斂成[發布子集](#資源)。本 repo 也在 [`.claude/`](.claude/README.md) 附上 Claude Code 的 skill 與權限 hook。
 
-### 4. 在 CI 中為真實 Agent 把關
+### 5. 在 CI 中為真實 Agent 把關
 
 從擁有該 agent 的 repo 呼叫這個可重複使用的 workflow，並固定在某個 release tag 上：
 
@@ -265,11 +311,13 @@ spec:
 
 ### 資源
 
-`agentsec://dashboard/latest` ・ `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
+`agentsec://dashboard/latest` ・ `agentsec://project/risks` ・ `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
 
-每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，九個資源中只提供六個：`dashboard/latest`、`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
+每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，十個資源中只提供七個：`dashboard/latest`、`project/risks`、`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
 
-`agentsec://dashboard/latest` 是儀表板會輪詢的那一個：專案身分、四面向的 purple 彙整，以及 Skill Assurance 摘要，三者各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。
+`agentsec://dashboard/latest` 是儀表板會輪詢的那一個：專案身分、repository 風險面、四面向的 purple 彙整、Skill Assurance 摘要，以及靜態 posture，五者各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。
+
+`agentsec://project/risks` 只提供風險面本身，給那些只想看 repository 視角、不需要執行歷史的用戶端。它不接受任何參數：「是哪一個 repository」是行程邊界的決定，永遠不是工具參數（[ADR 0003](docs/adr/0003-constrained-mcp-tools.md)）。
 
 有提供的部分是**投影，不是過濾**：每個 publisher 明確列出自己保留哪些欄位，所以明天在證據模型上新增的欄位，在有人決定它該被發布之前都不會出現在輸出裡。對話輪次轉為摘要值，自由格式的 map 保留 key、捨棄 value，主體（principal）、租戶與 actor 轉成穩定的代號 —— 跨租戶的橫向移動仍然看得出來，但不會印出那是誰。判定、各面向狀態、失敗的檢查、規則 ID、告警等級、工具名稱與決策則完整保留，因為讓讀者看不到 finding 的遮蔽並不值得部署。每一次投影都附帶一份「捨棄了什麼」的清單，理由和「未測試的面向回報 `not_tested`」相同：**被扣住的欄位不能讀起來像不存在的欄位**。細節見 [`docs/deployment.md`](docs/deployment.md)。
 
@@ -279,6 +327,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 
 | 指令 | 用途 | 常用參數 |
 |---|---|---|
+| `agentsec scan` | 掃描這個 repository 的 agent 攻擊面並排序；`--verify` 把可驗證的高風險子集交給 harness | `--verify`、`--target`、`--profile`、`--output json` |
 | `agentsec validate` | 驗證單一情境或整份目錄 | `--scenario`、`--target`、`--strict` |
 | `agentsec preview` | 顯示執行會做什麼，但不執行 | `--target`、`--profile`、`--scenario` |
 | `agentsec run` | 執行情境，遇到阻擋級 finding 時以非零結束 | `--target`、`--profile`、`--output junit`、`--output-file`、`--dry-run`、`--html` |

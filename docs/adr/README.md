@@ -14,3 +14,4 @@ same debate being reopened in six months without new information.
 | [0006](0006-normalised-evidence-schema.md) | Normalise evidence, don't query vendors from the evaluator | Accepted |
 | [0007](0007-sqlite-and-files.md) | SQLite plus JSON files, not a service database | Accepted |
 | [0008](0008-skill-assurance-bounded-context.md) | Skill Assurance is a separate bounded context | Accepted |
+| [0009](0009-repository-first-golden-path.md) | The repository scan is the entry point, and a risk is not a verdict | Accepted |

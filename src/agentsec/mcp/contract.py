@@ -382,6 +382,20 @@ RESOURCES: tuple[ResourceSpec, ...] = (
         published=False,
     ),
     ResourceSpec(
+        uri_template="agentsec://project/risks",
+        title="Repository risk plane",
+        description=(
+            "This repository's own agent attack surface — skills, agents, hooks, tool "
+            "grants, MCP servers, memory stores — read by the static rules in "
+            "`agentsec.inspect` and triaged against the scenario catalogue. Each risk "
+            "says whether a deterministic conclusion is available, obtainable, or out "
+            "of reach. Not a verdict: nothing here has executed anything. Takes no "
+            "arguments — which repository is a process-boundary decision (ADR 0003)."
+        ),
+        handler="inspect_repository",
+        publish="repo_risk_document",
+    ),
+    ResourceSpec(
         uri_template="agentsec://findings",
         title="Findings",
         description="Findings and their workflow state.",

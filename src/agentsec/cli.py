@@ -479,6 +479,155 @@ def init(
     typer.echo("Review it, then commit it. Run `agentsec project show` to see what it discovers.")
 
 
+_SEVERITY_COLOUR = {
+    "critical": typer.colors.RED,
+    "high": typer.colors.RED,
+    "medium": typer.colors.YELLOW,
+    "low": typer.colors.CYAN,
+    "info": typer.colors.WHITE,
+}
+_VERIFICATION_LABEL = {
+    "verified": "verified by a run",
+    "verifiable": "runnable now",
+    "not_verifiable": "no scenario covers this",
+}
+
+
+@app.command()
+def scan(
+    verify: Annotated[
+        bool,
+        typer.Option(
+            "--verify",
+            help="Hand the verifiable high/critical risks to the harness for a verdict.",
+        ),
+    ] = False,
+    target: Annotated[
+        str | None,
+        typer.Option("--target", "-t", help="Target to verify against. Required with --verify."),
+    ] = None,
+    profile: Annotated[str, typer.Option("--profile", "-p")] = "pr",
+    output: Annotated[str, typer.Option("--output", "-o", help="text | json")] = "text",
+    workspace: WorkspaceOpt = None,
+) -> None:
+    """Inspect the selected repository for agent attack surface, and rank what it finds.
+
+    The engineer's entry point. Reads this repository's skills, agents, hooks,
+    tool grants, MCP servers and memory stores, applies the static rules in
+    `agentsec.inspect`, and reports each risk alongside whether anything here
+    can turn it into a deterministic conclusion.
+
+    Static only, by design. A risk is a reason to run a scenario, never the
+    result of having run one — so `--verify` is the second half: it selects the
+    scenarios that cover the high and critical risks and runs them, and the
+    verdict comes from the Purple Harness exactly as it does for `agentsec run`.
+
+    Exit codes match the rest of the CLI: `1` when a run started and found a
+    blocking finding, `2` when the repository could not be inspected at all.
+    Notably *not* `1` for a static risk on its own — a rule match is not proof,
+    and a gate that blocks on one teaches its team to bypass the gate.
+    """
+    try:
+        service = _service(workspace)
+        document = service.inspect_repository()
+        plane = document["repo_risk"]
+
+        if output == "json":
+            _echo_json(document)
+        else:
+            _print_scan(document)
+
+        if not verify:
+            raise typer.Exit(EXIT_OK)
+
+        queue = plane.get("verify_queue") or []
+        if not queue:
+            typer.secho(
+                "\nnothing to verify: no high or critical risk has a scenario that covers it",
+                fg=typer.colors.YELLOW,
+            )
+            raise typer.Exit(EXIT_OK)
+        if not target:
+            typer.secho(
+                "--verify needs --target: a verdict is always against a specific target.",
+                fg=typer.colors.RED, err=True,
+            )
+            raise typer.Exit(EXIT_ERROR)
+
+        typer.secho(
+            f"\nverifying {len(queue)} scenario(s) against {target}: {', '.join(queue)}",
+            fg=typer.colors.CYAN, bold=True,
+        )
+        result = service.start_run(
+            target_id=target, scenario_ids=list(queue), profile=profile
+        )
+        _print_text_report(result.report)
+        raise typer.Exit(result.exit_code)
+    except AgentSecError as exc:
+        _fail(exc)
+
+
+def _print_scan(document: dict) -> None:
+    project, plane = document["project"], document["repo_risk"]
+
+    if plane.get("status") != "inspected":
+        typer.secho(
+            f"not inspected [{plane.get('reason', 'unknown')}]: {plane.get('detail', '')}",
+            fg=typer.colors.YELLOW,
+        )
+        return
+
+    typer.echo(
+        f"\nproject {project.get('project_id', '?')}  "
+        f"surfaces {sum((project.get('surfaces') or {}).values())}  "
+        f"risks {plane['counts']['total']}\n"
+    )
+
+    for risk in plane["risks"]:
+        colour = _SEVERITY_COLOUR.get(risk["severity"], typer.colors.WHITE)
+        state = risk["verification"]["state"]
+        typer.secho(f"  {risk['severity']:<9}{risk['rule_id']}  {risk['file']}", fg=colour)
+        typer.echo(f"      {risk['title']}")
+        label = _VERIFICATION_LABEL.get(state, state)
+        scenarios = ", ".join(risk["verification"].get("scenario_ids") or [])
+        typer.echo(f"      verification: {label}{f' ({scenarios})' if scenarios else ''}")
+
+    if plane.get("problems"):
+        typer.secho(
+            f"\n{len(plane['problems'])} surface(s) could not be read:", fg=typer.colors.YELLOW
+        )
+        for problem in plane["problems"][:10]:
+            typer.echo(f"    [{problem['kind']}] {problem['path']}: {problem['detail']}")
+
+    by_verification = plane["counts"]["by_verification"]
+    typer.echo("")
+    if not plane["risks"]:
+        typer.secho(
+            "no risks matched. That is not a clean bill of health: these are static "
+            "rules over configuration, and nothing has been executed.",
+            fg=typer.colors.GREEN,
+        )
+        return
+    typer.secho(
+        f"{by_verification['verified']} verified  "
+        f"{by_verification['verifiable']} runnable  "
+        f"{by_verification['not_verifiable']} unprovable here",
+        bold=True,
+    )
+    if by_verification["verifiable"]:
+        typer.secho(
+            "run `agentsec scan --verify --target <id>` to turn the runnable ones "
+            "into verdicts.",
+            fg=typer.colors.CYAN,
+        )
+    if by_verification["not_verifiable"]:
+        typer.secho(
+            "the unprovable ones have no scenario covering their surface. They are "
+            "neither passing nor failing — nothing here can settle them.",
+            fg=typer.colors.YELLOW,
+        )
+
+
 @app.command()
 def dashboard(
     target: Annotated[str | None, typer.Option("--target", "-t")] = None,

@@ -31,8 +31,19 @@ from agentsec.models.posture import CoverageState, StaticPostureFinding
 from agentsec.project.discovery import Discovery
 from agentsec.project.resolver import safe_child
 from agentsec.scenario.catalog import ScenarioCatalog
+from agentsec.scenario.surface_tags import (
+    CONFIG_SURFACE_TAG_PREFIX,
+    scenario_surface_tags,
+    scenarios_covering,
+)
+from agentsec.scenario.surface_tags import under as _under
 
-CONFIG_SURFACE_TAG_PREFIX = "config-surface:"
+__all__ = [
+    "CONFIG_SURFACE_TAG_PREFIX",
+    "FindingCoverage",
+    "compute_posture_coverage",
+    "coverage_counts",
+]
 
 
 @dataclass
@@ -55,32 +66,7 @@ class FindingCoverage:
 
 
 def _known_surface_paths(discovery: Discovery) -> set[str]:
-    paths: set[str] = set()
-    for group in (discovery.skills, discovery.agents, discovery.hooks, discovery.mcp_servers):
-        paths.update(s.path for s in group)
-    for single in (discovery.settings, discovery.instructions):
-        if single is not None:
-            paths.add(single.path)
-    return paths
-
-
-def _under(file_path: str, surface_path: str) -> bool:
-    """True if ``file_path`` is ``surface_path`` or lives under it as a directory."""
-    return file_path == surface_path or file_path.startswith(surface_path.rstrip("/") + "/")
-
-
-def _scenario_surface_tags(catalog: ScenarioCatalog) -> dict[str, list[str]]:
-    """scenario_id -> the config-surface paths/prefixes its tags declare."""
-    out: dict[str, list[str]] = {}
-    for entry in catalog:
-        surfaces = [
-            t[len(CONFIG_SURFACE_TAG_PREFIX):]
-            for t in entry.scenario.metadata.tags
-            if t.startswith(CONFIG_SURFACE_TAG_PREFIX)
-        ]
-        if surfaces:
-            out[entry.id] = surfaces
-    return out
+    return {surface.path for surface in discovery.all_surfaces()}
 
 
 def compute_posture_coverage(
@@ -104,7 +90,7 @@ def compute_posture_coverage(
     recorded as a problem rather than silently marked ``n/a``.
     """
     known_surfaces = _known_surface_paths(discovery)
-    scenario_tags = _scenario_surface_tags(catalog)
+    scenario_tags = scenario_surface_tags(catalog)
 
     results: list[FindingCoverage] = []
     problems: list[dict[str, str]] = []
@@ -121,11 +107,7 @@ def compute_posture_coverage(
             results.append(FindingCoverage(finding=finding, state="n/a"))
             continue
 
-        matched = sorted(
-            scenario_id
-            for scenario_id, surfaces in scenario_tags.items()
-            if any(_under(finding.file, surface) for surface in surfaces)
-        )
+        matched = scenarios_covering(finding.file, scenario_tags)
         run_matched = [sid for sid in matched if sid in scenarios_with_a_verdict]
         if run_matched:
             results.append(

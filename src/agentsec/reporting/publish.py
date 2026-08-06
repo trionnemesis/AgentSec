@@ -52,7 +52,11 @@ from agentsec.models.run import Run
 #: 1.2.0 added the `static_posture` plane to the composed dashboard (#25) — a
 #: new *required* key on the `dashboard` kind, so a consumer pinned there does
 #: notice; `report`/`purple` on their own are unaffected.
-PUBLISH_SCHEMA_VERSION = "1.2.0"
+#: 1.3.0 added the `repo_risk` plane (#32), on the same terms: required on the
+#: composed `dashboard`, inert everywhere else. Minor rather than major because
+#: a consumer that reads the planes it knows keeps working — the shapes it was
+#: already reading are untouched.
+PUBLISH_SCHEMA_VERSION = "1.3.0"
 
 #: Names the ruleset, so a stored export says which policy produced it.
 PUBLISH_POLICY = "observed-data-v1"
@@ -465,6 +469,83 @@ def publish_posture(document: dict[str, Any] | None) -> dict[str, Any]:
     return body
 
 
+def publish_repo_risk(document: dict[str, Any] | None) -> dict[str, Any]:
+    """Project the repository risk plane (`inspect/`).
+
+    Structurally the least dangerous plane to publish and the one most worth
+    being explicit about, because it is the only one whose input is the reading
+    of arbitrary repository files. The rules are built so that nothing they
+    match ever reaches their output — ``evidence`` carries counts, line numbers,
+    Unicode codepoint names and the rule's own marker vocabulary, never the
+    matched text (see ``inspect/rules.py``). That property is what makes this
+    projection a field list rather than a scrubber.
+
+    ``evidence`` is therefore passed through, and this function names every key
+    around it. If a future rule wants to carry a snippet, this list is where it
+    has to be argued for, which is the point.
+    """
+    document = document or {"status": "not_inspected", "reason": "no_project"}
+    body: dict[str, Any] = {"status": document.get("status", "not_inspected")}
+    if document.get("reason") is not None:
+        body["reason"] = document["reason"]
+    if document.get("detail") is not None:
+        body["detail"] = scrub(document["detail"])
+    if document.get("schema_version") is not None:
+        body["schema_version"] = document["schema_version"]
+    if document.get("project_id") is not None:
+        body["project_id"] = document["project_id"]
+    if "counts" in document:
+        body["counts"] = dict(document["counts"])
+    if "verify_queue" in document:
+        body["verify_queue"] = list(document["verify_queue"])
+    if document.get("problems"):
+        body["problems"] = [
+            {
+                "path": p.get("path"),
+                "kind": p.get("kind"),
+                "detail": scrub(p.get("detail")),
+            }
+            for p in document["problems"]
+        ]
+    if "risks" in document:
+        body["risks"] = [
+            {
+                "id": r.get("id"),
+                "rule_id": r.get("rule_id"),
+                "severity": r.get("severity"),
+                "surface_kind": r.get("surface_kind"),
+                "surface_id": r.get("surface_id"),
+                "file": r.get("file"),
+                # Rule-authored, fixed strings — not derived from the repository.
+                "title": r.get("title"),
+                "detail": r.get("detail"),
+                "evidence": dict(r.get("evidence") or {}),
+                "verification": dict(r.get("verification") or {}),
+            }
+            for r in document["risks"]
+        ]
+    return body
+
+
+def publish_repo_risk_document(document: dict[str, Any] | None) -> dict[str, Any]:
+    """The standalone risk resource: the plane plus which project it describes.
+
+    Separate from ``publish_repo_risk`` because the plane is embedded in the
+    composed dashboard without a project header — it is already under one there
+    — and served on its own with one, since a risk list that does not say which
+    repository it came from is a risk list somebody will read against the wrong
+    checkout.
+    """
+    document = document or {}
+    project = document.get("project") or {"status": "not_initialised"}
+    return _envelope(
+        "repo_risk",
+        [],
+        project=dict(project),
+        repo_risk=publish_repo_risk(document.get("repo_risk")),
+    )
+
+
 def publish_findings(findings: list[dict[str, Any]]) -> dict[str, Any]:
     """Findings are workflow records: ids, statuses and operator-written notes."""
     return _envelope(
@@ -590,7 +671,7 @@ def _dashboard_validator() -> Draft202012Validator:
 def publish_dashboard(document: dict[str, Any]) -> dict[str, Any]:
     """The composed project dashboard, projected and then checked against its schema.
 
-    Three planes, named one at a time. Naming them is what keeps a fourth from
+    Four planes, named one at a time. Naming them is what keeps a fifth from
     appearing on a dashboard because someone added it to the service — the same
     reason every other publisher here lists its fields instead of filtering.
 
@@ -609,6 +690,11 @@ def publish_dashboard(document: dict[str, Any]) -> dict[str, Any]:
         # Already the one shape every output renders from, and it stamps its own
         # version. Republishing it is a no-op by design; see publish_report.
         "purple": document.get("purple"),
+        # The plane an engineer sees first, and the only one that says anything
+        # in a repository with no target configured. Composed beside the others
+        # and never merged: a risk names the scenarios that would settle it, and
+        # that reference is the entire extent of the coupling.
+        "repo_risk": publish_repo_risk(document.get("repo_risk")),
         "skill_assurance": document.get("skill_assurance"),
         # A fourth plane, composed beside the other three and never merged into
         # any of them (issue #25). Its own publisher, because unlike the other
@@ -640,6 +726,8 @@ PUBLISHERS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "report": publish_report,
     "dashboard": publish_dashboard,
     "posture": publish_posture,
+    "repo_risk": publish_repo_risk,
+    "repo_risk_document": publish_repo_risk_document,
 }
 
 

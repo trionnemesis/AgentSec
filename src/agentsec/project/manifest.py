@@ -59,6 +59,16 @@ class Surfaces(BaseModel):
     settings: str = ".claude/settings.json"
     instructions: str = "CLAUDE.md"
     mcp_config: str = ".mcp.json"
+    memory: str = ".claude/memory"
+    """Retrieved context the agent reads but no reviewer diffs.
+
+    Declared like every other surface rather than inferred, and defaulting to a
+    directory most repositories do not have: an absent memory store is a real
+    and common state, and it inventories as empty. What it must not do is
+    inventory as *safe* — a repository that keeps its RAG corpus somewhere else
+    says so here, because the alternative is a plane that reports zero memory
+    surfaces for a project whose whole attack path runs through one.
+    """
 
     @field_validator("*")
     @classmethod
@@ -221,6 +231,9 @@ surfaces:
   settings: .claude/settings.json
   instructions: CLAUDE.md
   mcp_config: .mcp.json
+  # Retrieved context the agent reads but no reviewer diffs. Most repositories
+  # have no such directory, and that inventories as empty rather than as safe.
+  memory: .claude/memory
 """
 
 
