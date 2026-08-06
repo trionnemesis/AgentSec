@@ -214,7 +214,7 @@ Call the reusable workflow from the repository that owns the agent, pinned to a 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.1.0
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.2.0
     with:
       target: order-agent-staging
       profile: pr
