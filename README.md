@@ -56,8 +56,8 @@ Once the MCP gateway is wired into Claude Code, just ask:
 
 * **Environments**: `local`, `ci`, `staging` — `production` is absent from the enum, so there is no flag to set
 * **Agent capabilities exercised**: RAG, tool calling, persistent memory, multi-tenancy, email
-* **Frameworks mapped**: OWASP Agentic Top 10 (4/10 categories covered by the bundled scenarios: `AAI001`, `AAI003`, `AAI004`, `AAI009`) and OWASP LLM Top 10
-* **Bundled scenarios**: cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion
+* **Frameworks mapped**: OWASP Agentic Top 10 (8/10 categories covered by the bundled scenarios: `AAI001`–`AAI004`, `AAI006`–`AAI009`) and OWASP LLM Top 10
+* **Bundled scenarios**: eight — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block)
 
 | Verdict | Meaning | Precedence |
 |---|---|---|
@@ -368,11 +368,13 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | `agentsec init \| project show` | Write the project manifest; inventory what it declares | `--project-id`, `--name`, `--force` |
 | `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason` |
 | `agentsec validate-detection` | Check detection expectations are checkable against a target | `--scenario`, `--target` |
+| `agentsec get-run` | Print one run as JSON | `RUN_ID` |
 | `agentsec compare` | Diff two runs check-by-check | `RUN_A RUN_B` |
 | `agentsec coverage` | OWASP Agentic Top 10 coverage and the verdict histogram | — |
 | `agentsec audit` | Tail the audit log, including refused requests | `--limit` |
 | `agentsec finding list \| promote \| draft` | Work with findings and their workflow | `--status`, `--regression`, `--detection` |
 | `agentsec targets \| scenarios list` | Inspect the allowlist and the catalogue | `--target` |
+| `agentsec mcp-contract` | Print the MCP tool / resource surface as JSON | — |
 
 **Exit codes are the contract:** `0` clean, `1` a blocking finding, `2` the harness could not tell you anything. Conflating `1` and `2` is how a pipeline job becomes noise people learn to skip.
 
@@ -394,7 +396,7 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ```
 schemas/               JSON Schema for scenario, target, evidence, the project
                        manifest and the published dashboards — the portable assets
-scenarios/             The scenario catalogue (four worked examples)
+scenarios/             The scenario catalogue (eight worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus so everything runs offline
 .agentsec/             Project manifest: stable id and reviewed relative locations
@@ -402,6 +404,8 @@ fixtures/              Recorded corpus so everything runs offline
 src/agentsec/
 ├── models/            # typed contracts crossing every layer boundary
 ├── project/           # selected-project resolution and surface discovery
+├── inspect/           # deterministic repository risk rules → the risk plane
+├── posture/           # static posture ingestion, and which findings a scenario covers
 ├── scenario/          # loader, three-layer validator, catalogue + coverage
 ├── policy/            # allowlist, profiles, approvals, the single policy guard
 ├── execution/         # red executors (replay, promptfoo) and target adapters
@@ -457,7 +461,7 @@ All forms of participation are welcome — you don't have to write code:
 
 * 🐛 **Bug, or a verdict you believe is wrong** → [open an issue](https://github.com/trionnemesis/AgentSec/issues) with the run id and the evidence bundle
 * 🎯 **A scenario idea** — an attack shape the catalogue misses → issue, or a PR with the YAML and fixtures
-* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`)
+* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`, `100901`–`100904`)
 * 🔧 **Code** → fork and open a PR; run `make check` first, and read [CONTRIBUTING.md](CONTRIBUTING.md) for the four rules that get enforced in review
 
 If this project helps you, a ⭐ is the easiest way to help others find it.
