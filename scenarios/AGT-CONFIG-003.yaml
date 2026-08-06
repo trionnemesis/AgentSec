@@ -13,7 +13,12 @@ metadata:
     execution.
   owner: platform-security
   severity: critical
-  tags: [config-injection, hook-injection, command-execution, "config-surface:.claude/hooks/guard_agentsec.py"]
+  # The surface is the hooks directory, not one file inside it. Nothing in the
+  # attack below is specific to a particular hook — it seeds an untrusted
+  # filename and asserts on `run_shell_hook` — so naming AgentSec's own
+  # `guard_agentsec.py` made the scenario correlate with a hook risk in this
+  # repository and with nothing at all in anyone else's.
+  tags: [config-injection, hook-injection, command-execution, "config-surface:.claude/hooks"]
   references:
     owasp_agentic: [AAI006]
 

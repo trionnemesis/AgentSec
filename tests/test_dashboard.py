@@ -51,7 +51,7 @@ def test_the_dashboard_matches_its_published_schema(dashboard: dict) -> None:
     assert dashboard["redaction"]["policy"]
     assert set(dashboard) == {
         "schema_version", "kind", "generated_at", "project", "purple",
-        "skill_assurance", "static_posture", "redaction",
+        "repo_risk", "skill_assurance", "static_posture", "redaction",
     }
 
 
@@ -154,7 +154,7 @@ def test_a_workspace_with_a_manifest_is_named(service: HarnessService) -> None:
         "name": "Demo",
         "surfaces": {
             "skills": 0, "supported_skills": 0, "agents": 0, "hooks": 0,
-            "mcp_servers": 0, "problems": 0,
+            "mcp_servers": 0, "tool_grants": 0, "memory": 0, "problems": 0,
         },
     }
 

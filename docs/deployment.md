@@ -199,26 +199,33 @@ configuration* and *observed data*:
 | `agentsec://targets/{target_id}` | principals, executors, capabilities | not registered |
 | `agentsec://runs/{run_id}` | projected run: no `evidence_ref`, no `raw_ref`, no approval token | same projection |
 | `agentsec://dashboard/latest` | composed rollup, computed in memory | same document |
+| `agentsec://project/risks` | the risk plane alone, computed in memory | same document |
 | `agentsec://coverage`, `findings`, `scenarios`, `targets` | served | served |
 
 ### The document a dashboard polls
 
-`agentsec://dashboard/latest` composes four planes and keeps them apart:
+`agentsec://dashboard/latest` composes five planes and keeps them apart:
 
 ```jsonc
 {
   "kind": "dashboard",
   "project":          { "status": "declared", "project_id": "…", "surfaces": { … } },
+  "repo_risk":        { "status": "inspected", "counts": { … }, "verify_queue": [ … ] },
   "purple":           { /* the four-axis rollup — schemas/dashboard.schema.json */ },
   "skill_assurance":  { "status": "not_tested", "reason": "no_evaluator" },
   "static_posture":   { "status": "not_tested", "reason": "no_report" }
 }
 ```
 
-Composition, not merging. A Skill outcome, and a static scanner's finding,
-never enter `verdict_counts`, `axis_counts` or a `PurpleVerdict`: each plane
-answers a different question, and a single number averaging them answers
-none. `skill_assurance` is `not_tested` in every case today, because
+Composition, not merging. A repository risk, a Skill outcome, and a static
+scanner's finding never enter `verdict_counts`, `axis_counts` or a
+`PurpleVerdict`: each plane answers a different question, and a single number
+averaging them answers none. `repo_risk` is the plane an engineer sees first,
+and the only one that says anything with no target configured: it reports what
+this repository's own agent configuration exposes, and per risk whether a
+scenario could settle it (`verified` / `verifiable` / `not_verifiable`). It is
+never a verdict — nothing in it has executed anything
+([ADR 0009](adr/0009-repository-first-golden-path.md)). `skill_assurance` is `not_tested` in every case today, because
 `skill_eval` is not built
 ([ADR 0008](adr/0008-skill-assurance-bounded-context.md),
 [#14](https://github.com/trionnemesis/AgentSec/issues/14)), and it says which

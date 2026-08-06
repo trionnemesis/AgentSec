@@ -30,7 +30,12 @@
         "hooks": { "$ref": "#/$defs/location", "default": ".claude/hooks" },
         "settings": { "$ref": "#/$defs/location", "default": ".claude/settings.json" },
         "instructions": { "$ref": "#/$defs/location", "default": "CLAUDE.md" },
-        "mcp_config": { "$ref": "#/$defs/location", "default": ".mcp.json" }
+        "mcp_config": { "$ref": "#/$defs/location", "default": ".mcp.json" },
+        "memory": {
+          "$ref": "#/$defs/location",
+          "default": ".claude/memory",
+          "description": "Retrieved context the agent reads but no reviewer diffs. Most repositories have no such directory and inventory an empty memory surface; one that keeps a store elsewhere declares it here, so an absent store is never confused with an unexamined one."
+        }
       }
     }
   },

@@ -57,6 +57,26 @@ def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()[:16]
 
 
+def _mcp_transport(config: Any) -> str:
+    """``stdio``, ``http``, ``sse`` or ``unknown`` — the kind, never the endpoint.
+
+    Which transport a server uses is a structural fact about the tool surface: a
+    stdio server is a local process this repository can pin, and a remote one is
+    a third party who can change the tools under it between two sessions. The
+    URL itself stays behind, because that is a value.
+    """
+    if not isinstance(config, dict):
+        return "unknown"
+    declared = str(config.get("type") or config.get("transport") or "").strip().lower()
+    if declared in {"stdio", "http", "sse", "streamable-http"}:
+        return declared
+    if config.get("url"):
+        return "http"
+    if config.get("command"):
+        return "stdio"
+    return "unknown"
+
+
 @dataclass(frozen=True)
 class Problem:
     """Something that could not be inventoried, stated rather than skipped."""
@@ -111,6 +131,8 @@ class Discovery:
     settings: Surface | None = None
     instructions: Surface | None = None
     mcp_servers: list[Surface] = field(default_factory=list)
+    tool_grants: list[Surface] = field(default_factory=list)
+    memory: list[Surface] = field(default_factory=list)
     problems: list[Problem] = field(default_factory=list)
     static_posture_report: str | None = None
     """Manifest-declared location of a static scanner's report, if any (#25).
@@ -163,6 +185,8 @@ class Discovery:
                 "settings": self.settings.to_dict() if self.settings else None,
                 "instructions": self.instructions.to_dict() if self.instructions else None,
                 "mcp_servers": [s.to_dict() for s in self.mcp_servers],
+                "tool_grants": [s.to_dict() for s in self.tool_grants],
+                "memory": [s.to_dict() for s in self.memory],
             },
             "skill_assurance": self.skill_assurance(),
             "problems": [p.to_dict() for p in self.problems],
@@ -172,9 +196,20 @@ class Discovery:
                 "agents": len(self.agents),
                 "hooks": len(self.hooks),
                 "mcp_servers": len(self.mcp_servers),
+                "tool_grants": len(self.tool_grants),
+                "memory": len(self.memory),
                 "problems": len(self.problems),
             },
         }
+
+    def all_surfaces(self) -> list[Surface]:
+        """Every discovered surface, flattened. The risk plane iterates this."""
+        out = [
+            *self.skills, *self.agents, *self.hooks,
+            *self.mcp_servers, *self.tool_grants, *self.memory,
+        ]
+        out.extend(s for s in (self.settings, self.instructions) if s is not None)
+        return out
 
 
 class _Walker:
@@ -185,6 +220,10 @@ class _Walker:
         self.manifest = manifest
         self.problems: list[Problem] = []
         self._ids: set[str] = set()
+        #: Parsed `settings.json`, stashed by ``settings()`` so ``tool_grants()``
+        #: does not re-read and re-parse the same file. ``None`` means the file
+        #: was absent or unparseable, which is already a recorded problem.
+        self.settings_data: dict[str, Any] | None = None
 
     # -- helpers ------------------------------------------------------------
 
@@ -424,6 +463,7 @@ class _Walker:
             self.note(rel, "malformed", "settings is not a mapping")
             return Surface(id="settings", kind="settings", path=rel, status="malformed")
 
+        self.settings_data = data
         hooks = data.get("hooks")
         permissions = data.get("permissions")
         detail: dict[str, Any] = {
@@ -437,6 +477,14 @@ class _Walker:
             }
             if isinstance(permissions, dict)
             else {},
+            # An enum, not free text, and the single most consequential value in
+            # the file: `bypassPermissions` turns every other grant into a
+            # formality. Carried as written because it is one of a fixed set.
+            "default_mode": (
+                str(permissions.get("defaultMode") or "")[:40]
+                if isinstance(permissions, dict)
+                else ""
+            ),
         }
         return Surface(
             id="settings", kind="settings", path=rel, content_digest=_digest(path), detail=detail
@@ -487,10 +535,105 @@ class _Walker:
                     kind="mcp_server",
                     path=rel,
                     name=str(server_name)[:120],
-                    detail={"env_keys": sorted(env) if isinstance(env, dict) else []},
+                    detail={
+                        "env_keys": sorted(env) if isinstance(env, dict) else [],
+                        "transport": _mcp_transport(config),
+                    },
                 )
             )
         return out
+
+    def tool_grants(self) -> list[Surface]:
+        """What this repository has pre-authorised the agent to invoke.
+
+        The tool surface is the one an inventory of files keeps missing. A
+        repository can hold no skills, no agents and no hooks, and still hand a
+        model unattended shell access in four words of JSON. So each permission
+        rule becomes its own entry rather than the count `settings.detail`
+        already carries: a count answers "is this configured", and the question
+        that matters is *which* tool, under *which* constraint.
+
+        Derived from the settings file rather than from a location of its own,
+        so ``path`` is the settings path — which is also what makes these
+        entries correlate with ``config-surface:.claude/settings.json`` like
+        every other surface.
+
+        Requires ``settings()`` to have run first; the walker's caller owns that
+        ordering.
+        """
+        if self.settings_data is None:
+            return []
+        settings_surface = self.locate("settings")
+        if settings_surface is None:
+            return []
+        rel = self.display_best_effort(settings_surface)
+
+        permissions = self.settings_data.get("permissions")
+        if not isinstance(permissions, dict):
+            return []
+
+        out: list[Surface] = []
+        for list_name in ("allow", "ask", "deny"):
+            rules = permissions.get(list_name)
+            if rules is None:
+                continue
+            if not isinstance(rules, list):
+                self.note(rel, "malformed", f"permissions.{list_name} is not a list")
+                continue
+            for rule in rules:
+                if not isinstance(rule, str):
+                    self.note(rel, "malformed", f"permissions.{list_name} holds a non-string rule")
+                    continue
+                tool = rule.split("(", 1)[0].strip() or "(unnamed)"
+                out.append(
+                    Surface(
+                        id=self.unique(f"tool.{list_name}.{tool}".lower(), f"{rel}#{rule}"),
+                        kind="tool_grant",
+                        path=rel,
+                        name=tool[:120],
+                        # A permission rule is operator-authored, reviewed
+                        # configuration — the same standing as the manifest —
+                        # so it is carried as written rather than digested.
+                        # Capped, because a length is not a review.
+                        detail={"rule": rule[:200], "list": list_name},
+                    )
+                )
+                if len(out) >= MAX_ENTRIES:
+                    self.note(
+                        rel, "truncated",
+                        f"more than {MAX_ENTRIES} permission rules; listing stopped",
+                    )
+                    return out
+        return out
+
+    def memory(self) -> list[Surface]:
+        """Retrieved context the agent reads but no reviewer diffs.
+
+        Most repositories have no such directory, and that is a legitimate
+        state which inventories as an empty list. What it is not is a clean
+        one: `.claude/memory` being absent means nothing was found at the
+        declared location, and a repository whose retrieval corpus lives
+        somewhere undeclared looks identical from here. The manifest field is
+        how that difference gets stated.
+        """
+        base = self.locate("memory")
+        if base is None or not base.is_dir():
+            return []
+        self.audit_symlinks(base)
+        out: list[Surface] = []
+        for path in self.files_under(base, "*", label="memory"):
+            rel = self.display(path)
+            stem = path.relative_to(base).with_suffix("").as_posix().replace("/", ".")
+            out.append(
+                Surface(
+                    id=self.unique(f"memory.{stem}".lower(), rel),
+                    kind="memory",
+                    path=rel,
+                    content_digest=_digest(path),
+                    detail={"bytes": path.stat().st_size},
+                )
+            )
+        return sorted(out, key=lambda s: s.id)
 
 
 def discover(workspace: str | Path | None = None) -> Discovery:
@@ -501,6 +644,8 @@ def discover(workspace: str | Path | None = None) -> Discovery:
     """
     root, manifest = load_project(workspace)
     walker = _Walker(root, manifest)
+    # `settings` before `tool_grants`: the second reads what the first parsed.
+    settings = walker.settings()
     result = Discovery(
         project_id=manifest.project_id,
         name=manifest.name,
@@ -508,9 +653,11 @@ def discover(workspace: str | Path | None = None) -> Discovery:
         skills=walker.skills(),
         agents=walker.agents(),
         hooks=walker.hooks(),
-        settings=walker.settings(),
+        settings=settings,
         instructions=walker.instructions(),
         mcp_servers=walker.mcp_servers(),
+        tool_grants=walker.tool_grants(),
+        memory=walker.memory(),
         static_posture_report=manifest.static_posture_report,
     )
     result.problems = sorted(walker.problems, key=lambda p: (p.kind, p.path))

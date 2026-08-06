@@ -1,102 +1,133 @@
 # Roadmap
 
-Honest status. Anything marked ✅ has tests; anything marked 🟡 is written but not
-exercised against a live system; 🔲 is not built.
+Sorted by **Core / Adoption / Experimental**, not by completion status
+([#32](https://github.com/trionnemesis/AgentSec/issues/32)). Which layer
+something belongs to is the durable fact; whether it is finished changes weekly,
+and a roadmap sorted by the second answers no planning question.
 
-## Built
+Status marks: ✅ has tests · 🟡 written, never run against a live system · 🔲 not built.
+
+See [`feature-matrix.md`](feature-matrix.md) for the classification of every
+capability and for the known gaps on the golden path.
+
+---
+
+## Core — the golden path
+
+```
+agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
+```
 
 | Component | Status | Notes |
 |---|---|---|
 | Scenario schema + Attack–Detection Contract | ✅ | `schemas/scenario.schema.json`, 8 worked examples |
 | Three-layer validator | ✅ | JSON Schema → Pydantic → 15 semantic rules |
+| Purple evaluator, four axes | ✅ | pure function; ~60 tests |
+| Verdict precedence | ✅ | `error > detection_gap > prevention_gap > evidence_gap > response_gap > secure` |
 | Target allowlist + private-address guard | ✅ | `production` not expressible; public hosts refused |
 | Policy guard (risk ceiling, quarantine, approvals) | ✅ | single decision point for CLI, MCP and CI |
 | Approval tokens (scoped, expiring, single-use) | ✅ | CLI-only; no MCP tool grants them |
 | Replay executor + fixture/HTTP adapters | ✅ | deterministic; the one CI should rely on |
 | Evidence collectors: Wazuh, OTel, tool audit, state diff | ✅ | file backends tested; timeline rebasing for fixtures |
-| Purple evaluator, four axes | ✅ | pure function; ~60 tests |
-| Verdict precedence | ✅ | `error > detection_gap > prevention_gap > evidence_gap > response_gap > secure` |
+| Run provenance (`recorded` / `live` / `mixed`) | ✅ | a fixture-derived `secure` is labelled as such ([#27](https://github.com/trionnemesis/AgentSec/issues/27)) |
 | SQLite store (runs, findings, audit log) | ✅ | latest-run-per-scenario aggregates |
+| CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
+| Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml`; relative locations only, traversal and symlink escape refused |
+| Tool-grant and memory surfaces | ✅ | one entry per permission rule; `.claude/memory` declared like any other surface ([#32](https://github.com/trionnemesis/AgentSec/issues/32)) |
+| **Repository risk plane** (`agentsec scan`) | ✅ | 10 deterministic rules across agents, skills, hooks, tool grants, MCP and memory ([ADR 0009](adr/0009-repository-first-golden-path.md)) |
+| **Risk → scenario triage** | ✅ | `verified` / `verifiable` / `not_verifiable`; `scan --verify` drains the queue |
+| `config-surface:` correlation, shared | ✅ | `scenario/surface_tags.py`; the risk and posture planes cannot disagree |
+| `AGT-CONFIG-*` agent-configuration family | ✅ | 4 scenarios ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); `gate: warning` until stable across nightlies |
+| Publication projection + fail-closed publication | ✅ | unknown output kind raises; a resource with no policy stops the gateway booting |
+| Versioned dashboard contracts | ✅ | `dashboard.schema.json`, `project-dashboard.schema.json`; validated on every read |
+
+### Core — open
+
+- [ ] **Run against one real staging agent end to end**, and fix what that
+      reveals. Still the single most valuable open item.
+- [ ] **A scenario covering the tool-grant / settings surface.**
+      `ASI-TOOL-PERMISSION-BYPASS` fires at `critical` and reports
+      `not_verifiable`, because nothing is tagged at `.claude/settings.json`.
+      The highest-value gap the risk plane exposed.
+- [ ] **Tag `AGT-XPIA-001` at a memory surface**, so
+      `ASI-MEMORY-UNREVIEWED-STORE` becomes verifiable.
+- [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..004`
+      (`100901`–`100904`). Until recorded, the family is scoped to
+      `environments: [ci, staging]` and `scan --verify` needs a real target.
+- [ ] Wazuh rule pack for the four original bundled scenarios
+      (`100501`, `100610`, `100720`, `100810`)
+- [ ] **Migration runner — overdue.** `SCHEMA_VERSION` is `2`, and
+      `store/sqlite.py:_init_schema` writes the version row only when absent, so
+      a database created under version 1 reports version 1 forever and nothing
+      reads that row to decide anything.
+
+---
+
+## Adoption — making the path usable by a team
+
+| Component | Status | Notes |
+|---|---|---|
 | Finding workflow with enforced transitions | ✅ | cannot verify a detection gap without a detection rule |
 | Report normaliser → JUnit / HTML / JSON | ✅ | HTML is self-contained and theme-aware |
-| CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
-| MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
 | OWASP Agentic Top 10 coverage reporting | ✅ | 8/10 categories covered by the bundled scenarios |
-| `AGT-CONFIG-*` agent-configuration attack family | ✅ | 4 scenarios — poisoned project instructions, hidden-Unicode agent definitions, hook command injection, credential-shaped MCP addition ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); validated clean, `gate: warning` until stable across nightlies against a real target |
-| Static posture ingestion (AgentShield JSON / SARIF) | ✅ | `static_posture` plane, correlated against discovered surfaces and executed verdicts, never a fifth axis or a `PurpleVerdict` ([#25](https://github.com/trionnemesis/AgentSec/issues/25)) |
-| Run provenance (`recorded` / `live` / `mixed`) | ✅ | `RunSummary.provenance`; a fixture-derived `secure` is labelled as such, never presented like a live one ([#27](https://github.com/trionnemesis/AgentSec/issues/27)) |
-| Publication projection for observed data | ✅ | `reporting/publish.py`; transcripts become digests, identities pseudonyms, free-form maps keep keys and lose values |
-| Resource allowlist for the report gateway | ✅ | `ResourceSpec.published`; evidence, audit and target authoring detail are not registered under `AGENTSEC_MCP_READ_ONLY=1` |
-| Fail-closed publication | ✅ | unknown output kind raises; a resource with no publication policy stops the gateway from booting |
-| Versioned dashboard rollup contract | ✅ | `schemas/dashboard.schema.json`, validated against the shipped corpus |
-| Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml` + `project/`; relative locations only, traversal and symlink escape refused, nothing absolute in the output |
-| Composed project dashboard resource | ✅ | `agentsec://dashboard/latest`; project, purple and Skill Assurance planes kept separate, validated against `schemas/project-dashboard.schema.json` on every read |
+| MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
+| Composed dashboard resource | ✅ | `agentsec://dashboard/latest`, five planes kept separate |
+| Repository risk resource | ✅ | `agentsec://project/risks`, read-only, takes no arguments |
+| Dashboard page / Live Artifact source | ✅ | `agentsec dashboard --html` renders the same template a hosted Artifact does |
+| Claude Desktop / Cowork packaging | ✅ | `packaging/claude-desktop/` |
+| Resource allowlist for the report gateway | ✅ | evidence, audit and target authoring detail are unregistered under `AGENTSEC_MCP_READ_ONLY=1` |
+| MCP server (FastMCP binding) | 🟡 | a real stdio client drives a spawned server in CI; no other client has connected |
 
-## Written, not yet proven against a live system
+### Adoption — open
+
+- [ ] **Host the Artifact.** The page and the resource exist; publishing it and
+      binding it to a Desktop-registered gateway is manual. Checklist in
+      `packaging/claude-desktop/README.md` — three of seven steps are asserted by
+      `tests/test_packaging.py`, four need a person.
+- [ ] **Dual README paths**: "engineer quick start" (scan-first) and
+      "security/platform setup" (targets, scenarios, Wazuh/OTel mappings).
+- [ ] **Simplified default output.** Engineer-facing finding states are
+      `open → fixing → verified`; the full transition table stays expert mode.
+- [ ] Read-only remote gateway with OAuth (deployment option C). The gateway half
+      is built; authentication — OAuth/OIDC, RBAC, TLS termination — is not.
+- [ ] A promptfoo custom provider that resolves `target_id` server-side.
+- [ ] GitHub PR summary: merge decision, blocking findings, untested scope,
+      evidence link.
+
+---
+
+## Experimental — written, unproven
+
+Do not treat these as production-ready. The deterministic core is; these are
+first drafts.
 
 | Component | Status | What is missing |
 |---|---|---|
-| MCP server (FastMCP binding) | 🟡 | a real stdio client drives a spawned server in the gateway CI job, so listing, dispatch and the projection are proven over the protocol; no client other than that test has ever connected |
-| Promptfoo executor | 🟡 | config generation and output parsing written; needs a real agent to validate |
+| Promptfoo executor | 🟡 | config generation and output parsing written; needs a real agent |
 | Wazuh OpenSearch collector | 🟡 | query shape written against the `wazuh-alerts-*` mapping; untested live |
 | OTel HTTP collector | 🟡 | Tempo-style search API; untested live |
-| HTTP target adapter | 🟡 | assumes `{"reply": ...}`; real agents will need per-target shims |
+| HTTP target adapter | 🟡 | assumes `{"reply": ...}`; real agents need per-target shims |
+| Static posture ingestion | ✅ | opt-in; requires a third-party report, `not_tested` when absent ([#25](https://github.com/trionnemesis/AgentSec/issues/25)) |
 
-Do not treat 🟡 rows as production-ready. The deterministic core is; the
-integrations are first drafts.
+---
 
-## Next
+## Parked
 
-**Near term — earn the CI gate**
+Frozen until the golden path has adoption evidence. Parking is not rejection; it
+is declining to widen the surface while the middle is unproven.
 
-- [ ] Run against one real staging agent end to end, and fix what that reveals
-- [ ] Wazuh rule pack for the four original bundled scenarios (`100501`, `100610`, `100720`, `100810`)
-- [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..004` (`100901`–`100904`) —
-      proposed for review, not committed: `hooks/guard_agentsec.py` refuses agent writes to
-      `fixtures/`. Until recorded, the family validates clean but does not run in nightly
-      (scoped to `environments: [ci, staging]`, so it does not select against `demo-agent-fixture`)
-- [ ] A promptfoo custom provider that resolves `target_id` server-side
-- [x] `agentsec init` for the selected repository, with a committed
-      `.agentsec/project.yaml` and one canonical workspace resolver
-      ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR B)
-- [ ] **Migration runner — now overdue.** `SCHEMA_VERSION` is already `2`, and
-      `store/sqlite.py:_init_schema` writes the version row only when it is
-      absent. A database created under version 1 therefore keeps reporting
-      version 1 for the rest of its life, and nothing reads that row to decide
-      anything. Any database predating the bump is silently mislabelled
+| Component | Why parked |
+|---|---|
+| Skill Assurance (`skill_eval`) | Separate schema, runner, store, CLI and workflow — the standard indicators of a separate repository ([ADR 0008](adr/0008-skill-assurance-bounded-context.md), [#14](https://github.com/trionnemesis/AgentSec/issues/14)). The plane reports `not_tested` honestly today. |
+| PyRIT executor | A third executor before one live path works buys nothing |
+| pytest executor | Same |
+| MITRE ATLAS coverage | A second taxonomy over the same eight scenarios |
+| Multi-agent scenarios (`AAI005`) | Needs per-agent step targeting |
+| Cost/latency budgets as a fifth axis | Four axes are not yet proven live |
+| Scenario packs distributable between organisations | Needs users first |
+| Findings synced to an issue tracker | Needs users first |
 
-**Medium term — team adoption**
-
-- [ ] Read-only remote gateway with OAuth (deployment option C). The gateway
-      half is built — allowlisted resources, projected output, fail-closed
-      publication. What is missing is authentication: OAuth/OIDC, RBAC and the
-      TLS-terminating gateway in front
-- [x] A dashboard resource a page can pin to — `agentsec://dashboard/latest`,
-      computed in memory and schema-valid ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR C)
-- [x] The dashboard page itself — `agentsec dashboard --html`, the same template
-      a hosted Live Artifact renders
-      ([#20](https://github.com/trionnemesis/AgentSec/issues/20) PR D)
-- [x] Claude Desktop plugin/extension packaging, so a local Cowork session can
-      load this server read-only
-      ([`packaging/claude-desktop/`](../packaging/claude-desktop/))
-- [ ] **Host it.** The page and the resource exist; publishing the Artifact and
-      binding it to a Desktop-registered gateway is a manual step today, and the
-      end-to-end path has been followed by hand rather than by a test. The
-      checklist is in `packaging/claude-desktop/README.md`; three of its seven
-      steps are asserted by `tests/test_packaging.py` and four need a person
-- [ ] PyRIT executor for nightly exploratory runs
-- [ ] pytest executor, so existing security tests join the same verdict model
-- [ ] Coverage against MITRE ATLAS alongside OWASP
-- [ ] Skill Assurance (`skill_eval`) — [ADR 0008](adr/0008-skill-assurance-bounded-context.md) ·
-      [#14](https://github.com/trionnemesis/AgentSec/issues/14). The `static` profile needs no
-      model and can land ahead of the staging run; the rest waits on it
-
-**Longer term**
-
-- [ ] Multi-agent scenarios (`AAI005`) — needs step targeting per agent
-- [ ] Cost/latency budgets as a fifth axis for denial-of-wallet work
-- [ ] Scenario packs distributable between organisations
-- [ ] Findings synced to an issue tracker rather than living only in SQLite
+---
 
 ## Deliberately not planned
 
@@ -104,6 +135,7 @@ integrations are first drafts.
 |---|---|
 | A full web portal | the static report plus a Live Artifact covers the need; a portal is a second product |
 | An LLM judge for verdicts | see [ADR 0002](adr/0002-deterministic-verdict.md) |
+| An LLM judge for risks | same argument, one level upstream; see [ADR 0009](adr/0009-repository-first-golden-path.md) |
 | Generic `execute_shell` / `query_database` tools | see [ADR 0003](adr/0003-constrained-mcp-tools.md) |
 | Production targets | `production` is absent from the environment enum by design |
 | Autonomous red-team agent | the value is in the contract and the verdict, not in generating more attacks |

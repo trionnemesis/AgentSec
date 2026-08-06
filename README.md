@@ -42,12 +42,13 @@ Once the MCP gateway is wired into Claude Code, just ask:
 
 | Capability | Description |
 |---|---|
+| **Repository scan** | Point it at a local repo: finds the agents, skills, MCP servers, hooks, tool grants and memory stores in it, ranks the risks, and says which ones a scenario can actually settle |
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
 | **Deterministic verdict** | Pure evaluator, no model, no clock, no network in the decision path — the same evidence always yields the same verdict |
 | **Evidence collection** | OpenTelemetry spans, Wazuh alerts, tool-call audit and database state diff, normalised into one schema |
 | **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network |
 | **CI gate** | JUnit output plus meaningful exit codes, and a reusable GitHub workflow you call from the agent's own repo |
-| **Constrained MCP gateway** | 11 narrow tools and 8 read-only resources; no shell, no SQL, no free-text URL |
+| **Constrained MCP gateway** | 11 narrow tools and 10 read-only resources; no shell, no SQL, no free-text URL |
 | **Publication boundary** | A read-only report gateway serves a projected subset — turn digests, pseudonymous principals, no evidence or audit URIs — so a dashboard cannot re-commit the breach it reports |
 | **Finding workflow** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`, with transitions enforced |
 
@@ -104,7 +105,57 @@ cd AgentSec
 pip install -e '.[dev]'
 ```
 
-### 2. Run the offline pipeline
+### 2. Scan your own repository
+
+The entry point, and the only step that needs nothing configured — no target, no
+staging agent, no SIEM:
+
+```bash
+cd /path/to/your/agent/repo
+agentsec init      # write .agentsec/project.yaml, then read it and commit it
+agentsec scan      # find the attack surface, and rank what it finds
+```
+
+`scan` reads what this repository gives an AI agent — project instructions,
+subagent definitions, skills, hooks, pre-approved tool grants, MCP servers and
+memory stores — and applies the deterministic rules in
+[`inspect/`](src/agentsec/inspect/). Each risk says whether anything here can
+settle it:
+
+```
+  critical ASI-HOOK-SHELL-INTERPOLATION  .claude/hooks/pre.py
+      Hook interpolates a value into a shell command
+      verification: runnable now (AGT-CONFIG-003)
+  critical ASI-TOOL-PERMISSION-BYPASS  .claude/settings.json
+      Permission mode is bypassPermissions
+      verification: no scenario covers this
+  high     ASI-INSTR-EXFIL-DIRECTIVE  CLAUDE.md
+      Instruction pairs a secret source with an outbound sink
+      verification: runnable now (AGT-CONFIG-001)
+
+0 verified  5 runnable  4 unprovable here
+```
+
+**A risk is a reason to test, not a result.** Nothing has been executed and no
+detection control has been given the chance to fire, so `scan` never exits `1` —
+a gate that blocks on a static match teaches its team to bypass the gate. The
+third state is the honest one: `no scenario covers this` means AgentSec found
+something it cannot settle, which is neither a pass nor a failure.
+
+Turning the runnable ones into verdicts is the second half, and it is where a
+target becomes worth configuring:
+
+```bash
+agentsec scan --verify --target order-agent-staging
+```
+
+That selects exactly the scenarios covering the high and critical risks, runs
+them through the Purple Harness, and returns the same four-axis verdict
+`agentsec run` does. See [`docs/feature-matrix.md`](docs/feature-matrix.md) for
+the whole path and [ADR 0009](docs/adr/0009-repository-first-golden-path.md) for
+why it starts here.
+
+### 3. Run the offline pipeline
 
 ```bash
 agentsec validate                              # lint the bundled scenarios
@@ -134,7 +185,7 @@ Read that as: the tenant boundary is broken **but instrumented** — fix the cod
 
 **On "no Wazuh":** the fixture corpus supplies recorded Wazuh alerts and OTel spans from files, so the detection axis is genuinely evaluated offline — `AGT-MEMPOIS-001` is a `detection_gap` because rule `100720` is absent from those recorded alerts, not because nothing was checked. Gating a **real** agent on detection does need a live signal source, declared per target in `policy/targets.yaml`: a Wazuh indexer (`kind: opensearch`) or OTel. Wazuh is not mandatory — a contract asserting only `detection.otel` is valid — but it is currently the only SIEM collector implemented.
 
-### 3. Add to Claude Code
+### 4. Add to Claude Code
 
 ```bash
 pip install -e '.[mcp]'
@@ -156,7 +207,7 @@ Or commit it, so the whole team gets the same gateway:
 
 Add `"AGENTSEC_MCP_READ_ONLY": "1"` for a review-only session — in that mode `agentsec_start_run` is refused by the dispatcher, not merely discouraged, and the resource surface narrows to the [published subset](#resources). The repo also ships a Claude Code skill and a permission hook under [`.claude/`](.claude/README.md).
 
-### 4. Gate a real agent in CI
+### 5. Gate a real agent in CI
 
 Call the reusable workflow from the repository that owns the agent, pinned to a release tag:
 
@@ -268,21 +319,27 @@ Run this first when a detection gap looks suspicious: on first adoption, most ar
 
 ### Resources
 
-`agentsec://dashboard/latest` ・ `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
+`agentsec://dashboard/latest` ・ `agentsec://project/risks` ・ `agentsec://targets` ・ `agentsec://targets/{target_id}` ・ `agentsec://scenarios` ・ `agentsec://runs/{run_id}` ・ `agentsec://runs/{run_id}/evidence` ・ `agentsec://findings` ・ `agentsec://coverage` ・ `agentsec://audit`
 
 Every resource is a read, so "read-only" was never the question that separated
 them — the question is who holds the other end. With `AGENTSEC_MCP_READ_ONLY=1`
-the gateway becomes a *report* gateway and serves six of the nine:
-`dashboard/latest`, `targets`, `scenarios`, `runs/{run_id}`, `findings`,
-`coverage`. Per-run evidence, the audit log and the target authoring schema are
-working surfaces for whoever operates the harness, and are not registered at all
-rather than rendered carefully.
+the gateway becomes a *report* gateway and serves seven of the ten:
+`dashboard/latest`, `project/risks`, `targets`, `scenarios`, `runs/{run_id}`,
+`findings`, `coverage`. Per-run evidence, the audit log and the target authoring
+schema are working surfaces for whoever operates the harness, and are not
+registered at all rather than rendered carefully.
 
 `agentsec://dashboard/latest` is the one a dashboard polls: project identity, the
-four-axis purple rollup and the Skill Assurance summary, each in its own property
-and described by [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json).
+repository risk plane, the four-axis purple rollup, the Skill Assurance summary
+and the static posture plane, each in its own property and described by
+[`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json).
 It is computed in memory — reading it starts no run and writes no file — and a
 document that does not match that schema is refused rather than served.
+
+`agentsec://project/risks` serves the risk plane alone, for a client that wants
+the repository view without the run history. It takes no arguments: which
+repository is a process-boundary decision, never a tool argument
+([ADR 0003](docs/adr/0003-constrained-mcp-tools.md)).
 
 What is served is **projected, not filtered**: each publisher names the fields it
 keeps, so a field added to an evidence model tomorrow is absent from published
@@ -302,6 +359,7 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 
 | Command | Purpose | Common flags |
 |---|---|---|
+| `agentsec scan` | Inspect this repository's agent attack surface and rank it; `--verify` hands the provable high-risk subset to the harness | `--verify`, `--target`, `--profile`, `--output json` |
 | `agentsec validate` | Validate one scenario or the whole catalogue | `--scenario`, `--target`, `--strict` |
 | `agentsec preview` | Show what a run would do, without doing it | `--target`, `--profile`, `--scenario` |
 | `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--output junit`, `--output-file`, `--dry-run`, `--html` |

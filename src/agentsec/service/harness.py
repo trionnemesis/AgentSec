@@ -35,6 +35,7 @@ from agentsec.evaluation.evaluator import PurpleEvaluator
 from agentsec.evidence.collector import EvidenceCollector
 from agentsec.execution.base import ExecutionContext
 from agentsec.execution.registry import available_executors, get_executor
+from agentsec.inspect import inspect_project
 from agentsec.models.evidence import Evidence
 from agentsec.models.finding import FINDING_TRANSITIONS, Finding, FindingStatus
 from agentsec.models.run import Run, RunStatus
@@ -746,22 +747,36 @@ class HarnessService:
         batch, _, scenarios_with_a_verdict = self._rollup(
             target_id=target_id, profile=profile, limit=limit
         )
-        project, assurance, posture = self._project_planes(scenarios_with_a_verdict)
+        project, assurance, posture, risk = self._project_planes(scenarios_with_a_verdict)
         return {
             "schema_version": PUBLISH_SCHEMA_VERSION,
             "kind": "dashboard",
             "generated_at": datetime.now(UTC).isoformat(),
             "project": project,
             "purple": batch,
+            "repo_risk": risk,
             "skill_assurance": assurance,
             "static_posture": posture,
         }
 
+    def inspect_repository(self) -> dict[str, Any]:
+        """The repository risk plane on its own — what `agentsec scan` prints.
+
+        Shares ``_project_planes`` with the dashboard rather than walking the
+        repository a second time, so the risk list an engineer reads in the
+        terminal and the one an Artifact renders cannot disagree.
+        """
+        _, _, scenarios_with_a_verdict = self._rollup(
+            target_id=None, profile=None, limit=200
+        )
+        project, _, _, risk = self._project_planes(scenarios_with_a_verdict)
+        return {"project": project, "repo_risk": risk}
+
     def _project_planes(
         self, scenarios_with_a_verdict: set[str] | None = None
-    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        """Project identity, Skill Assurance and static posture, or an honest
-        account of why not.
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """Project identity, repository risk, Skill Assurance and static posture,
+        or an honest account of why not.
 
         A workspace with no manifest is a legitimate state — the harness ran
         against it long before `agentsec init` existed. It is not, however, an
@@ -788,6 +803,11 @@ class HarnessService:
                     "reason": "project_not_initialised",
                     "detail": "the project has no manifest, so no report location is known",
                 },
+                {
+                    "status": "not_inspected",
+                    "reason": "project_not_initialised",
+                    "detail": "the project has no manifest, so its surfaces were never located",
+                },
             )
         except ConfigError as exc:
             return (
@@ -802,6 +822,11 @@ class HarnessService:
                     "reason": "project_invalid",
                     "detail": "the project manifest does not load; no report location is known",
                 },
+                {
+                    "status": "not_inspected",
+                    "reason": "project_invalid",
+                    "detail": "the project manifest does not load; its surfaces were not read",
+                },
             )
 
         counts = discovery.to_dict()["counts"]
@@ -814,7 +839,32 @@ class HarnessService:
             },
             {**discovery.skill_assurance(), "counts": counts},
             self._static_posture(discovery, scenarios_with_a_verdict or set()),
+            self._repo_risk(discovery, scenarios_with_a_verdict or set()),
         )
+
+    def _repo_risk(
+        self, discovery: Discovery, scenarios_with_a_verdict: set[str]
+    ) -> dict[str, Any]:
+        """The repository risk plane (`inspect/`): this repository's own agent
+        configuration, read statically and triaged against the catalogue.
+
+        Kept apart from ``static_posture`` even though both are static, because
+        they have different authors and therefore different failure modes: that
+        plane reports what *someone else's* scanner concluded and can only be as
+        good as the report it was handed, while this one is first-party, runs
+        with no external tool configured, and is the only plane an engineer gets
+        on the first run in a fresh repository.
+
+        Never a ``PurpleVerdict``, and never merged into ``axis_counts``. The
+        one thing a risk may do is name the scenarios that would settle it.
+        """
+        report = inspect_project(
+            root=self.settings.workspace,
+            discovery=discovery,
+            catalog=self.catalog,
+            scenarios_with_a_verdict=scenarios_with_a_verdict,
+        )
+        return report.to_dict()
 
     def _static_posture(
         self, discovery: Discovery, scenarios_with_a_verdict: set[str]
