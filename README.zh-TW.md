@@ -51,13 +51,15 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **受限的 MCP gateway** | 11 個窄工具與 10 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
+| **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、以及實際執行過的判定互相比對 —— 分數永遠不是判定，未能對應到任何情境的發現預設為 `not_tested` |
+| **執行來源（provenance）** | 每個判定都會標示 `recorded` / `live` / `mixed`，由實際使用的執行器與證據後端推導而來 —— 用 fixture 產生的 `secure` 絕不會被誤讀成對真實 agent 驗證出來的結果 |
 
 **適用範圍**
 
 * **環境**：`local`、`ci`、`staging` —— `production` 不在列舉值中，因此沒有任何開關可以打開它
 * **涵蓋的 Agent 能力**：RAG、工具呼叫、持久記憶、多租戶、寄送郵件
-* **對應框架**：OWASP Agentic Top 10（內建情境覆蓋 4/10 個類別：`AAI001`、`AAI003`、`AAI004`、`AAI009`）與 OWASP LLM Top 10
-* **內建情境**：跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴
+* **對應框架**：OWASP Agentic Top 10（內建情境覆蓋 8/10 個類別：`AAI001`–`AAI004`、`AAI006`–`AAI009`）與 OWASP LLM Top 10
+* **內建情境**：八個 —— 跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴，以及針對 agent「設定」下手的攻擊家族（被下毒的專案指令外洩密鑰、agent 定義檔中隱藏的零寬 Unicode 指令、把不可信內容插進 shell 指令的 hook、工作階段中途新增且帶有憑證形狀 env 區塊的 MCP server）
 
 | 判定 | 意義 | 優先序 |
 |---|---|---|
@@ -153,7 +155,7 @@ agentsec scan --verify --target order-agent-staging
 ### 3. 執行離線流程
 
 ```bash
-agentsec validate                              # 檢查四個內建情境
+agentsec validate                              # 檢查內建情境
 agentsec preview --target demo-agent-fixture   # 「會」執行什麼，以及為什麼
 agentsec run --target demo-agent-fixture --profile nightly --html
 ```
@@ -336,11 +338,13 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 | `agentsec init \| project show` | 寫出專案宣告檔；盤點它宣告了什麼 | `--project-id`、`--name`、`--force` |
 | `agentsec approve` | 簽發有作用域、會過期、只能用一次的核准權杖 | `--scenario`、`--target`、`--ttl`、`--reason` |
 | `agentsec validate-detection` | 檢查偵測期待在該目標上是否檢查得了 | `--scenario`、`--target` |
+| `agentsec get-run` | 以 JSON 輸出單次執行 | `RUN_ID` |
 | `agentsec compare` | 逐項比對兩次執行 | `RUN_A RUN_B` |
 | `agentsec coverage` | OWASP Agentic Top 10 覆蓋率與判定分佈 | — |
 | `agentsec audit` | 查看稽核紀錄尾端，含被拒絕的請求 | `--limit` |
 | `agentsec finding list \| promote \| draft` | 處理 finding 與其工作流程 | `--status`、`--regression`、`--detection` |
 | `agentsec targets \| scenarios list` | 檢視允許清單與情境目錄 | `--target` |
+| `agentsec mcp-contract` | 以 JSON 輸出 MCP 工具／資源介面 | — |
 
 **結束碼就是契約：** `0` 乾淨、`1` 有阻擋級 finding、`2` 這套工具無法給你任何結論。把 `1` 和 `2` 混為一談，正是 pipeline 上的工作變成大家學會忽略的雜訊的方式。
 
@@ -362,7 +366,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 ```
 schemas/               scenario / target / evidence、專案宣告檔與發布用儀表板的
                        JSON Schema —— 可攜的核心資產
-scenarios/             情境目錄（四個完整範例）
+scenarios/             情境目錄（八個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
 fixtures/              錄製語料，讓一切都能離線執行
 .agentsec/             專案宣告檔：穩定 id 與經審查的相對位置
@@ -370,6 +374,8 @@ fixtures/              錄製語料，讓一切都能離線執行
 src/agentsec/
 ├── models/            # 跨越所有層邊界的型別化契約
 ├── project/           # 選定專案的解析與表面探索
+├── inspect/           # repository 風險規則（決定性）→ 風險面
+├── posture/           # 靜態態勢匯入，以及哪些 finding 有情境涵蓋
 ├── scenario/          # 載入器、三層驗證器、目錄與覆蓋率
 ├── policy/            # 允許清單、profile、核准，以及唯一的政策守門點
 ├── execution/         # 紅隊執行器（replay、promptfoo）與目標轉接器
@@ -413,6 +419,8 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 * **被拒絕的請求同樣寫入稽核。** 呼叫端*試圖*做什麼，才是那筆值得留下的紀錄。
 * **報表不會把它要回報的那次外洩再洩一次。** `AGT-TENANT-001` 證明跨租戶外洩的方式，是讓租戶 B 的訂單出現在租戶 A 的對話裡 —— 於是那份逐字稿同時是這個 finding 的**證據**，也**就是**被洩漏的那筆紀錄。因此發布輸出是投影而非過濾，而報表 gateway 根本不提供單次執行的證據與稽核紀錄。新增一個資源是一個決策，不是預設值：每個資源都必須指名自己的發布政策，少了政策 gateway 就拒絕啟動。
 * **拿不到的證據來源一律是 `error`，絕不會是 `pass`。** 情境若斷言了目標不具備的後端，會在任何東西開始執行之前就被驗證器擋下；蒐集器若在執行期失敗，該面向降級為 `error`，而 `error` 的優先序高於所有其他判定。報表不可能因為證據管線壞掉而變綠 —— 那正是這類工具最危險的一種 bug。
+* **靜態掃描工具的分數永遠不是判定。** 匯入 AgentShield 或任何輸出 SARIF 的掃描工具報告時，會組成一個獨立的 `static_posture` 面向；它絕不會擴大 `PurpleVerdict`、絕不會變成第五個面向，乾淨的分數也不能讓一個未測試的情境讀起來像 `secure`。
+* **判定會標示自己是怎麼被證明的。** 每次執行都帶有 `provenance`（`recorded` / `live` / `mixed`），所以用內建 fixture 語料產生的 `secure`，絕不會被呈現得像是對真實 agent 驗證出來的結果。
 * **判定過程中沒有語言模型。** 見 [ADR 0002](docs/adr/0002-deterministic-verdict.md)。
 
 ## 狀態
@@ -425,7 +433,7 @@ Alpha。決定性核心 —— schema → 政策 → replay → 證據 → 判�
 
 * 🐛 **Bug，或你認為判錯的結果** → [開一個 issue](https://github.com/trionnemesis/AgentSec/issues)，附上 run id 與證據包
 * 🎯 **情境點子** —— 目前目錄漏掉的攻擊型態 → 開 issue，或直接送上 YAML 與 fixture 的 PR
-* 🔍 **偵測規則** —— 為內建情境補上規則（`100501`、`100610`、`100720`、`100810`）
+* 🔍 **偵測規則** —— 為內建情境補上規則（`100501`、`100610`、`100720`、`100810`、`100901`–`100904`）
 * 🔧 **程式碼** → fork 後開 PR；請先跑 `make check`，並閱讀 [CONTRIBUTING.md](CONTRIBUTING.md) 中會在 review 時被強制執行的四條規則
 
 如果這個專案對你有幫助，按一顆 ⭐ 是最簡單的幫忙方式。
