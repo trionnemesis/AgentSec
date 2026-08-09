@@ -17,6 +17,13 @@ from agentsec.models.evidence import (
     WazuhAlert,
 )
 from agentsec.models.finding import Finding, FindingStatus
+from agentsec.models.fingerprint import (
+    DevelopmentAgentConfig,
+    FingerprintEvidence,
+    FingerprintProblem,
+    FingerprintReport,
+    RuntimeAgentFingerprint,
+)
 from agentsec.models.run import (
     AxisResult,
     AxisStatus,
@@ -43,15 +50,20 @@ __all__ = [
     "AxisStatus",
     "CheckResult",
     "Contract",
+    "DevelopmentAgentConfig",
     "Evidence",
     "EvidenceWindow",
     "ExecutionResult",
     "Finding",
     "FindingStatus",
+    "FingerprintEvidence",
+    "FingerprintProblem",
+    "FingerprintReport",
     "OtelSpan",
     "PurpleVerdict",
     "Run",
     "RunStatus",
+    "RuntimeAgentFingerprint",
     "Scenario",
     "ScenarioMetadata",
     "ScenarioSpec",
