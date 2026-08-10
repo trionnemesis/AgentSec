@@ -33,6 +33,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | SQLite store (runs, findings, audit log) | ✅ | latest-run-per-scenario aggregates |
 | CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
 | Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml`; relative locations only, traversal and symlink escape refused |
+| Runtime framework fingerprint engine | ✅ | deterministic, read-only detection for LangGraph/LangChain, OpenAI Agents SDK, AutoGen, Semantic Kernel, CrewAI and framework-neutral tool calling; development-agent config stays separate |
 | Tool-grant and memory surfaces | ✅ | one entry per permission rule; `.claude/memory` declared like any other surface ([#32](https://github.com/trionnemesis/AgentSec/issues/32)) |
 | **Repository risk plane** (`agentsec scan`) | ✅ | 10 deterministic rules across agents, skills, hooks, tool grants, MCP and memory ([ADR 0009](adr/0009-repository-first-golden-path.md)) |
 | **Risk → scenario triage** | ✅ | `verified` / `verifiable` / `not_verifiable`; `scan --verify` drains the queue |
@@ -43,6 +44,10 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 
 ### Core — open
 
+- [ ] **Compose the framework fingerprint into the inspection DTO and CLI.**
+      The detector is built and tested, but `agentsec scan` does not expose it
+      yet; that integration must not turn coding-agent configuration into a
+      runtime-agent claim or widen `PurpleVerdict`.
 - [ ] **Run against one real staging agent end to end**, and fix what that
       reveals. Still the single most valuable open item.
 - [ ] **A scenario covering the tool-grant / settings surface.**

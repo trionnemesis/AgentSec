@@ -62,6 +62,7 @@ Changes here need an ADR. These are load-bearing.
 | Verdict precedence | `evaluation/axes.py` | `error > detection_gap > prevention_gap > evidence_gap > response_gap > secure`. Frozen. |
 | Selected-project resolution + manifest | `project/` | Which repository. A process-boundary decision, never a tool argument ([ADR 0003](adr/0003-constrained-mcp-tools.md)). |
 | Surface discovery | `project/discovery.py` | Agents, skills, hooks, settings, instructions, MCP servers, tool grants, memory. Inventory only. |
+| Runtime framework fingerprint | `project/fingerprint.py` | Distinguishes application runtime agents from Claude Code, Codex, Gemini CLI, Cursor and MCP development configuration without importing repository code. |
 | Repository risk plane | `inspect/` | Turns the inventory into ranked risks, and each risk into `verified` / `verifiable` / `not_verifiable` ([ADR 0009](adr/0009-repository-first-golden-path.md)). |
 | `config-surface:` correlation | `scenario/surface_tags.py` | The one bridge from a static surface to a runnable scenario. Shared by the risk and posture planes so they cannot disagree. |
 | Replay executor + fixture corpus | `execution/replay.py` | Deterministic. What CI relies on. |
@@ -157,20 +158,25 @@ is refusing to widen the surface while the middle of it is unproven.
 Stated here rather than left for a reader to discover, because a matrix that
 only lists what works is marketing.
 
-1. **No scenario covers the tool-grant or settings surface.** `ASI-TOOL-BROAD-GRANT`
+1. **The framework fingerprint is not yet composed into `agentsec scan`.** The
+   deterministic detector exists and distinguishes `confirmed`, `likely`,
+   `configuration_only`, `not_detected` and `unsupported`, but the next DTO/CLI PR must make
+   that classification visible on the golden path without merging it into a
+   Purple verdict.
+2. **No scenario covers the tool-grant or settings surface.** `ASI-TOOL-BROAD-GRANT`
    and `ASI-TOOL-PERMISSION-BYPASS` fire — the second at `critical` — and both
    report `not_verifiable`, because no `AGT-CONFIG-*` scenario is tagged at
    `.claude/settings.json`. The plane is honest about it; the catalogue gap is
    real. This is the next scenario to write.
-2. **No scenario covers the memory surface as a repository surface.**
+3. **No scenario covers the memory surface as a repository surface.**
    `AGT-XPIA-001` is the right shape but is tagged at no config surface, so
    `ASI-MEMORY-UNREVIEWED-STORE` reports `not_verifiable`.
-3. **`AGT-CONFIG-*` has no recorded fixtures.** The family validates clean and is
+4. **`AGT-CONFIG-*` has no recorded fixtures.** The family validates clean and is
    scoped to `environments: [ci, staging]`, so `--verify` against the bundled
    `demo-agent-fixture` (environment `local`) correctly refuses with exit 2
    rather than selecting nothing and reporting success. Until fixtures exist,
    `--verify` needs a real staging target.
-4. **No end-to-end run against a live agent has happened.** This remains the
+5. **No end-to-end run against a live agent has happened.** This remains the
    single most valuable open item, exactly as #32 says.
 
 ---

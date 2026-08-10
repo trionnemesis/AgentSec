@@ -13,6 +13,7 @@ from agentsec.project.discovery import (
     Surface,
     discover,
 )
+from agentsec.project.fingerprint import FINGERPRINT_SCHEMA_VERSION, fingerprint_repository
 from agentsec.project.manifest import (
     API_VERSION,
     KIND,
@@ -33,6 +34,7 @@ __all__ = [
     "MANIFEST_PATH",
     "PROJECT_SCHEMA_VERSION",
     "Discovery",
+    "FINGERPRINT_SCHEMA_VERSION",
     "Problem",
     "ProjectManifest",
     "Surface",
@@ -40,6 +42,7 @@ __all__ = [
     "check_location",
     "default_manifest_text",
     "discover",
+    "fingerprint_repository",
     "load_manifest",
     "load_project",
     "manifest_path",
