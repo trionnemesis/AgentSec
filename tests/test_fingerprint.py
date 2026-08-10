@@ -1,4 +1,9 @@
-"""Runtime-agent fingerprinting stays distinct from coding-agent config."""
+"""Runtime-agent fingerprinting stays distinct from coding-agent config.
+
+The second half of this file is the composition (#32): the same classification
+read through the inspection DTO, the `agentsec scan` output and the published
+dashboard, where the distinction has to survive three more hops.
+"""
 
 from __future__ import annotations
 
@@ -8,8 +13,11 @@ from pathlib import Path
 
 import pytest
 
+from agentsec.config import Settings
 from agentsec.models.fingerprint import FingerprintReport, RuntimeAgentFingerprint
 from agentsec.project import fingerprint_repository
+from agentsec.reporting.publish import publish
+from agentsec.service.harness import HarnessService
 
 
 def write(path: Path, text: str) -> Path:
@@ -285,3 +293,179 @@ def test_evidence_never_contains_source_text(tmp_path: Path) -> None:
     report = fingerprint_repository(tmp_path)
 
     assert secret not in json.dumps(report.to_dict())
+
+
+# -- composition into the inspection DTO, the CLI and the dashboard -----------
+
+MANIFEST = """\
+apiVersion: agentsec.dev/v1alpha1
+kind: Project
+project_id: demo-project
+name: Demo
+"""
+
+
+@pytest.fixture
+def langgraph_repo(workspace: Path) -> Path:
+    """A checkout that really does implement an agent."""
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(
+        workspace / "pyproject.toml",
+        '[project]\nname = "order-agent"\nversion = "0.1.0"\ndependencies = ["langgraph"]\n',
+    )
+    write(
+        workspace / "src" / "agent" / "graph.py",
+        "from langgraph.graph import StateGraph\n\n"
+        "builder = StateGraph(dict)\n"
+        "app = builder.compile()\n",
+    )
+    return workspace
+
+
+def project_plane(settings: Settings) -> dict:
+    return publish("dashboard", HarnessService(settings, actor="pytest").dashboard())["project"]
+
+
+def test_the_project_plane_names_the_framework_and_where_it_lives(
+    langgraph_repo: Path, settings: Settings
+) -> None:
+    fingerprint = project_plane(settings)["fingerprint"]
+
+    assert fingerprint["agent_presence"] == "confirmed"
+    assert fingerprint["confidence"] == "high"
+    [agent] = fingerprint["runtime_agents"]
+    assert agent["framework"] == "langgraph"
+    assert agent["entrypoints"] == ["src/agent/graph.py"]
+
+
+def test_coding_agent_configuration_is_never_published_as_a_runtime_agent(
+    workspace: Path, settings: Settings
+) -> None:
+    """The overclaim this composition exists to prevent (#32)."""
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / ".claude" / "skills" / "greet" / "SKILL.md", "---\nname: greet\n---\nHi.\n")
+    write(workspace / ".mcp.json", json.dumps({"mcpServers": {"local": {"command": "x"}}}))
+
+    fingerprint = project_plane(settings)["fingerprint"]
+
+    assert fingerprint["agent_presence"] == "configuration_only"
+    assert fingerprint["runtime_agents"] == []
+    assert {c["platform"] for c in fingerprint["development_agent_config"]} == {
+        "claude_code", "mcp",
+    }
+
+
+def test_an_ordinary_repository_is_not_detected_and_never_reads_as_a_pass(
+    workspace: Path, settings: Settings
+) -> None:
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / "README.md", "# A normal repository\n")
+
+    project = project_plane(settings)
+
+    assert project["fingerprint"]["agent_presence"] == "not_detected"
+    assert project["fingerprint"]["confidence"] == "none"
+    serialised = json.dumps(project)
+    for verdict in ("secure", "pass", "prevention_gap", "detection_gap"):
+        assert verdict not in serialised
+
+
+def test_the_fingerprint_is_reported_before_the_repository_is_initialised(
+    workspace: Path, settings: Settings
+) -> None:
+    """Whether there is an agent here does not depend on running `agentsec init`."""
+    write(
+        workspace / "src" / "graph.py",
+        "from langgraph.graph import StateGraph\ngraph = StateGraph(dict)\n",
+    )
+
+    project = project_plane(settings)
+
+    assert project["status"] == "not_initialised"
+    assert project["fingerprint"]["agent_presence"] == "confirmed"
+
+
+def test_the_fingerprint_never_reaches_the_purple_plane(
+    langgraph_repo: Path, settings: Settings
+) -> None:
+    """Composition, not merging: no plane may borrow another's vocabulary."""
+    dashboard = publish("dashboard", HarnessService(settings, actor="pytest").dashboard())
+
+    purple = json.dumps(dashboard["purple"])
+    assert "langgraph" not in purple
+    assert "agent_presence" not in purple
+    assert set(dashboard["purple"]["verdict_counts"]) <= {
+        "secure", "prevention_gap", "detection_gap", "evidence_gap", "response_gap", "error",
+    }
+
+
+def test_the_standalone_risk_resource_carries_the_fingerprint(
+    langgraph_repo: Path, settings: Settings
+) -> None:
+    service = HarnessService(settings, actor="pytest")
+
+    document = publish("repo_risk_document", service.inspect_repository())
+
+    assert document["project"]["fingerprint"]["agent_presence"] == "confirmed"
+    assert document["repo_risk"]["status"] == "inspected"
+
+
+def test_the_project_projection_names_its_fields(langgraph_repo: Path, settings: Settings) -> None:
+    """A key the service grows tomorrow is absent from published output until argued for."""
+    raw = HarnessService(settings, actor="pytest").dashboard()["project"]
+    raw["operator_notes"] = "an internal field nobody decided was publishable"
+    raw["fingerprint"]["runtime_agents"][0]["source"] = "a snippet a future detector kept"
+
+    published = publish("project", raw)
+
+    assert "operator_notes" not in published
+    assert "source" not in published["fingerprint"]["runtime_agents"][0]
+
+
+def test_published_evidence_never_carries_source_text(
+    workspace: Path, settings: Settings
+) -> None:
+    secret = "customer-secret-should-stay-in-source"
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(
+        workspace / "agent.py",
+        "from langgraph.graph import StateGraph\n"
+        f"SECRET = {secret!r}\n"
+        "graph = StateGraph(dict)\n",
+    )
+
+    assert secret not in json.dumps(project_plane(settings))
+
+
+def test_scan_leads_with_what_the_repository_is(langgraph_repo: Path) -> None:
+    from typer.testing import CliRunner
+
+    from agentsec.cli import app
+
+    result = CliRunner().invoke(app, ["scan", "--workspace", str(langgraph_repo)])
+
+    assert result.exit_code == 0, result.output
+    agent_line = result.output.index("AI agent")
+    assert agent_line < result.output.index("project       demo-project")
+    assert "langgraph" in result.output
+    assert "src/agent/graph.py" in result.output
+
+
+def test_scan_states_the_classification_when_the_repository_is_uninitialised(
+    workspace: Path,
+) -> None:
+    """`not inspected` on its own tells an engineer nothing about what is here."""
+    from typer.testing import CliRunner
+
+    from agentsec.cli import app
+
+    write(
+        workspace / "src" / "graph.py",
+        "from langgraph.graph import StateGraph\ngraph = StateGraph(dict)\n",
+    )
+
+    result = CliRunner().invoke(app, ["scan", "--workspace", str(workspace)])
+
+    assert result.exit_code == 0, result.output
+    assert "confirmed" in result.output
+    assert "not inspected [project_not_initialised]" in result.output

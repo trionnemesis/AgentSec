@@ -491,6 +491,23 @@ _VERIFICATION_LABEL = {
     "verifiable": "runnable now",
     "not_verifiable": "no scenario covers this",
 }
+#: What each classification means to someone who did not read the schema. Every
+#: line says what was found; none of them says the repository is safe, because
+#: this classifier has executed nothing.
+_PRESENCE_LABEL = {
+    "confirmed": ("confirmed", typer.colors.CYAN),
+    "likely": ("likely", typer.colors.CYAN),
+    "configuration_only": ("configuration only", typer.colors.WHITE),
+    "not_detected": ("not detected", typer.colors.WHITE),
+    "unsupported": ("could not classify", typer.colors.YELLOW),
+}
+_PRESENCE_DETAIL = {
+    "confirmed": "runtime agent code in this repository",
+    "likely": "agent dependencies or tool calling, but no runtime entrypoint",
+    "configuration_only": "coding-agent configuration only — no runtime agent code",
+    "not_detected": "no agent framework, tool calling or agent configuration found",
+    "unsupported": "something was found here that these rules cannot classify",
+}
 
 
 @app.command()
@@ -512,10 +529,16 @@ def scan(
 ) -> None:
     """Inspect the selected repository for agent attack surface, and rank what it finds.
 
-    The engineer's entry point. Reads this repository's skills, agents, hooks,
-    tool grants, MCP servers and memory stores, applies the static rules in
-    `agentsec.inspect`, and reports each risk alongside whether anything here
-    can turn it into a deterministic conclusion.
+    The engineer's entry point. Answers two questions in order: whether this
+    repository implements an AI agent — and in what framework — then what in its
+    skills, agents, hooks, tool grants, MCP servers and memory stores is worth
+    testing, with whether anything here can turn each risk into a deterministic
+    conclusion.
+
+    The first answer never asserts the second. A repository holding only a
+    `CLAUDE.md` and a `.mcp.json` reports `configuration only`: a coding agent
+    works *on* this checkout, which is not the same as this checkout *being* an
+    agent. `not detected` is likewise an absence of evidence, not a pass.
 
     Static only, by design. A risk is a reason to run a scenario, never the
     result of having run one — so `--verify` is the second half: it selects the
@@ -567,18 +590,51 @@ def scan(
         _fail(exc)
 
 
+def _print_agent(project: dict) -> None:
+    """What this repository *is*, before what is wrong with it.
+
+    First, because it is the question an engineer opening an unfamiliar
+    repository actually has, and because every risk below it means something
+    different depending on the answer. Printed even when the risk plane could
+    not run: whether there is an agent here does not depend on whether anyone
+    has run `agentsec init`.
+    """
+    fingerprint = project.get("fingerprint") or {}
+    presence = fingerprint.get("agent_presence", "unsupported")
+    label, colour = _PRESENCE_LABEL.get(presence, (presence, typer.colors.YELLOW))
+
+    typer.secho(f"\n  AI agent      {label}", fg=colour, bold=True)
+    typer.echo(f"                {_PRESENCE_DETAIL.get(presence, '')}")
+
+    for agent in fingerprint.get("runtime_agents") or []:
+        where = ", ".join(agent.get("entrypoints") or []) or "no entrypoint found"
+        typer.echo(f"                {agent['framework']} ({agent['language']})  {where}")
+    platforms = ", ".join(
+        config["platform"] for config in fingerprint.get("development_agent_config") or []
+    )
+    if platforms:
+        typer.echo(f"                coding-agent config: {platforms}")
+    if fingerprint.get("problems"):
+        typer.secho(
+            f"                {len(fingerprint['problems'])} file(s) could not be parsed; "
+            "absence of a framework here is not proof there is none",
+            fg=typer.colors.YELLOW,
+        )
+
+
 def _print_scan(document: dict) -> None:
     project, plane = document["project"], document["repo_risk"]
+    _print_agent(project)
 
     if plane.get("status") != "inspected":
         typer.secho(
-            f"not inspected [{plane.get('reason', 'unknown')}]: {plane.get('detail', '')}",
+            f"\nnot inspected [{plane.get('reason', 'unknown')}]: {plane.get('detail', '')}",
             fg=typer.colors.YELLOW,
         )
         return
 
     typer.echo(
-        f"\nproject {project.get('project_id', '?')}  "
+        f"\n  project       {project.get('project_id', '?')}  "
         f"surfaces {sum((project.get('surfaces') or {}).values())}  "
         f"risks {plane['counts']['total']}\n"
     )
