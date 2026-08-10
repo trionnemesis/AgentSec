@@ -41,7 +41,7 @@
   "$defs": {
     "project": {
       "type": "object",
-      "description": "Which repository this is. `status` is not decoration: a dashboard for a repository that was never initialised must say so rather than render as an anonymous but healthy project.",
+      "description": "Which repository this is, what agent surfaces it declares, and whether it implements an AI agent at all (`fingerprint`). `status` is not decoration: a dashboard for a repository that was never initialised must say so rather than render as an anonymous but healthy project. The fingerprint is reported even then — whether there is an agent here does not depend on whether someone ran `agentsec init`.",
       "required": ["status"],
       "additionalProperties": false,
       "properties": {
@@ -56,10 +56,78 @@
           "type": "object",
           "description": "Counts only. The inventory itself is not part of this document.",
           "additionalProperties": { "type": "integer", "minimum": 0 }
-        }
+        },
+        "fingerprint": { "$ref": "#/$defs/fingerprint" }
       },
       "if": { "properties": { "status": { "const": "declared" } } },
       "then": { "required": ["status", "project_id", "name"] }
+    },
+    "fingerprint": {
+      "type": "object",
+      "description": "Whether this checkout implements an AI agent, and in what (issue #32). Read statically: no repository code is imported or executed, and every path is relative to the selected root. Inside `project` rather than beside it because it qualifies the identity that plane already reports, and because a sixth top-level key would have read as a sixth kind of conclusion. It is not one — nothing here has run, so `not_detected` is an absence of evidence and never a pass.",
+      "required": ["agent_presence", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "agent_presence": {
+          "enum": ["confirmed", "likely", "configuration_only", "not_detected", "unsupported"],
+          "description": "confirmed: framework code with a builder or entrypoint. likely: dependencies or tool-calling shape without a runtime entrypoint. configuration_only: CLAUDE.md, skills, hooks or .mcp.json and no runtime agent — a coding agent works *on* this repository, which is not the same as this repository *being* one. not_detected: no evidence either way. unsupported: something was found and could not be classified, which is stated rather than rounded down to absence."
+        },
+        "confidence": { "enum": ["high", "medium", "none"] },
+        "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "runtime_agents": {
+          "type": "array",
+          "description": "Application agents implemented in this repository. Never concatenated with development_agent_config: merging the two is exactly how a .mcp.json becomes a claimed runtime agent.",
+          "items": {
+            "type": "object",
+            "required": ["framework", "language", "confidence"],
+            "properties": {
+              "framework": { "type": "string", "maxLength": 60 },
+              "language": { "enum": ["python", "javascript", "typescript", "mixed", "unknown"] },
+              "confidence": { "enum": ["high", "medium"] },
+              "entrypoints": { "type": "array", "items": { "type": "string" } },
+              "evidence": {
+                "type": "array",
+                "description": "Bounded structural facts: a dependency name, an import path, a builder symbol, a relative file. Never source text — see project/fingerprint.py.",
+                "items": {
+                  "type": "object",
+                  "required": ["kind", "file", "value"],
+                  "properties": {
+                    "kind": {
+                      "enum": ["dependency", "import", "builder_call", "runtime_config", "tool_calling"]
+                    },
+                    "file": { "type": "string" },
+                    "value": { "type": "string", "maxLength": 500 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "development_agent_config": {
+          "type": "array",
+          "description": "Coding-agent configuration found in the checkout. Present on its own, this is what makes a repository configuration_only.",
+          "items": {
+            "type": "object",
+            "required": ["platform"],
+            "properties": {
+              "platform": { "enum": ["claude_code", "codex", "gemini_cli", "cursor", "mcp"] },
+              "paths": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "problems": {
+          "type": "array",
+          "description": "Candidates the detector could not read completely. An unparsed file is stated, never counted as absence of an agent.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": { "type": "string" },
+              "kind": { "type": "string" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
     },
     "repoRisk": {
       "type": "object",

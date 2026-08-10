@@ -47,7 +47,13 @@ from agentsec.policy.guard import PolicyGuard
 from agentsec.policy.profiles import Profile, load_profiles
 from agentsec.posture.adapter import load_posture_report, resolve_report_path
 from agentsec.posture.coverage import compute_posture_coverage, coverage_counts
-from agentsec.project import MANIFEST_PATH, Discovery, discover
+from agentsec.project import (
+    FINGERPRINT_SCHEMA_VERSION,
+    MANIFEST_PATH,
+    Discovery,
+    discover,
+    fingerprint_repository,
+)
 from agentsec.reporting.html import write_html_report
 from agentsec.reporting.junit import render_junit
 from agentsec.reporting.normalizer import (
@@ -784,7 +790,14 @@ class HarnessService:
         Skill plane says `not_tested`, because "we do not know which repository
         this is" must never render as a clean result. Static posture follows the
         same rule (#25): no manifest means nothing was ingested, not a clean scan.
+
+        The fingerprint is attached to every branch, including the ones where
+        discovery failed, because it answers a question that does not depend on
+        a manifest: whether there is an agent in this checkout at all. A reader
+        told only "not initialised" learns nothing about whether it was worth
+        initialising.
         """
+        fingerprint = self._fingerprint()
         try:
             discovery = discover(self.settings.workspace)
         except ProjectNotInitialised:
@@ -792,6 +805,7 @@ class HarnessService:
                 {
                     "status": "not_initialised",
                     "detail": f"no {MANIFEST_PATH}; run `agentsec init` in this repository",
+                    "fingerprint": fingerprint,
                 },
                 {
                     "status": "not_tested",
@@ -811,7 +825,7 @@ class HarnessService:
             )
         except ConfigError as exc:
             return (
-                {"status": "invalid", "detail": exc.message[:500]},
+                {"status": "invalid", "detail": exc.message[:500], "fingerprint": fingerprint},
                 {
                     "status": "not_tested",
                     "reason": "project_invalid",
@@ -836,11 +850,45 @@ class HarnessService:
                 "project_id": discovery.project_id,
                 "name": discovery.name,
                 "surfaces": counts,
+                "fingerprint": fingerprint,
             },
             {**discovery.skill_assurance(), "counts": counts},
             self._static_posture(discovery, scenarios_with_a_verdict or set()),
             self._repo_risk(discovery, scenarios_with_a_verdict or set()),
         )
+
+    def _fingerprint(self) -> dict[str, Any]:
+        """Whether this checkout implements an AI agent, and in what.
+
+        Sits inside the ``project`` plane rather than beside it: it answers
+        "which repository is this", which is the question that plane already
+        exists for, and it is read on the same screen as the surface counts it
+        qualifies. A sixth plane would have implied a sixth kind of conclusion.
+
+        The distinction the whole thing turns on is preserved by the model:
+        ``runtime_agents`` is application code, ``development_agent_config`` is
+        Claude Code, Codex, Cursor or an MCP config. A repository holding only
+        the latter is ``configuration_only``, never a runtime agent, and
+        ``not_detected`` is an absence of evidence rather than a pass — nothing
+        here has executed anything.
+        """
+        try:
+            return fingerprint_repository(self.settings.workspace).to_dict()
+        except AgentSecError as exc:
+            # The classifier could not read the checkout. Reporting
+            # `not_detected` here would turn "we could not look" into "there is
+            # nothing to find", which is the one answer this plane must never
+            # invent; `unsupported` is the model's word for an incomplete read.
+            return {
+                "schema_version": FINGERPRINT_SCHEMA_VERSION,
+                "agent_presence": "unsupported",
+                "confidence": "none",
+                "runtime_agents": [],
+                "development_agent_config": [],
+                "problems": [
+                    {"path": ".", "kind": "unreadable_root", "detail": exc.message[:500]}
+                ],
+            }
 
     def _repo_risk(
         self, discovery: Discovery, scenarios_with_a_verdict: set[str]

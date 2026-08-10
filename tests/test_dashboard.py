@@ -156,6 +156,15 @@ def test_a_workspace_with_a_manifest_is_named(service: HarnessService) -> None:
             "skills": 0, "supported_skills": 0, "agents": 0, "hooks": 0,
             "mcp_servers": 0, "tool_grants": 0, "memory": 0, "problems": 0,
         },
+        # A workspace of scenarios and fixtures is not an agent, and says so
+        # rather than reporting nothing.
+        "fingerprint": {
+            "agent_presence": "not_detected",
+            "confidence": "none",
+            "runtime_agents": [],
+            "development_agent_config": [],
+            "schema_version": "1.0.0",
+        },
     }
 
 

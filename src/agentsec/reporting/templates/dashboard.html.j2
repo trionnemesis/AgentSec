@@ -36,6 +36,16 @@
         {% else %}
           <span class="pill skip">project {{ d.project.status.replace('_', ' ') }}</span>
         {% endif %}
+        {% if d.project.fingerprint %}
+          {# The first thing on the page, because every count below it means
+             something different depending on the answer. A classification, not
+             a conclusion: nothing has been executed to produce it. #}
+          · AI agent
+          <span class="pill {{ 'warn' if d.project.fingerprint.agent_presence in ('confirmed', 'likely') else 'skip' }}">{{ d.project.fingerprint.agent_presence.replace('_', ' ') }}</span>
+          {% for agent in d.project.fingerprint.runtime_agents %}
+            <code>{{ agent.framework }}</code>{{ '' if loop.last else ',' }}
+          {% endfor %}
+        {% endif %}
         · target <code>{{ d.purple.target_id }}</code>
         · profile <code>{{ d.purple.profile }}</code>
       </div>
@@ -74,6 +84,50 @@
      PurpleVerdict and does not belong in a verdict count; see ADR 0008. A repo
      risk is not one either — it is a reason to run a scenario, not a result. #}
   <div class="planes">
+    {% if d.project.fingerprint %}
+      {# Runtime agents and coding-agent configuration are rendered as two
+         separate rows and never summed. A single "agent surfaces" number would
+         let a .mcp.json read as a runtime agent, which is the one overclaim
+         this classification exists to prevent (#32). #}
+      <div class="plane">
+        <h3>
+          AI agent
+          <span class="pill {{ 'warn' if d.project.fingerprint.agent_presence in ('confirmed', 'likely') else 'skip' }}">{{ d.project.fingerprint.agent_presence.replace('_', ' ') }}</span>
+        </h3>
+        <dl class="kv">
+          <dt>confidence</dt><dd>{{ d.project.fingerprint.confidence }}</dd>
+          {% for agent in d.project.fingerprint.runtime_agents %}
+            <dt>{{ agent.framework }}</dt>
+            <dd>
+              {{ agent.language }}{% if agent.entrypoints %} ·
+                {% for path in agent.entrypoints %}<code>{{ path }}</code>{{ '' if loop.last else ' ' }}{% endfor %}
+              {% else %} · no entrypoint found{% endif %}
+            </dd>
+          {% endfor %}
+          {% if d.project.fingerprint.development_agent_config %}
+            <dt>coding-agent config</dt>
+            <dd>{{ d.project.fingerprint.development_agent_config | map(attribute='platform') | join(', ') }}</dd>
+          {% endif %}
+          {% if d.project.fingerprint.problems %}
+            <dt>unparsed</dt><dd>{{ d.project.fingerprint.problems | length }} file(s)</dd>
+          {% endif %}
+        </dl>
+        <p class="why">
+          {% if d.project.fingerprint.agent_presence == 'configuration_only' %}
+            A coding agent works on this repository; the repository does not implement one.
+          {% elif d.project.fingerprint.agent_presence == 'not_detected' %}
+            No agent framework, tool calling or agent configuration was found. That is an
+            absence of evidence, not a pass — nothing was executed to establish it.
+          {% elif d.project.fingerprint.agent_presence == 'unsupported' %}
+            Something here could not be classified. Stated rather than rounded down to
+            "no agent found".
+          {% else %}
+            Read statically from dependencies, imports and builder calls. No repository
+            code was imported or run.
+          {% endif %}
+        </p>
+      </div>
+    {% endif %}
     <div class="plane">
       <h3>
         Repository risk

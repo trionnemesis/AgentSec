@@ -385,12 +385,15 @@ RESOURCES: tuple[ResourceSpec, ...] = (
         uri_template="agentsec://project/risks",
         title="Repository risk plane",
         description=(
-            "This repository's own agent attack surface — skills, agents, hooks, tool "
-            "grants, MCP servers, memory stores — read by the static rules in "
-            "`agentsec.inspect` and triaged against the scenario catalogue. Each risk "
-            "says whether a deterministic conclusion is available, obtainable, or out "
-            "of reach. Not a verdict: nothing here has executed anything. Takes no "
-            "arguments — which repository is a process-boundary decision (ADR 0003)."
+            "Whether this repository implements an AI agent and in what framework "
+            "(`project.fingerprint`), and its own agent attack surface — skills, "
+            "agents, hooks, tool grants, MCP servers, memory stores — read by the "
+            "static rules in `agentsec.inspect` and triaged against the scenario "
+            "catalogue. Each risk says whether a deterministic conclusion is "
+            "available, obtainable, or out of reach. Not a verdict: nothing here has "
+            "executed anything, so a repository with no runtime agent reads as "
+            "`not_detected` rather than as a pass. Takes no arguments — which "
+            "repository is a process-boundary decision (ADR 0003)."
         ),
         handler="inspect_repository",
         publish="repo_risk_document",
@@ -406,10 +409,12 @@ RESOURCES: tuple[ResourceSpec, ...] = (
         uri_template="agentsec://dashboard/latest",
         title="Project dashboard",
         description=(
-            "The latest state of this project as one document: identity, the "
-            "four-axis purple rollup, and the Skill Assurance summary, each in "
-            "its own property. Computed in memory — reading it starts no run and "
-            "writes no file. Schema: schemas/project-dashboard.schema.json."
+            "The latest state of this project as one document: identity and "
+            "runtime-agent classification, the repository risk plane, the "
+            "four-axis purple rollup, the Skill Assurance summary and ingested "
+            "static posture, each in its own property and never merged. Computed "
+            "in memory — reading it starts no run and writes no file. Schema: "
+            "schemas/project-dashboard.schema.json."
         ),
         handler="dashboard",
         publish="dashboard",

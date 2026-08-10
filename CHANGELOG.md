@@ -6,6 +6,31 @@ Notable changes, newest first. The format follows
 [`docs/roadmap.md`](docs/roadmap.md): integrations marked 🟡 there are first
 drafts even when they appear in a release.
 
+## [Unreleased]
+
+### Added
+
+- **`agentsec scan` says what the repository is before what is wrong with it.**
+  The runtime framework fingerprint is composed into the `project` plane as
+  `project.fingerprint`, so the CLI, the dashboard page and
+  `agentsec://project/risks` read one classification: `confirmed`, `likely`,
+  `configuration_only`, `not_detected` or `unsupported`, with the framework and
+  its entrypoints named. Runtime agents and coding-agent configuration are
+  carried as separate lists at every hop — a `.mcp.json` cannot become a claimed
+  runtime agent by way of a template.
+- The classification is reported **before** `agentsec init`, since whether there
+  is an agent in a checkout does not depend on whether anyone wrote a manifest.
+
+### Changed
+
+- `PUBLISH_SCHEMA_VERSION` is `1.4.0`. `project.fingerprint` is a new optional
+  key inside a plane that already existed; no plane was added or merged, and no
+  published shape changed.
+- The `project` plane is now projected field by field like every other published
+  document rather than passed through whole. Its new content is derived from
+  reading arbitrary repository files, so "the producer promises no source text"
+  stopped being a guarantee that could live in one place.
+
 ## [0.2.0] — 2026-08-06
 
 The release that gives AgentSec a first step. In 0.1.0 the entry point was

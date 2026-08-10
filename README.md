@@ -116,7 +116,23 @@ agentsec init      # write .agentsec/project.yaml, then read it and commit it
 agentsec scan      # find the attack surface, and rank what it finds
 ```
 
-`scan` reads what this repository gives an AI agent — project instructions,
+`scan` answers two questions in order. First, whether this repository implements
+an AI agent at all — read from dependencies, imports and builder calls, without
+importing or running any of it:
+
+```
+  AI agent      confirmed
+                runtime agent code in this repository
+                langgraph (python)  src/agent/graph.py
+                coding-agent config: claude_code, mcp
+```
+
+A repository holding only a `CLAUDE.md` and a `.mcp.json` reports
+`configuration only`: a coding agent works *on* this checkout, which is not the
+same as this checkout *being* an agent. An ordinary repository reports
+`not detected` — an absence of evidence, never a pass.
+
+Then it reads what this repository gives an AI agent — project instructions,
 subagent definitions, skills, hooks, pre-approved tool grants, MCP servers and
 memory stores — and applies the deterministic rules in
 [`inspect/`](src/agentsec/inspect/). Each risk says whether anything here can

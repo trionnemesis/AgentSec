@@ -56,7 +56,12 @@ from agentsec.models.run import Run
 #: composed `dashboard`, inert everywhere else. Minor rather than major because
 #: a consumer that reads the planes it knows keeps working — the shapes it was
 #: already reading are untouched.
-PUBLISH_SCHEMA_VERSION = "1.3.0"
+#: 1.4.0 added `project.fingerprint` (#32) — an *optional* key inside a plane
+#: that already existed, rather than a sixth plane, because "does this
+#: repository implement an agent" qualifies the identity `project` already
+#: reports. No plane was added, none was merged, and nothing already published
+#: changed shape.
+PUBLISH_SCHEMA_VERSION = "1.4.0"
 
 #: Names the ruleset, so a stored export says which policy produced it.
 PUBLISH_POLICY = "observed-data-v1"
@@ -469,6 +474,82 @@ def publish_posture(document: dict[str, Any] | None) -> dict[str, Any]:
     return body
 
 
+def publish_project(document: dict[str, Any] | None) -> dict[str, Any]:
+    """Project the identity plane: which repository, what is in it, is it an agent.
+
+    Named field by field like every other publisher here, and newly so: this
+    plane used to be passed through whole because everything in it was a short
+    service-authored string. The fingerprint changes that. It is derived from
+    reading arbitrary repository files, and while the detector is built never to
+    carry source text — evidence is a dependency name, an import path, a builder
+    symbol, a relative file path — "the producer promises" is the wrong place
+    for that guarantee to live alone. Listing the fields here means a detector
+    that starts carrying a snippet tomorrow has to be argued for in this file.
+    """
+    document = document or {"status": "not_initialised"}
+    body: dict[str, Any] = {"status": document.get("status", "not_initialised")}
+    for key in ("project_id", "name"):
+        if document.get(key) is not None:
+            body[key] = document[key]
+    if document.get("detail") is not None:
+        body["detail"] = scrub(document["detail"])
+    if "surfaces" in document:
+        body["surfaces"] = dict(document["surfaces"])
+    if document.get("fingerprint") is not None:
+        body["fingerprint"] = _publish_fingerprint(document["fingerprint"])
+    return body
+
+
+def _publish_fingerprint(document: dict[str, Any]) -> dict[str, Any]:
+    """The runtime-agent classification, with the two lists kept apart.
+
+    ``runtime_agents`` and ``development_agent_config`` are projected
+    separately and never concatenated. A consumer that merged them would be one
+    template change away from announcing a runtime AI agent in a repository
+    whose only evidence is a ``CLAUDE.md``, which is the specific overclaim #32
+    asked this feature not to make.
+    """
+    body: dict[str, Any] = {
+        "agent_presence": document.get("agent_presence", "unsupported"),
+        "confidence": document.get("confidence", "none"),
+        "runtime_agents": [
+            {
+                "framework": agent.get("framework"),
+                "language": agent.get("language"),
+                "confidence": agent.get("confidence"),
+                "entrypoints": list(agent.get("entrypoints") or []),
+                "evidence": [
+                    {
+                        "kind": item.get("kind"),
+                        "file": item.get("file"),
+                        # A package, module or builder symbol the detector
+                        # matched — bounded vocabulary, never matched source.
+                        "value": scrub(item.get("value")),
+                    }
+                    for item in agent.get("evidence") or []
+                ],
+            }
+            for agent in document.get("runtime_agents") or []
+        ],
+        "development_agent_config": [
+            {"platform": config.get("platform"), "paths": list(config.get("paths") or [])}
+            for config in document.get("development_agent_config") or []
+        ],
+    }
+    if document.get("schema_version") is not None:
+        body["schema_version"] = document["schema_version"]
+    if document.get("problems"):
+        body["problems"] = [
+            {
+                "path": problem.get("path"),
+                "kind": problem.get("kind"),
+                "detail": scrub(problem.get("detail")),
+            }
+            for problem in document["problems"]
+        ]
+    return body
+
+
 def publish_repo_risk(document: dict[str, Any] | None) -> dict[str, Any]:
     """Project the repository risk plane (`inspect/`).
 
@@ -537,11 +618,10 @@ def publish_repo_risk_document(document: dict[str, Any] | None) -> dict[str, Any
     checkout.
     """
     document = document or {}
-    project = document.get("project") or {"status": "not_initialised"}
     return _envelope(
         "repo_risk",
         [],
-        project=dict(project),
+        project=publish_project(document.get("project")),
         repo_risk=publish_repo_risk(document.get("repo_risk")),
     )
 
@@ -686,7 +766,9 @@ def publish_dashboard(document: dict[str, Any]) -> dict[str, Any]:
         "schema_version": PUBLISH_SCHEMA_VERSION,
         "kind": "dashboard",
         "generated_at": document.get("generated_at"),
-        "project": document.get("project"),
+        # Carries the runtime-agent fingerprint (#32), so this one is projected
+        # rather than passed through; see publish_project.
+        "project": publish_project(document.get("project")),
         # Already the one shape every output renders from, and it stamps its own
         # version. Republishing it is a no-op by design; see publish_report.
         "purple": document.get("purple"),
@@ -726,6 +808,7 @@ PUBLISHERS: dict[str, Callable[[Any], dict[str, Any]]] = {
     "report": publish_report,
     "dashboard": publish_dashboard,
     "posture": publish_posture,
+    "project": publish_project,
     "repo_risk": publish_repo_risk,
     "repo_risk_document": publish_repo_risk_document,
 }
