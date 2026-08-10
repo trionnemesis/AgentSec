@@ -6,12 +6,30 @@
 # pyproject.toml, and publishes a GitHub Release with the artifacts
 # attached. PyPI publishing is deliberately not wired up yet: when it is,
 # it should use Trusted Publishing (OIDC), not a long-lived token.
+#
+# The tag push above is the normal path. `workflow_dispatch` is the same
+# release from the Actions tab, for whoever cannot push a tag from where they
+# are standing — a session whose credentials are scoped to branches, a laptop
+# without a signing key. It creates the tag itself and then does exactly what
+# the push path does; every check below runs identically under both, because a
+# release that can skip its own version check is not a second entry point but a
+# second, weaker release process.
 
 name: release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to cut, e.g. v0.2.0. Must match pyproject.toml."
+        required: true
+        type: string
+      commit:
+        description: "Commit to tag. Defaults to the ref this workflow runs from."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -21,20 +39,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The dispatch path tags a named commit, which is rarely the branch
+          # head — 0.2.0 is cut from where the version was prepared, not from
+          # whatever landed since. Full history so `git tag` can reach it.
+          ref: ${{ inputs.commit || github.sha }}
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # A tag that does not match the packaged version ships a lie; stop here.
-      - name: tag matches pyproject version
+      # Inputs reach the shell as environment variables, never interpolated into
+      # the script: an input spliced into a `run:` block is executed by the
+      # runner, and "only people with write access can dispatch" is a weaker
+      # guarantee than not building the sentence in the first place.
+      - name: resolve the tag under either trigger
+        id: target
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          pkg=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-          tag="${GITHUB_REF_NAME#v}"
-          if [ "$pkg" != "$tag" ]; then
-            echo "::error::pyproject.toml says $pkg but the tag says $tag"
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            tag="$INPUT_TAG"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$tag' is not a vMAJOR.MINOR.PATCH tag"
             exit 1
           fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # A tag that does not match the packaged version ships a lie; stop here.
+      # Runs before the tag is created, so a mismatched dispatch leaves no ref
+      # behind to clean up.
+      - name: tag matches pyproject version
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          pkg=$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          if [ "$pkg" != "${TAG#v}" ]; then
+            echo "::error::pyproject.toml says $pkg but the tag says ${TAG#v}"
+            exit 1
+          fi
+
+      # Only on dispatch: the push path arrived here because the tag exists.
+      # A tag pushed with GITHUB_TOKEN does not start another workflow run, so
+      # this cannot recurse into itself.
+      - name: create the tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::$TAG already exists — releasing it again would move a published tag"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "$TAG"
+          git push origin "$TAG"
 
       - name: build sdist and wheel
         run: |
@@ -50,8 +115,9 @@ jobs:
       - name: publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.tag }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
+          gh release create "$TAG" dist/* \
             --verify-tag \
-            --title "$GITHUB_REF_NAME" \
+            --title "$TAG" \
             --generate-notes
