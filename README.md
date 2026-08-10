@@ -43,6 +43,9 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | Capability | Description |
 |---|---|
 | **Repository scan** | Point it at a local repo: finds the agents, skills, MCP servers, hooks, tool grants and memory stores in it, ranks the risks, and says which ones a scenario can actually settle |
+| **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework, read from dependencies, imports and builder calls without importing or running any of it. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
+| **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against the surfaces discovered here and the scenarios that actually ran — a grade is never a verdict, and a finding no scenario covers stays `not_tested` |
+| **Run provenance** | Every verdict is marked `recorded` / `live` / `mixed`, derived from the executor and evidence backends actually used, so a fixture-derived `secure` is never read as one proven against a live agent |
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
 | **Deterministic verdict** | Pure evaluator, no model, no clock, no network in the decision path — the same evidence always yields the same verdict |
 | **Evidence collection** | OpenTelemetry spans, Wazuh alerts, tool-call audit and database state diff, normalised into one schema |
@@ -93,10 +96,13 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 
 ### 1. Install
 
-> Not yet published to PyPI — install from source.
+> Not yet published to PyPI — install from a release or from source.
 
 ```bash
-# pip (directly from GitHub)
+# the released wheel (pinned, and what CI installs)
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.2.0/agentsec-0.2.0-py3-none-any.whl
+
+# or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
 
 # or clone for local development
@@ -104,6 +110,8 @@ git clone https://github.com/trionnemesis/AgentSec.git
 cd AgentSec
 pip install -e '.[dev]'
 ```
+
+Pin the release rather than `main` for anything whose pass/fail you care about — the CI gate especially, since a change here would otherwise alter another repository's merge decisions.
 
 ### 2. Scan your own repository
 
@@ -375,7 +383,7 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 
 | Command | Purpose | Common flags |
 |---|---|---|
-| `agentsec scan` | Inspect this repository's agent attack surface and rank it; `--verify` hands the provable high-risk subset to the harness | `--verify`, `--target`, `--profile`, `--output json` |
+| `agentsec scan` | Classify whether this repository implements an agent, then rank its attack surface; `--verify` hands the provable high-risk subset to the harness | `--verify`, `--target`, `--profile`, `--output json` |
 | `agentsec validate` | Validate one scenario or the whole catalogue | `--scenario`, `--target`, `--strict` |
 | `agentsec preview` | Show what a run would do, without doing it | `--target`, `--profile`, `--scenario` |
 | `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--output junit`, `--output-file`, `--dry-run`, `--html` |
@@ -419,7 +427,7 @@ fixtures/              Recorded corpus so everything runs offline
 
 src/agentsec/
 ├── models/            # typed contracts crossing every layer boundary
-├── project/           # selected-project resolution and surface discovery
+├── project/           # selected-project resolution, surface discovery, agent fingerprint
 ├── inspect/           # deterministic repository risk rules → the risk plane
 ├── posture/           # static posture ingestion, and which findings a scenario covers
 ├── scenario/          # loader, three-layer validator, catalogue + coverage
@@ -469,7 +477,9 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 
 ## Status
 
-Alpha. The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
+Alpha; latest release [`v0.2.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.2.0). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
+
+One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
 
 ## Contributing
 

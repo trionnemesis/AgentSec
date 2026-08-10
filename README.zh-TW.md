@@ -43,6 +43,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | 能力 | 說明 |
 |---|---|
 | **Repository 掃描** | 指向一個本機 repo：找出其中的 agent、skill、MCP server、hook、工具授權與 memory／RAG 攻擊面，排序風險，並指出哪些風險有情境能真正驗證 |
+| **Agent 指紋** | 這個 repository 究竟有沒有「實作」一個 AI Agent、用的是哪個框架 —— 從相依套件、import 與 builder 呼叫靜態判讀，不 import 也不執行任何 repo 內程式碼。只有 `CLAUDE.md` 與 `.mcp.json` 的 repo 會判為 `configuration_only`，絕不會被說成 runtime agent |
 | **攻擊—偵測契約** | 單一 YAML 同時描述攻擊，以及預防／偵測／證據／應變四個面向的期待 |
 | **決定性判定** | 純函式評估器，決策路徑上沒有模型、沒有時鐘、沒有網路 —— 相同證據永遠得到相同判定 |
 | **證據蒐集** | OpenTelemetry span、Wazuh 告警、工具呼叫稽核、資料庫狀態差異，全部正規化成同一份綱要 |
@@ -95,10 +96,13 @@ flowchart TD
 
 ### 1. 安裝
 
-> 尚未發佈到 PyPI —— 請由原始碼安裝。
+> 尚未發佈到 PyPI —— 請從 release 或原始碼安裝。
 
 ```bash
-# pip（直接從 GitHub 安裝）
+# 已發佈的 wheel（版本固定，也是 CI 安裝的那一個）
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.2.0/agentsec-0.2.0-py3-none-any.whl
+
+# 或安裝目前的 main
 pip install git+https://github.com/trionnemesis/AgentSec.git
 
 # 或 clone 下來做本機開發
@@ -106,6 +110,8 @@ git clone https://github.com/trionnemesis/AgentSec.git
 cd AgentSec
 pip install -e '.[dev]'
 ```
+
+只要你在意它的通過／失敗結果，就固定到某個 release 而不是 `main` —— CI 把關尤其如此，否則這裡的一次改動就會改變別的 repository 的合併決策。
 
 ### 2. 掃描你自己的 repository
 
@@ -117,7 +123,21 @@ agentsec init      # 產生 .agentsec/project.yaml，讀過之後再 commit
 agentsec scan      # 找出攻擊面，並排序風險
 ```
 
-`scan` 會讀取這個 repository 交給 AI Agent 的東西 —— 專案指令、subagent 定義、
+`scan` 依序回答兩個問題。第一個是：這個 repository 究竟有沒有實作一個 AI Agent —— 從
+相依套件、import 與 builder 呼叫判讀，過程中不 import 也不執行其中任何一行：
+
+```
+  AI agent      confirmed
+                runtime agent code in this repository
+                langgraph (python)  src/agent/graph.py
+                coding-agent config: claude_code, mcp
+```
+
+只有 `CLAUDE.md` 與 `.mcp.json` 的 repository 會得到 `configuration only`：**有一個 coding
+agent 在這個 repo 上工作，不等於這個 repo 本身是一個 agent**。一般專案得到
+`not detected` —— 那是「沒有證據」，不是「通過」。
+
+接著它才讀取這個 repository 交給 AI Agent 的東西 —— 專案指令、subagent 定義、
 skill、hook、預先授權的工具、MCP server 與 memory 儲存 —— 然後套用
 [`inspect/`](src/agentsec/inspect/) 裡的決定性規則。每一條風險都會說明「這裡有沒有東西
 能把它變成結論」：
@@ -329,7 +349,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 
 | 指令 | 用途 | 常用參數 |
 |---|---|---|
-| `agentsec scan` | 掃描這個 repository 的 agent 攻擊面並排序；`--verify` 把可驗證的高風險子集交給 harness | `--verify`、`--target`、`--profile`、`--output json` |
+| `agentsec scan` | 判定這個 repository 是否實作 agent，再掃描並排序其攻擊面；`--verify` 把可驗證的高風險子集交給 harness | `--verify`、`--target`、`--profile`、`--output json` |
 | `agentsec validate` | 驗證單一情境或整份目錄 | `--scenario`、`--target`、`--strict` |
 | `agentsec preview` | 顯示執行會做什麼，但不執行 | `--target`、`--profile`、`--scenario` |
 | `agentsec run` | 執行情境，遇到阻擋級 finding 時以非零結束 | `--target`、`--profile`、`--output junit`、`--output-file`、`--dry-run`、`--html` |
@@ -373,7 +393,7 @@ fixtures/              錄製語料，讓一切都能離線執行
 
 src/agentsec/
 ├── models/            # 跨越所有層邊界的型別化契約
-├── project/           # 選定專案的解析與表面探索
+├── project/           # 選定專案的解析、表面探索與 agent 指紋
 ├── inspect/           # repository 風險規則（決定性）→ 風險面
 ├── posture/           # 靜態態勢匯入，以及哪些 finding 有情境涵蓋
 ├── scenario/          # 載入器、三層驗證器、目錄與覆蓋率
@@ -425,7 +445,11 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 
 ## 狀態
 
-Alpha。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
+Alpha，最新版本為 [`v0.2.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.2.0)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
+
+第一次執行前值得知道的一件事：情境目錄是從 `<workspace>/scenarios` 讀取的，所以在不是
+AgentSec checkout 的 repository 裡沒有東西可以比對，每一條風險都會落在 `not_verifiable`。
+把審查過的目錄包成 package data 已列入 roadmap。
 
 ## 參與貢獻
 
