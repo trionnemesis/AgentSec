@@ -31,6 +31,16 @@ drafts even when they appear in a release.
   reading arbitrary repository files, so "the producer promises no source text"
   stopped being a guarantee that could live in one place.
 
+### Fixed
+
+- **Store schema migration runner** ([#44](https://github.com/trionnemesis/AgentSec/issues/44)).
+  `SCHEMA_VERSION` moved from 1 to 2 when `run_counter` was added, but the
+  stored version row was only ever written when absent — a database created
+  under 1 reported version 1 forever, regardless of its actual tables. Opening
+  a store now applies pending migrations in order and corrects the stored
+  version; a version newer than this build supports raises `SchemaVersionError`
+  rather than being silently opened.
+
 ## [0.2.0] — 2026-08-06
 
 The release that gives AgentSec a first step. In 0.1.0 the entry point was
