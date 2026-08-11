@@ -96,6 +96,21 @@ _MIGRATIONS: list[tuple[int, str]] = [
             day     TEXT PRIMARY KEY,
             next_n  INTEGER NOT NULL
         );
+
+        -- A v1 database predates run_counter, so it may already hold runs for
+        -- "today" under the old MAX(run_id)-in-Python scheme. Leaving the
+        -- counter empty would hand out RUN-<day>-001 again, and because
+        -- save_run upserts on run_id, that would silently overwrite the
+        -- earlier run. Seed each day's counter from the highest suffix
+        -- already used, so the next claim continues past it.
+        INSERT INTO run_counter (day, next_n)
+        SELECT substr(run_id, 5, 8) AS day,
+               MAX(CAST(substr(run_id, 14, 3) AS INTEGER)) AS next_n
+        FROM runs
+        WHERE run_id LIKE 'RUN-________-___'
+        GROUP BY day
+        ON CONFLICT(day) DO UPDATE SET
+            next_n = MAX(run_counter.next_n, excluded.next_n);
         """,
     ),
 ]
@@ -131,7 +146,13 @@ class ResultStore:
 
     def _init_schema(self) -> None:
         with self._conn() as conn:
-            conn.executescript(_SCHEMA)
+            # Bootstrap only the version table first, and check it, before
+            # applying _SCHEMA or any migration: a database from a future
+            # build may have renamed or dropped a table _SCHEMA still
+            # expects, and running that script against it could mutate the
+            # database or raise a raw sqlite3.OperationalError instead of
+            # the clean refusal this guard promises.
+            conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
             row = conn.execute("SELECT version FROM schema_version").fetchone()
             current = row["version"] if row is not None else 0
 
@@ -141,6 +162,8 @@ class ResultStore:
                     f"{SCHEMA_VERSION} this build supports; refusing to open it",
                     details={"found_version": current, "supported_version": SCHEMA_VERSION},
                 )
+
+            conn.executescript(_SCHEMA)
 
             for target_version, migration_sql in _MIGRATIONS:
                 if current < target_version:

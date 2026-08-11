@@ -130,6 +130,52 @@ def test_reopening_an_already_migrated_database_is_a_no_op(tmp_path: Path) -> No
     assert _stored_version(db_path) == SCHEMA_VERSION
 
 
+def _insert_run_row(path: Path, run_id: str) -> None:
+    """Insert a minimal `runs` row directly, bypassing `next_run_id`.
+
+    Mirrors what a real v1 database looks like: rows already exist under the
+    old MAX(run_id)-in-Python id scheme, with no `run_counter` involved.
+    """
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            """
+            INSERT INTO runs (run_id, scenario_id, target_id, profile, status,
+                               created_at, payload)
+            VALUES (?, 'AGT-XPIA-001', 'demo-agent-fixture', 'pr', 'completed',
+                    '2026-08-11T00:00:00+00:00', '{}')
+            """,
+            (run_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_migrating_a_v1_database_with_existing_runs_seeds_the_counter_past_them(
+    tmp_path: Path,
+) -> None:
+    """A v1 database may already hold runs for "today" under the old
+    MAX(run_id)-in-Python scheme. An empty `run_counter` after migration
+    would hand out `RUN-<day>-001` again, and because `save_run` upserts on
+    `run_id`, that would silently overwrite the pre-existing run (#44,
+    review comment on #46). The migration must seed each day's counter past
+    the highest suffix already in use.
+    """
+    db_path = tmp_path / "legacy_with_runs.db"
+    _make_v1_database(db_path)
+    _insert_run_row(db_path, "RUN-20260811-001")
+    _insert_run_row(db_path, "RUN-20260811-002")
+    _insert_run_row(db_path, "RUN-20260810-005")  # a different day, lower number
+
+    store = ResultStore(db_path)
+
+    assert store.next_run_id("20260811") == "RUN-20260811-003"
+    assert store.next_run_id("20260810") == "RUN-20260810-006"
+    # A day with no prior runs still starts from scratch.
+    assert store.next_run_id("20260101") == "RUN-20260101-001"
+
+
 def test_a_future_schema_version_is_refused_rather_than_silently_opened(
     tmp_path: Path,
 ) -> None:
