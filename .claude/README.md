@@ -19,12 +19,15 @@ as a subprocess and returns a decision the harness enforces.
   matching (`prod`, `live`, `.com`, `billing`, …) with an exemption list for
   loopback, `.local`, `.svc`, `.internal` and the `example.*` reserved domains. A
   false refusal costs one clarifying message; a false allow costs an incident.
-- **`agentsec run` via Bash.** Not because running is wrong, but because the Bash
-  path skips the gateway's audit actor and approval check. Use
-  `agentsec_start_run`. Read-only subcommands are allowed.
-- **Writes to `policy/targets.yaml`, `policy/approvals.yaml` and `fixtures/`.**
-  The allowlist is reviewed like a firewall change, and the fixture corpus is
-  recorded evidence. Both are proposed to a human, not written by an agent.
+- **`agentsec run` via Bash.** Agent-triggered runs use `agentsec_start_run`
+  so they carry the MCP actor and pass through the session's MCP permission path.
+  The CLI itself still delegates to `HarnessService`, applies
+  `PolicyGuard.check` and records audit entries. Read-only subcommands are
+  allowed directly.
+- **Direct editor writes to `policy/targets.yaml`, `policy/approvals.yaml`
+  and `fixtures/`.** The hook checks `Write`, `Edit` and `NotebookEdit`
+  paths. These operator-owned files must not be changed through Bash or another
+  mechanism either; arbitrary Bash file writes are not inferred by the hook.
 - **AgentSec MCP calls carrying `url`, `sql`, `command`, `token` and similar.**
   Redundant with the closed tool schemas and `tests/test_mcp_contract.py` — kept
   as the third layer because the cost is one dictionary lookup. Scoped to this
@@ -34,9 +37,9 @@ as a subprocess and returns a decision the harness enforces.
   `query` and `headers` are ordinary arguments there and refusing them defends
   nothing.
 
-The hook exits 0 on any internal error. A crashed hook must fail open loudly
-rather than wedge the session, and the permission rules in `settings.json` remain
-in force regardless.
+The hook exits 0 on any internal error, so it fails open rather than wedging the
+session. The permission rules in `settings.json` remain in force, but an internal
+hook error is not an additional enforcement layer.
 
 ## Wiring the MCP server
 
@@ -53,7 +56,7 @@ Or commit it, so the whole team gets it:
   "mcpServers": {
     "agentsec": {
       "command": "agentsec-mcp",
-      "env": { "AGENTSEC_WORKSPACE": "${CLAUDE_PROJECT_DIR}/agentsec" }
+      "env": { "AGENTSEC_WORKSPACE": "${CLAUDE_PROJECT_DIR}" }
     }
   }
 }

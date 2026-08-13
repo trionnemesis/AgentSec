@@ -30,14 +30,14 @@ pip install -e '.[mcp]'      # + the MCP gateway (mcp>=1.2,<2 — pinned below 2
 pip install -e '.[otel]'     # + OpenTelemetry collector
 pip install -e '.[pyrit]'    # + PyRIT executor
 
-make check                   # ruff + mypy + pytest — everything CI runs
-make demo                    # full offline pipeline against fixtures (exits 1 by design)
+make check                   # local ruff + mypy + pytest; CI adds coverage and separate jobs
+make demo                    # offline pipeline; the expected run exit 1 is ignored by Make
 make report                  # regenerate HTML/JSON/JUnit from stored runs
 make schemas                 # regenerate JSON Schema for Run/Verdict/Finding from the pydantic models
 
 pytest -q                                          # whole suite
 pytest -q tests/test_evaluator.py                  # one file
-pytest -q tests/test_evaluator.py::test_name        # one test
+pytest -q tests/test_evaluator.py::test_verdict_precedence  # one test
 pytest -q -m "not integration"                     # skip tests needing a live external system
 ruff check src tests
 mypy                                                # config lives in pyproject.toml, not a CLI flag
@@ -81,21 +81,26 @@ src/agentsec/
 
 **The one rule that keeps this from eroding: a capability lands on
 `HarnessService` (`service/harness.py`) before it lands on the MCP gateway
-(`mcp/contract.py`)**, so the CLI and CI always reach it too. Every test in
-`tests/` calls the service, not the gateway — the gateway is a thin,
-replaceable control-plane wrapper (auth, RBAC, argument validation, approval
-checks, audit) around it, never a second policy engine.
+(`mcp/contract.py`)**. That keeps policy and execution reusable by CLI and CI;
+add explicit CLI wiring when an operation should be user-facing there. Core
+behaviour tests call the service directly, while `test_mcp_contract.py` and
+`test_mcp_gateway.py` cover the gateway boundary.
+
+The local stdio gateway validates arguments, controls the exposed tool/resource
+surface, projects outputs and delegates. `PolicyGuard`, approval checks and run
+audit remain in the service. Authentication and RBAC belong to the remote
+deployment layer, not to the local gateway.
 
 Practical implications when extending:
 
 | Change | Touch | Leave alone |
 |---|---|---|
 | new attack technique | `scenarios/*.yaml` | all code |
-| new SIEM / evidence source | `evidence/<name>.py`, raise `EvidenceUnavailable` on failure, add a backend to `schemas/target.schema.json` | `evaluation/` |
+| new SIEM / evidence source | `evidence/<name>.py`, `models/target.py`, `evidence/collector.py`, and `schemas/target.schema.json`; raise `EvidenceUnavailable` on failure | `evaluation/` |
 | new attack runner | `execution/<name>.py` + `execution/registry.py` | `evaluation/` |
 | new assertion kind | `models/scenario.py`, `evaluation/axes.py`, `scenario.schema.json` | collectors |
-| new output format | `reporting/<name>.py` reading `normalize_batch` | everything else |
-| new operation exposed to Claude/CI | `service/harness.py` **first**, then `mcp/contract.py` | — |
+| new output format | `reporting/`, `service/harness.py::generate_report`, CLI format help, and the MCP `formats` enum | `evaluation/` |
+| new operation exposed to Claude/CI | `service/harness.py` **first**, then `mcp/contract.py`; add `cli.py` when CLI parity is intended | `evaluation/` |
 
 Two invariants enforced by tests, not just convention:
 
@@ -117,16 +122,17 @@ This repository wires its own `.claude/settings.json` permissions and
 `.claude/hooks/guard_agentsec.py` PreToolUse hook (see `.claude/README.md`),
 which apply to this session too:
 
-- `agentsec run` via Bash is **denied** — it bypasses the gateway's audit
-  actor and approval check. Use the `agentsec_start_run` MCP tool instead
-  (requires the `agentsec` MCP server from `.mcp.json`); read-only
-  subcommands (`validate`, `preview`, `targets`, `scenarios`, `coverage`,
-  `get-run`, `compare`, `finding list`, `validate-detection`, `mcp-contract`,
-  `audit`) are allowed directly.
-- Writes to `policy/targets.yaml`, `policy/approvals.yaml` and `fixtures/`
-  are refused by the hook — these are proposed to a human, not authored by
-  an agent, because the allowlist is reviewed like a firewall change and the
-  fixtures are recorded evidence.
+- `agentsec run` via Bash is **denied** so agent-triggered runs use the MCP
+  actor and the session's MCP permission path. The CLI itself still delegates
+  to `HarnessService`, runs `PolicyGuard.check`, and records audit entries.
+  Use `agentsec_start_run` (requires the `agentsec` server from `.mcp.json`);
+  read-only subcommands (`validate`, `preview`, `targets`, `scenarios`,
+  `coverage`, `get-run`, `compare`, `finding list`, `validate-detection`,
+  `mcp-contract`, `audit`) are allowed directly.
+- Direct `Write` / `Edit` / `NotebookEdit` operations targeting
+  `policy/targets.yaml`, `policy/approvals.yaml` or `fixtures/` are refused.
+  These operator-owned files must not be changed through Bash or another
+  mechanism either; the hook does not infer file writes from arbitrary Bash.
 - Bash commands referencing a production-looking host are refused (broad
   matching on `prod`, `live`, `.com`, `billing`, etc., with an exemption for
   loopback/`.local`/`.svc`/`.internal`/`example.*`).
@@ -149,5 +155,6 @@ target definition, or a tool argument.
 - **Commit messages** explain the reasoning, not the diff (e.g.
   `feat(evidence): rebase fixture timelines into the run window`, not
   `update wazuh.py`).
-- Exit codes are meaningful and must not be conflated: `0` clean, `1` a
-  blocking finding, `2` the harness itself couldn't tell you anything.
+- For `agentsec run`, exit codes are `0` no blocking finding, `1` a
+  blocking finding, and `2` usage/configuration/policy failure. Other
+  subcommands may use `1` for command-specific validation failure.

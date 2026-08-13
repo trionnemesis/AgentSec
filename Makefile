@@ -15,9 +15,9 @@ lint:  ## ruff
 types:  ## mypy
 	mypy
 
-check: lint types test  ## everything CI runs
+check: lint types test  ## local lint, types and tests
 
-demo:  ## full offline pipeline against the fixture corpus (exits 1 by design)
+demo:  ## offline pipeline; expected run exit 1 is ignored, so this target succeeds
 	agentsec validate --strict
 	agentsec preview --target demo-agent-fixture --profile nightly
 	-agentsec run --target demo-agent-fixture --profile nightly --html

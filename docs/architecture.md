@@ -14,7 +14,7 @@ flowchart TD
     end
 
     subgraph L2["Control layer"]
-        GW["AgentSec MCP Gateway<br/>auth · RBAC · approval · policy<br/>tool schemas · resources · audit"]
+        GW["AgentSec MCP Gateway<br/>tool/resource schemas · validation<br/>read-only exposure · projection · delegation"]
     end
 
     subgraph L3["Execution layer — Purple Harness Core"]
@@ -56,8 +56,8 @@ ask for, which is what keeps the gate honest.
 |---|---|---|---|
 | Interaction | Claude Code | authoring contracts, reading results, locating the responsible code, writing the fix and the regression | be the attack engine; decide pass/fail |
 | Interaction | Live Artifact | dashboards, finding triage, coverage and trend views | touch a container, a database or a credential |
-| Control | MCP Gateway | authentication, RBAC, argument validation, approval checks, audit | host long-running work; contain SIEM/runner/report logic |
-| Execution | Purple Harness | executing attacks, collecting evidence, judging, reporting | depend on any AI client being present |
+| Control | MCP Gateway | argument validation, read-only exposure, publication projection and service delegation; a remote deployment wrapper supplies auth/RBAC | decide run policy; host long-running work; contain SIEM/runner/report logic |
+| Execution | Purple Harness | policy and approval checks, executing attacks, collecting evidence, judging, reporting and run audit | depend on any AI client being present |
 
 Four rules follow, and they are the ones worth defending in review:
 
@@ -86,15 +86,18 @@ copy for CI within a month, and they will disagree in the interesting cases.
 agent takes hours. An MCP request must not be holding it. The gateway starts a
 run and reads results; it does not own the job.
 
-**Testability.** Every test in `tests/` calls the service, not the gateway. The
-`mcp` extra is not even installed in CI.
+**Testability.** Core behaviour tests call the service directly. Gateway contract
+and wire behaviour have dedicated tests in `test_mcp_contract.py` and
+`test_mcp_gateway.py`. The main Python matrix deliberately omits the `mcp`
+extra; the separate gateway job installs it and runs the wire tests.
 
 ---
 
 ## The MCP surface is narrow by construction
 
-The gateway exposes 11 tools. Ten are read-only. One executes, requires
-confirmation, and takes an approval token for anything high-risk.
+The gateway exposes 11 tools: eight read-only, two write, and one execute tool.
+The execute tool requires confirmation and takes an approval token for anything
+high-risk.
 
 What is deliberately absent, and why:
 
@@ -218,15 +221,15 @@ and must not be allowed to imply one.
 | You want to | Touch | Leave alone |
 |---|---|---|
 | add an attack technique | `scenarios/*.yaml` | all code |
-| support a new SIEM | `evidence/<name>.py` + a backend in `target.schema.json` | evaluator, reporting |
+| support a new SIEM | `evidence/<name>.py`, `models/target.py`, `evidence/collector.py` + a backend in `target.schema.json` | evaluator, reporting |
 | add an attack runner | `execution/<name>.py` + `registry.py` | evaluator |
 | add an assertion kind | `models/scenario.py`, `evaluation/axes.py`, `scenario.schema.json` | collectors |
-| add an output format | `reporting/<name>.py` reading `normalize_batch` | everything else |
-| expose a new operation | `service/harness.py` first, then `mcp/contract.py` | — |
+| add an output format | `reporting/`, `service/harness.py::generate_report`, CLI format help and the MCP `formats` enum | evaluator |
+| expose a new operation | `service/harness.py` first, then `mcp/contract.py`; add `cli.py` when CLI parity is intended | evaluator |
 
 The last row is the rule that keeps the architecture from eroding: a capability
-lands in the service before it lands on the gateway, so the CLI and CI always
-reach it too.
+lands in the service before it lands on the gateway, so non-MCP callers can reuse
+the same behaviour. User-facing CLI exposure still needs explicit wiring.
 
 ## See also
 
