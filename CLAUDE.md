@@ -28,7 +28,7 @@ table, and the CLI reference all live in `README.md` — read it before
 pip install -e '.[dev]'      # core + pytest/ruff/mypy
 pip install -e '.[mcp]'      # + the MCP gateway (mcp>=1.2,<2 — pinned below 2.0.0)
 pip install -e '.[otel]'     # + OpenTelemetry collector
-pip install -e '.[pyrit]'    # + PyRIT executor
+pip install -e '.[pyrit]'    # + the PyRIT dependency only — the executor itself resolves to NotImplementedExecutor (see execution/registry.py, docs/roadmap.md)
 
 make check                   # local ruff + mypy + pytest; CI adds coverage and separate jobs
 make demo                    # offline pipeline; the expected run exit 1 is ignored by Make
@@ -97,7 +97,7 @@ Practical implications when extending:
 |---|---|---|
 | new attack technique | `scenarios/*.yaml` | all code |
 | new SIEM / evidence source | `evidence/<name>.py`, `models/target.py`, `evidence/collector.py`, and `schemas/target.schema.json`; raise `EvidenceUnavailable` on failure | `evaluation/` |
-| new attack runner | `execution/<name>.py` + `execution/registry.py` | `evaluation/` |
+| new attack runner | `execution/<name>.py` + `execution/registry.py`, and add the name to the closed `ExecutorName` literal in `models/scenario.py` plus the `executor`/`allowed_executors` enums in `schemas/scenario.schema.json` and `schemas/target.schema.json` — otherwise scenarios and target allowlists selecting it are rejected before the registry is reached | `evaluation/` |
 | new assertion kind | `models/scenario.py`, `evaluation/axes.py`, `scenario.schema.json` | collectors |
 | new output format | `reporting/`, `service/harness.py::generate_report`, CLI format help, and the MCP `formats` enum | `evaluation/` |
 | new operation exposed to Claude/CI | `service/harness.py` **first**, then `mcp/contract.py`; add `cli.py` when CLI parity is intended | `evaluation/` |
