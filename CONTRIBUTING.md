@@ -4,15 +4,16 @@
 
 ```bash
 pip install -e '.[dev]'
-make check     # ruff + mypy + pytest
-make demo      # full offline pipeline (exits 1 by design)
+make check     # local ruff + mypy + pytest
+make demo      # offline pipeline; expected run exit 1 is ignored by Make
 ```
 
 ## The rules that matter
 
 **A capability lands on `HarnessService` before it lands on the MCP gateway.**
-Otherwise the CLI and CI cannot reach it, and you have created a Claude-only code
-path that escapes the ordinary review that CI applies.
+Otherwise non-MCP callers cannot reuse it, and you have created a Claude-only
+code path that escapes the ordinary review that CI applies. Add explicit CLI
+wiring when the operation should also be user-facing there.
 
 **No language model in the verdict.** `resolve_verdict` and the four axis
 functions are pure. If a change would make a verdict depend on a model, a clock or
