@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AgentSec converts contract evidence into deterministic, fail-closed verdicts.">
+  <title>AgentSec — One deterministic verdict</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="AgentSec home"><span class="brand-mark" aria-hidden="true"></span><span>AgentSec</span></a>
+    <nav class="site-nav" aria-label="Site navigation"><span class="page-index">05 / 08</span><a href="https://github.com/trionnemesis/AgentSec" rel="noopener noreferrer">GitHub ↗</a></nav>
+  </header>
+
+  <main id="main-content" class="page page--split">
+    <div class="page-intro">
+      <p class="eyebrow">Deterministic evaluation</p>
+      <h2>Turn evidence into one verdict.</h2>
+      <p class="supporting-copy">No language model, clock, or network decides the result. The same evidence produces the same verdict, and broken evidence cannot become a pass.</p>
+      <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0002-deterministic-verdict.md" rel="noopener noreferrer">Read the verdict model ↗</a></div>
+    </div>
+
+    <div class="visual-panel" aria-label="AgentSec verdict precedence">
+      <p class="visual-label">Verdict precedence</p>
+      <div class="verdict-stack" role="list">
+        <div class="verdict-row verdict-row--error" role="listitem"><span>01</span><code>error</code><span>the evidence pipeline broke</span></div>
+        <div class="verdict-row" role="listitem"><span>02</span><code>detection_gap</code><span>the attack worked silently</span></div>
+        <div class="verdict-row" role="listitem"><span>03</span><code>prevention_gap</code><span>the attack worked, but was seen</span></div>
+        <div class="verdict-row" role="listitem"><span>04</span><code>evidence_gap</code><span>the incident cannot be reconstructed</span></div>
+        <div class="verdict-row" role="listitem"><span>05</span><code>response_gap</code><span>the alert did not trigger action</span></div>
+        <div class="verdict-row verdict-row--secure" role="listitem"><span>06</span><code>secure</code><span>every asserted axis passed</span></div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="page-footer">
+    <nav class="page-footer__nav" aria-label="Page navigation"><a href="03-contract.html">← Previous</a><span class="page-footer__current">05 / 08</span><a href="05-architecture.html">Next →</a></nav>
+    <a href="05-architecture.html">The pipeline</a>
+  </footer>
+</body>
+</html>
