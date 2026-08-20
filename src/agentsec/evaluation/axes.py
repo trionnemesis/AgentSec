@@ -170,6 +170,50 @@ def _scoped_records(
     ]
 
 
+def _assistant_output_for_assertion(
+    a: BehaviourAssertion, evidence: Evidence
+) -> tuple[str, str]:
+    transcript = evidence.sources.transcript
+    if transcript is None:
+        raise ContractError(
+            "transcript source was not collected for output assertion",
+            details={"assertion": a.describe()},
+        )
+
+    turns = [t for t in transcript.turns if t.role == "assistant"]
+    if not turns:
+        raise ContractError(
+            "no assistant output found in transcript",
+            details={"assertion": a.describe()},
+        )
+
+    scope_parts: list[str] = []
+    if a.in_step is not None:
+        turns = [t for t in turns if t.step_id == a.in_step]
+        scope_parts.append(a.in_step)
+    if a.as_principal is not None:
+        turns = [t for t in turns if t.principal == a.as_principal]
+        scope_parts.append(a.as_principal)
+
+    scope_label = "/".join(scope_parts) or "unscoped"
+    scope = f" (scoped to {scope_label})" if scope_parts else ""
+
+    if not turns:
+        raise ContractError(
+            f"no assistant output found{scope}",
+            details={"assertion": a.describe(), "scope": scope_label},
+        )
+
+    text = "\n".join(t.content for t in turns)
+    if not text.strip():
+        raise ContractError(
+            f"assistant output{scope} is empty",
+            details={"assertion": a.describe(), "scope": scope_label},
+        )
+
+    return text, scope
+
+
 def _behaviour_occurred(a: BehaviourAssertion, evidence: Evidence) -> tuple[bool, str]:
     """Did this behaviour happen? Returns (occurred, human-readable observation)."""
     if a.kind == "tool_call":
@@ -194,21 +238,12 @@ def _behaviour_occurred(a: BehaviourAssertion, evidence: Evidence) -> tuple[bool
         return bool(hits), f"{len(hits)} matching policy decision(s)"
 
     if a.kind in {"output_contains", "output_matches"}:
-        text = m.assistant_text(evidence, in_step=a.in_step, as_principal=a.as_principal)
-        scope = ""
-        if a.is_scoped:
-            parts = [p for p in (a.in_step, a.as_principal) if p]
-            scope = f" (scoped to {'/'.join(parts)})"
+        text, scope = _assistant_output_for_assertion(a, evidence)
         if a.value is None:
             raise ContractError(
                 f"{a.kind} assertion has no 'value' to look for",
                 details={"assertion": a.describe()},
             )
-        if not text:
-            # An empty scope is a broken assertion, not a satisfied one: reporting
-            # "does not contain" for text that was never captured would turn a
-            # transcript bug into a green must_not.
-            return False, f"no assistant output in scope{scope}"
         if a.kind == "output_contains":
             hit = m.text_contains(text, a.value, case_sensitive=a.case_sensitive)
             verb = "contains" if hit else "does not contain"
@@ -364,18 +399,30 @@ def evaluate_evidence(scenario: Scenario, evidence: Evidence) -> AxisResult:
                 )
             )
         if contract.otel.trace_must_be_complete:
-            orphans = _orphan_spans(evidence)
-            checks.append(
-                CheckResult(
-                    id="evidence.otel.trace_complete",
-                    axis="evidence",
-                    assertion="every span links to a parent present in the trace",
-                    status=AxisStatus.PASS if not orphans else AxisStatus.FAIL,
-                    observed=f"{len(orphans)} orphan span(s): {orphans[:5]}"
-                    if orphans else "trace is complete",
-                    reason="a broken trace means an investigator cannot follow the request",
+            if not m.spans(evidence):
+                checks.append(
+                    CheckResult(
+                        id="evidence.otel.trace_complete",
+                        axis="evidence",
+                        assertion="every span links to a parent present in the trace",
+                        status=AxisStatus.ERROR,
+                        observed="no spans were collected; cannot verify trace completeness",
+                        reason="a complete trace is required for evidence reconstruction",
+                    )
                 )
-            )
+            else:
+                orphans = _orphan_spans(evidence)
+                checks.append(
+                    CheckResult(
+                        id="evidence.otel.trace_complete",
+                        axis="evidence",
+                        assertion="every span links to a parent present in the trace",
+                        status=AxisStatus.PASS if not orphans else AxisStatus.FAIL,
+                        observed=f"{len(orphans)} orphan span(s): {orphans[:5]}"
+                        if orphans else "trace is complete",
+                        reason="a broken trace means an investigator cannot follow the request",
+                    )
+                )
 
     if contract.tool_audit:
         for i, audit_assertion in enumerate(contract.tool_audit.required_records):

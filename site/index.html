@@ -273,7 +273,7 @@ claude mcp add agentsec -- agentsec-mcp</code></pre>
         <h3>Gate a real agent in CI</h3>
         <pre><code>jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.2.0
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.3.1
     with:
       target: order-agent-staging
       profile: pr</code></pre>
@@ -372,6 +372,7 @@ spec:
       <div class="card"><h3>Models cannot approve themselves</h3><p>Approval tokens are scoped, expiring and single-use, and are minted only by <code>agentsec approve</code> on the CLI.</p></div>
       <div class="card"><h3>A report cannot re-commit the breach it reports</h3><p>Published output is projected rather than filtered; the report gateway declines to serve per-run evidence and the audit log at all.</p></div>
       <div class="card"><h3>An uncollectable evidence source is an <code>error</code>, never a <code>pass</code></h3><p>The report cannot turn green because the evidence pipeline broke — which is the most dangerous bug available to this kind of tool.</p></div>
+      <div class="card"><h3>Missing assistant output is an <code>error</code>, never a negative proof</h3><p>Absent, out-of-scope or blank assistant output — including an unusable Promptfoo result — fails closed. A required complete trace with no spans does too.</p></div>
     </div>
   </div>
 </section>
@@ -379,7 +380,7 @@ spec:
 <section id="status">
   <div class="wrap">
     <h2>Status &amp; contributing</h2>
-    <p><strong>Alpha.</strong> The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md">The roadmap</a> marks every row honestly.</p>
+    <p><strong>Alpha · latest release <a href="https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1">v0.3.1</a>.</strong> The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md">The roadmap</a> marks every row honestly.</p>
     <p>All forms of participation are welcome — you don’t have to write code:</p>
     <ul>
       <li>🐛 <strong>A bug, or a verdict you believe is wrong</strong> → <a href="https://github.com/trionnemesis/AgentSec/issues">open an issue</a> with the run id and the evidence bundle</li>
