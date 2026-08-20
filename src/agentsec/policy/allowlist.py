@@ -22,6 +22,7 @@ from urllib.parse import urlparse
 
 import yaml
 from jsonschema import Draft202012Validator
+from pydantic import ValidationError
 
 from agentsec.config import package_schema_dir
 from agentsec.errors import ConfigError
@@ -47,7 +48,7 @@ def load_allowlist(path: Path, *, check_network: bool = True) -> TargetAllowlist
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError as exc:
-        raise ConfigError(f"{path.name}: invalid YAML: {exc}") from exc
+        raise ConfigError(_yaml_error_message(path.name, exc)) from exc
 
     if not isinstance(data, dict):
         raise ConfigError(f"{path.name}: expected a mapping at the document root")
@@ -55,21 +56,66 @@ def load_allowlist(path: Path, *, check_network: bool = True) -> TargetAllowlist
     errors = sorted(_schema().iter_errors(data), key=str)
     if errors:
         detail = "; ".join(
-            f"{'/'.join(str(p) for p in e.absolute_path) or '(root)'}: {e.message}"
+            _schema_error_detail(e)
             for e in errors[:5]
         )
         raise ConfigError(f"{path.name}: allowlist schema errors: {detail}")
 
     try:
         allowlist = TargetAllowlist.model_validate(data)
+    except ValidationError as exc:
+        detail = "; ".join(
+            f"{'/'.join(str(part) for part in error['loc']) or '(root)'}: "
+            f"{error['msg']}"
+            for error in exc.errors(include_input=False, include_url=False)
+        )
+        raise ConfigError(f"{path.name}: invalid target configuration: {detail}") from exc
     except Exception as exc:
-        raise ConfigError(f"{path.name}: {exc}") from exc
+        # Do not turn an unexpected validation implementation error into a
+        # stringified model/input dump.  Configuration failures must not echo
+        # endpoint or credential-shaped values.
+        raise ConfigError(
+            f"{path.name}: invalid target configuration ({type(exc).__name__})"
+        ) from exc
 
     if check_network:
         for target in allowlist.targets:
             _check_endpoint(target)
 
     return allowlist
+
+
+def _schema_error_detail(error: object) -> str:
+    """Render schema failures without echoing a configured driver locator."""
+    # jsonschema.ValidationError is deliberately duck-typed here to keep this
+    # helper independent of the library's concrete error class.
+    absolute_path = getattr(error, "absolute_path", ())
+    parts = tuple(absolute_path)
+    location = "/".join(str(part) for part in parts) or "(root)"
+    if _is_adapter_path(parts):
+        return f"{location}: invalid fixed adapter path"
+    return f"{location}: {getattr(error, 'message', 'schema validation failed')}"
+
+
+def _yaml_error_message(filename: str, error: yaml.YAMLError) -> str:
+    mark = getattr(error, "problem_mark", None)
+    if mark is None:
+        return f"{filename}: invalid YAML ({type(error).__name__})"
+    return (
+        f"{filename}: invalid YAML ({type(error).__name__}) at "
+        f"line {mark.line + 1}, column {mark.column + 1}"
+    )
+
+
+def _is_adapter_path(parts: tuple[object, ...]) -> bool:
+    try:
+        adapter_index = parts.index("adapter")
+    except ValueError:
+        return False
+    tail = parts[adapter_index + 1 :]
+    return tail == ("chat_path",) or (
+        len(tail) == 3 and tail[0] == "operations" and tail[2] == "path"
+    )
 
 
 def assert_private_url(url: str, *, what: str) -> None:

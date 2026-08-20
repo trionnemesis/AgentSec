@@ -215,6 +215,8 @@ Read that as: the tenant boundary is broken **but instrumented** — fix the cod
 
 **On "no Wazuh":** the fixture corpus supplies recorded Wazuh alerts and OTel spans from files, so the detection axis is genuinely evaluated offline — `AGT-MEMPOIS-001` is a `detection_gap` because rule `100720` is absent from those recorded alerts, not because nothing was checked. Gating a **real** agent on detection does need a live signal source, declared per target in `policy/targets.yaml`: a Wazuh indexer (`kind: opensearch`) or OTel. Wazuh is not mandatory — a contract asserting only `detection.otel` is valid — but it is currently the only SIEM collector implemented.
 
+**Live target-driver boundary:** an HTTP target declares the fixed relative endpoint for each replay operation (`seed_resource`, `seed_memory`, `inject_tool_response`, `assume_identity`, `send_message`, `snapshot_state`, and `cleanup`) under its operator-owned `adapter.operations` map. Scenarios and MCP callers can provide payloads and target ids only; they cannot provide a URL, path, or operation name that bypasses this map. Fixture targets implement the same operation set deterministically offline, while `wait` remains executor-local. Target-aware validation and preview report unsupported operations as errors and do not count them as runnable. `start_run` preflights the complete selected batch before consuming approvals, constructing adapters, or making target calls. Replay always invokes target cleanup on success and partial failure, then closes its local client; a cleanup failure fails closed and retains the primary execution error.
+
 ### 4. Add to Claude Code
 
 ```bash

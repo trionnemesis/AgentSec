@@ -33,7 +33,7 @@ from agentsec.errors import (
 )
 from agentsec.evaluation.evaluator import PurpleEvaluator
 from agentsec.evidence.collector import EvidenceCollector
-from agentsec.execution.base import ExecutionContext
+from agentsec.execution.base import ExecutionContext, RedExecutor
 from agentsec.execution.registry import available_executors, get_executor
 from agentsec.inspect import inspect_project
 from agentsec.models.evidence import Evidence
@@ -80,6 +80,15 @@ class BatchResult:
         return int(self.report.get("exit_code", 0))
 
 
+@dataclass(frozen=True)
+class _RunPreflight:
+    """Read-only executor checks made before any run can consume approval or dial."""
+
+    executor: RedExecutor | None
+    executor_ready: bool
+    executor_reason: str | None = None
+
+
 class HarnessService:
     def __init__(self, settings: Settings | None = None, *, actor: str | None = None) -> None:
         self.settings = settings or load_settings()
@@ -118,11 +127,12 @@ class HarnessService:
         return self._allowlist
 
     def get_target(self, target_id: str) -> Target:
-        target = self._targets().get(target_id)
+        allowlist = self._targets()
+        target = allowlist.get(target_id)
         if target is None:
             raise TargetNotFound(
                 f"unknown target '{target_id}'",
-                details={"known": [t.id for t in self._targets().targets]},
+                details={"known": [t.id for t in allowlist.targets]},
             )
         return target
 
@@ -282,7 +292,13 @@ class HarnessService:
                 }
             )
 
-        blocked = [p for p in plan if not p["policy"]["allowed"]]
+        # A policy-allowed plan is not runnable when target-aware validation has
+        # found an unsupported driver operation (or another hard error).  Keep
+        # this count tied to the same preflight contract start_run enforces.
+        blocked = [
+            p for p in plan
+            if not p["policy"]["allowed"] or not p["validation"]["valid"]
+        ]
         self.store.audit(
             actor=self.actor, action="preview_run", subject=target_id, outcome="ok",
             detail={"profile": profile, "scenarios": len(plan), "blocked": len(blocked)},
@@ -328,16 +344,64 @@ class HarnessService:
                 },
             )
 
+        # Validate the complete batch before asking the policy layer for any
+        # approval decision that could later be consumed.  In particular, a
+        # target missing ``seed_memory`` must prevent a sibling scenario from
+        # reaching its adapter as well.
+        validations = {
+            scenario.id: validate_scenario(scenario, target=target)
+            for scenario in selected
+        }
+        invalid = [
+            (scenario, validations[scenario.id])
+            for scenario in selected
+            if not validations[scenario.id].ok
+        ]
+        if invalid:
+            reasons = " | ".join(
+                f"{scenario.id}: "
+                + "; ".join(issue.render() for issue in report.errors)
+                for scenario, report in invalid
+            )
+            return self._refused_batch(
+                selected=selected,
+                target=target,
+                profile=prof,
+                profile_name=profile,
+                dry_run=dry_run,
+                reason=f"batch preflight validation failed: {reasons}",
+            )
+
+        preflights: dict[str, _RunPreflight] = {}
+        for scenario in selected:
+            executor: RedExecutor | None = None
+            ready = False
+            reason: str | None = None
+            try:
+                executor = get_executor(scenario.spec.attack.executor, self.settings.workspace)
+                ready, reason = executor.available(target)
+            except AgentSecError as exc:
+                reason = exc.message
+            except Exception as exc:  # noqa: BLE001 - preflight must fail closed
+                reason = f"{type(exc).__name__}: {exc}"
+            preflights[scenario.id] = _RunPreflight(
+                executor=executor,
+                executor_ready=ready,
+                executor_reason=reason,
+            )
+
         runs: list[Run] = []
         summaries: list[RunSummary] = []
 
         for scenario in selected:
+            preflight = preflights[scenario.id]
             run = self._run_one(
                 scenario=scenario,
                 target=target,
                 profile=prof,
                 dry_run=dry_run,
                 approval_id=approval_id,
+                preflight=preflight,
             )
             runs.append(run)
             collector_errors = self._collector_errors_for(run)
@@ -349,6 +413,60 @@ class HarnessService:
         report = normalize_batch(summaries, profile=profile, target_id=target_id)
         return BatchResult(runs=runs, summaries=summaries, report=report)
 
+    def _refused_batch(
+        self,
+        *,
+        selected: list[Scenario],
+        target: Target,
+        profile: Profile,
+        profile_name: str,
+        dry_run: bool,
+        reason: str,
+    ) -> BatchResult:
+        """Persist an all-or-nothing preflight refusal without touching a target."""
+        runs: list[Run] = []
+        summaries: list[RunSummary] = []
+        for scenario in selected:
+            run_id = self._next_run_id()
+            created = datetime.now(UTC)
+            run = Run(
+                run_id=run_id,
+                scenario_id=scenario.id,
+                target_id=target.id,
+                profile=profile.name,
+                status=RunStatus.REFUSED,
+                created_at=created,
+                finished_at=created,
+                dry_run=dry_run,
+                refusal_reason=reason,
+                initiated_by=self.actor,
+                scenario_digest=scenario_digest(scenario),
+            )
+            self.store.save_run(run)
+            self.store.audit(
+                actor=self.actor,
+                action="start_run",
+                subject=scenario.id,
+                outcome="preflight_refused",
+                detail={"target_id": target.id, "reason": reason, "run_id": run_id},
+            )
+            runs.append(run)
+            summaries.append(
+                normalize_run(
+                    run,
+                    scenario,
+                    profile,
+                    self._collector_errors_for(run),
+                    target,
+                    self._evidence_backends_for(run),
+                )
+            )
+        return BatchResult(
+            runs=runs,
+            summaries=summaries,
+            report=normalize_batch(summaries, profile=profile_name, target_id=target.id),
+        )
+
     def _run_one(
         self,
         *,
@@ -357,11 +475,15 @@ class HarnessService:
         profile: Profile,
         dry_run: bool,
         approval_id: str | None,
+        preflight: _RunPreflight | None = None,
     ) -> Run:
         run_id = self._next_run_id()
         created = datetime.now(UTC)
         digest = scenario_digest(scenario)
 
+        # Re-evaluate immediately before execution.  The batch preflight above
+        # must happen before any approval is consumed, but its decision cannot
+        # be cached because approvals are single-use.
         decision = self.guard.check(
             scenario=scenario, target=target, profile=profile, approval_id=approval_id
         )
@@ -397,16 +519,22 @@ class HarnessService:
             )
             return run
 
-        if decision.approval_id:
-            # Consumed before execution: an approval must not survive a crash
-            # mid-run and be reusable for a second attempt.
-            self.approvals.consume(decision.approval_id, run_id)
+        executor = preflight.executor if preflight is not None else None
+        if preflight is not None:
+            ok = preflight.executor_ready
+            reason = preflight.executor_reason or "executor unavailable"
+        else:
+            try:
+                executor = get_executor(scenario.spec.attack.executor, self.settings.workspace)
+                ok, reason = executor.available(target)
+            except AgentSecError as exc:
+                ok, reason = False, exc.message
+            except Exception as exc:  # noqa: BLE001
+                ok, reason = False, f"{type(exc).__name__}: {exc}"
 
-        started = datetime.now(UTC)
-        executor = get_executor(scenario.spec.attack.executor, self.settings.workspace)
-        ok, reason = executor.available(target)
-
-        if not ok:
+        if not ok or executor is None:
+            reason = reason or "executor unavailable"
+            started = datetime.now(UTC)
             verdict = self.evaluator.execution_failure_verdict(reason)
             run = Run(
                 run_id=run_id, scenario_id=scenario.id, target_id=target.id,
@@ -422,6 +550,43 @@ class HarnessService:
                 detail={"target_id": target.id, "reason": reason, "run_id": run_id},
             )
             return run
+
+        if decision.approval_id:
+            # Claim before execution: an approval must not survive a crash
+            # mid-run and be reusable for a second attempt.  The store performs
+            # the read/compare/write atomically; a concurrent loser becomes a
+            # refused run rather than silently executing without approval.
+            try:
+                claimed = self.approvals.consume(decision.approval_id, run_id)
+                claim_error = None if claimed else "approval claim was already consumed"
+            except AgentSecError as exc:
+                claimed = False
+                claim_error = exc.message
+            except Exception as exc:  # noqa: BLE001 - fail closed on claim errors
+                claimed = False
+                claim_error = f"{type(exc).__name__}: {exc}"
+
+            if not claimed:
+                reason = (
+                    f"approval '{decision.approval_id}' could not be claimed: "
+                    f"{claim_error or 'unknown claim failure'}"
+                )
+                run = Run(
+                    run_id=run_id, scenario_id=scenario.id, target_id=target.id,
+                    profile=profile.name, status=RunStatus.REFUSED, created_at=created,
+                    finished_at=datetime.now(UTC), dry_run=dry_run,
+                    refusal_reason=reason, initiated_by=self.actor,
+                    scenario_digest=digest,
+                )
+                self.store.save_run(run)
+                self.store.audit(
+                    actor=self.actor, action="start_run", subject=scenario.id,
+                    outcome="approval_claim_failed",
+                    detail={"target_id": target.id, "reason": reason, "run_id": run_id},
+                )
+                return run
+
+        started = datetime.now(UTC)
 
         ctx = ExecutionContext(
             run_id=run_id,
@@ -484,6 +649,7 @@ class HarnessService:
             status=RunStatus.COMPLETED if execution.ok else RunStatus.FAILED,
             created_at=created, started_at=started, finished_at=datetime.now(UTC),
             execution=execution, verdict=verdict, evidence_ref=evidence_ref,
+            refusal_reason=failure,
             initiated_by=self.actor, scenario_digest=digest,
             approval_id=decision.approval_id,
         )

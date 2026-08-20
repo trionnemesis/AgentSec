@@ -65,7 +65,25 @@
           "type": "string",
           "description": "Required for kind=http. Must resolve to a private or loopback address unless explicitly overridden by the operator."
         },
-        "chat_path": { "type": "string", "default": "/chat" },
+        "chat_path": {
+          "$ref": "#/$defs/safeRelativePath",
+          "default": "/chat",
+          "description": "Legacy spelling for the fixed send_message operation path. Prefer operations.send_message."
+        },
+        "operations": {
+          "type": "object",
+          "description": "Operator-owned fixed relative endpoint per target-driver operation. Values are never exposed in target projections.",
+          "additionalProperties": false,
+          "properties": {
+            "seed_resource": { "$ref": "#/$defs/adapterOperation" },
+            "seed_memory": { "$ref": "#/$defs/adapterOperation" },
+            "inject_tool_response": { "$ref": "#/$defs/adapterOperation" },
+            "assume_identity": { "$ref": "#/$defs/adapterOperation" },
+            "send_message": { "$ref": "#/$defs/adapterOperation" },
+            "snapshot_state": { "$ref": "#/$defs/adapterOperation" },
+            "cleanup": { "$ref": "#/$defs/adapterOperation" }
+          }
+        },
         "headers_from_env": {
           "type": "object",
           "additionalProperties": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
@@ -73,6 +91,20 @@
         "fixture_dir": { "type": "string", "description": "Required for kind=fixture. Offline recorded transcripts." },
         "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 600, "default": 60 }
       }
+    },
+    "adapterOperation": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "$ref": "#/$defs/safeRelativePath" }
+      }
+    },
+    "safeRelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!//)(?![A-Za-z][A-Za-z0-9+.-]*:)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*(?:^|/)\\.(?:/|$))(?!.*[?#%\\\\])(?!.*[\\x00-\\x1F\\x7F])/?[A-Za-z0-9._~!$&'()*+,;=:@-]+(?:/[A-Za-z0-9._~!$&'()*+,;=:@-]+)*/?$",
+      "description": "A safe relative path below the operator-owned adapter.base_url; full URLs, schemes, queries, fragments, percent encoding, empty segments and traversal are refused."
     },
     "evidenceBackends": {
       "type": "object",

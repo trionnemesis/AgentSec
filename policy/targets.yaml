@@ -57,7 +57,14 @@ targets:
   #   adapter:
   #     kind: http
   #     base_url: http://order-agent.staging.svc.cluster.local:8080
-  #     chat_path: /v1/chat
+  #     operations:
+  #       send_message: {path: /v1/chat}
+  #       seed_resource: {path: /_agentsec/seed/resource}
+  #       seed_memory: {path: /_agentsec/seed/memory}
+  #       inject_tool_response: {path: /_agentsec/inject/tool-response}
+  #       assume_identity: {path: /_agentsec/identity}
+  #       snapshot_state: {path: /_agentsec/snapshot}
+  #       cleanup: {path: /_agentsec/cleanup}
   #     timeout_seconds: 60
   #     headers_from_env:
   #       x-agentsec-run: AGENTSEC_RUN_HEADER

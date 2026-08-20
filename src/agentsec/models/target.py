@@ -6,15 +6,85 @@ Callers — including Claude — reference a target by id and cannot supply a UR
 
 from __future__ import annotations
 
+import re
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from agentsec.models.scenario import Capability, Environment, ExecutorName, RiskLevel
+from agentsec.models.scenario import (
+    Capability,
+    DriverOperation,
+    Environment,
+    ExecutorName,
+    RiskLevel,
+)
 
 
 class _Base(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+_SAFE_RELATIVE_PATH = re.compile(r"[A-Za-z0-9._~!$&'()*+,;=:@/-]+$")
+
+
+class AdapterOperation(_Base):
+    path: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _safe_relative_path(self) -> AdapterOperation:
+        """Keep operation routes under the operator-owned base URL.
+
+        A scenario supplies operation payloads, never a locator.  The route is
+        therefore configuration, and still needs to be constrained: accepting a
+        full URL, a query string or traversal would turn an operation map into a
+        disguised arbitrary-URL capability.
+        """
+        raw = self.path
+        try:
+            parsed = urlsplit(raw)
+        except ValueError as exc:
+            raise ValueError(
+                "adapter operation path must be a safe relative path without URL, "
+                "query, fragment or traversal"
+            ) from exc
+        normalised = raw.replace("\\", "/")
+        segments = normalised.split("/")
+        if segments and segments[0] == "":
+            segments = segments[1:]
+        if segments and segments[-1] == "":
+            segments = segments[:-1]
+        if (
+            parsed.scheme
+            or parsed.netloc
+            or parsed.query
+            or parsed.fragment
+            or normalised.startswith("//")
+            or "\\" in raw
+            or "%" in raw
+            or "?" in normalised
+            or "#" in normalised
+            or _SAFE_RELATIVE_PATH.fullmatch(raw) is None
+            or any(ord(char) < 0x20 for char in normalised)
+            or not segments
+            or any(segment in {"", ".", ".."} for segment in segments)
+        ):
+            raise ValueError(
+                "adapter operation path must be a safe relative path without URL, "
+                "query, fragment, encoding or traversal"
+            )
+        return self
+
+
+ALL_DRIVER_OPERATIONS: tuple[DriverOperation, ...] = (
+    "seed_resource",
+    "seed_memory",
+    "inject_tool_response",
+    "assume_identity",
+    "send_message",
+    "snapshot_state",
+    "cleanup",
+)
 
 
 class Adapter(_Base):
@@ -24,6 +94,7 @@ class Adapter(_Base):
     headers_from_env: dict[str, str] = Field(default_factory=dict)
     fixture_dir: str | None = None
     timeout_seconds: int = Field(default=60, ge=1, le=600)
+    operations: dict[DriverOperation, AdapterOperation] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _require_locator(self) -> Adapter:
@@ -31,7 +102,37 @@ class Adapter(_Base):
             raise ValueError("adapter kind=http requires base_url")
         if self.kind == "fixture" and not self.fixture_dir:
             raise ValueError("adapter kind=fixture requires fixture_dir")
+        # Keep the legacy chat_path spelling accepted for existing operator
+        # files, but make it the same fixed send-message operation as the new
+        # explicit map.  Every other HTTP operation must carry its own path.
+        AdapterOperation(path=self.chat_path)
+        if self.kind == "http" and "send_message" not in self.operations:
+            object.__setattr__(
+                self, "operations",
+                {
+                    **self.operations,
+                    "send_message": AdapterOperation(path=self.chat_path or "/chat"),
+                },
+            )
         return self
+
+    def supports_operation(self, operation: DriverOperation) -> bool:
+        if self.kind == "fixture":
+            return True
+        return operation in self.operations
+
+    def operation_path(self, operation: DriverOperation) -> str:
+        if self.kind == "fixture":
+            raise ValueError("fixture adapter has no fixed operation path")
+        try:
+            return self.operations[operation].path
+        except KeyError as exc:
+            raise ValueError(f"adapter does not declare operation '{operation}'") from exc
+
+    def supported_operations(self) -> list[DriverOperation]:
+        if self.kind == "fixture":
+            return list(ALL_DRIVER_OPERATIONS)
+        return sorted(self.operations)
 
 
 class OtelBackend(_Base):
@@ -103,6 +204,7 @@ class Target(_Base):
             "max_risk_level": str(self.max_risk_level),
             "allow_destructive": self.allow_destructive,
             "allowed_executors": list(self.allowed_executors),
+            "supported_operations": self.adapter.supported_operations(),
             "principals": sorted(self.principals),
             "evidence_backends": sorted(
                 name
