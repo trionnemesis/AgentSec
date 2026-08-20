@@ -14,6 +14,20 @@ Jump to: [GitHub Pages](#github-pages) ・ [Why](#why) ・ [What it does](#what-
 
 The [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/) is the public-facing, eight-page English introduction to AgentSec. It gives a fast visual overview of the problem, the Attack–Detection Contract, deterministic verdicts, the execution pipeline, trust boundaries, and the offline quick start. Use this README and the linked docs for detailed commands, implementation guidance, deployment, and roadmap status.
 
+### Slide preview
+
+The gallery below makes the presentation visible from the README. Select any slide to open that page in the full [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/), where the eight independent HTML pages keep their previous/next navigation.
+
+| [![Slide 01: Make AI agent security testable](docs/assets/pages/01-cover.png)](https://trionnemesis.github.io/AgentSec/) | [![Slide 02: The blind-success gap](docs/assets/pages/02-problem.png)](https://trionnemesis.github.io/AgentSec/01-problem.html) |
+| --- | --- |
+| **01 — Make AI agent security testable** | **02 — Blocking an attack is only half the story** |
+| [![Slide 03: See what your repository exposes](docs/assets/pages/03-scope.png)](https://trionnemesis.github.io/AgentSec/02-scope.html) | [![Slide 04: The Attack–Detection Contract](docs/assets/pages/04-contract.png)](https://trionnemesis.github.io/AgentSec/03-contract.html) |
+| **03 — See what your repository exposes** | **04 — Declare what good looks like** |
+| [![Slide 05: One deterministic verdict](docs/assets/pages/05-verdict.png)](https://trionnemesis.github.io/AgentSec/04-verdict.html) | [![Slide 06: From repository to evidence](docs/assets/pages/06-architecture.png)](https://trionnemesis.github.io/AgentSec/05-architecture.html) |
+| **05 — Turn evidence into one verdict** | **06 — Run the same logic locally and in CI** |
+| [![Slide 07: Bounded by design](docs/assets/pages/07-trust.png)](https://trionnemesis.github.io/AgentSec/06-trust.html) | [![Slide 08: Start with one scenario](docs/assets/pages/08-start.png)](https://trionnemesis.github.io/AgentSec/07-start.html) |
+| **07 — Keep the control surface narrow** | **08 — Start with one scenario** |
+
 ---
 
 ## Why
