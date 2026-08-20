@@ -13,28 +13,28 @@ WORKFLOWS = sorted((ROOT / ".github" / "workflows").glob("*.yml"))
 
 EXPECTED_ACTIONS = {
     "actions/checkout": (
-        "11d5960a326750d5838078e36cf38b85af677262",
-        "v4.4.0",
+        "3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "v7.0.1",
     ),
     "actions/configure-pages": (
-        "983d7736d9b0ae728b81ab479565c72886d7745b",
-        "v5.0.0",
+        "45bfe0192ca1faeb007ade9deae92b16b8254a0d",
+        "v6.0.0",
     ),
     "actions/deploy-pages": (
-        "d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e",
-        "v4.0.5",
+        "cd2ce8fcbc39b97be8ca5fce6e763baed58fa128",
+        "v5.0.0",
     ),
     "actions/setup-python": (
-        "a26af69be951a213d495a4c3e4e4022e16d87065",
-        "v5.6.0",
+        "5fda3b95a4ea91299a34e894583c3862153e4b97",
+        "v7.0.0",
     ),
     "actions/upload-artifact": (
-        "ea165f8d65b6e75b540449e92b4886f43607fa02",
-        "v4.6.2",
+        "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "v7.0.1",
     ),
     "actions/upload-pages-artifact": (
-        "56afc609e74202658d3ffba0e8f6dda462b719fa",
-        "v3.0.1",
+        "fc324d3547104276b827a68afc52ff2a11cc49c9",
+        "v5.0.0",
     ),
     "pypa/gh-action-pip-audit": (
         "1220774d901786e6f652ae159f7b6bc8fea6d266",
