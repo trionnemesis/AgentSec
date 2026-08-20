@@ -17,17 +17,30 @@ import json
 import os
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from agentsec.errors import ExecutionFailed
 from agentsec.models.evidence import TranscriptTurn
+from agentsec.models.scenario import DriverOperation
 from agentsec.models.target import Target
 
 
 class TargetAdapter(Protocol):
+    def supported_operations(self) -> list[DriverOperation]:
+        ...
+
     def send(
-        self, *, step_id: str, message: str, principal: str | None, session: str
+        self,
+        *,
+        operation: DriverOperation,
+        step_id: str,
+        principal: str | None,
+        session: str,
+        payload: str,
     ) -> TranscriptTurn:
+        ...
+
+    def cleanup(self, *, target_id: str, session: str) -> None:
         ...
 
     def close(self) -> None:
@@ -62,20 +75,50 @@ class FixtureAdapter:
         }
 
     def send(
-        self, *, step_id: str, message: str, principal: str | None, session: str
+        self,
+        *,
+        operation: DriverOperation,
+        step_id: str,
+        principal: str | None,
+        session: str,
+        payload: str,
     ) -> TranscriptTurn:
-        if step_id not in self._replies:
+        if operation == "send_message" and step_id not in self._replies:
             raise ExecutionFailed(
                 f"fixture {self.path.name} has no reply for step '{step_id}'",
                 details={"known_steps": sorted(self._replies)},
             )
+
+        if operation == "send_message":
+            role: Literal["assistant", "system"] = "assistant"
+            content = self._replies[step_id]
+        else:
+            # Non-message operations are deterministic driver acknowledgements;
+            # their effects are asserted through the target's evidence sources,
+            # not by pretending the fixture has an assistant reply for them.
+            role = "system"
+            content = f"{operation} completed"
         return TranscriptTurn(
-            role="assistant",
-            content=self._replies[step_id],
+            role=role,
+            content=content,
             step_id=step_id,
             principal=principal,
             timestamp=datetime.now(UTC),
         )
+
+    def supported_operations(self) -> list[DriverOperation]:
+        return [
+            "seed_resource",
+            "seed_memory",
+            "inject_tool_response",
+            "assume_identity",
+            "send_message",
+            "snapshot_state",
+            "cleanup",
+        ]
+
+    def cleanup(self, *, target_id: str, session: str) -> None:
+        return None
 
     def close(self) -> None:
         return None
@@ -108,15 +151,49 @@ class HttpAdapter:
             )
 
         self._target = target
-        self._url = adapter.base_url.rstrip("/") + "/" + adapter.chat_path.lstrip("/")  # type: ignore[union-attr]
         self._client = httpx.Client(timeout=adapter.timeout_seconds, headers=headers)
 
+    def supported_operations(self) -> list[DriverOperation]:
+        return self._target.adapter.supported_operations()
+
+    def _operation_url(self, operation: DriverOperation) -> str:
+        if not self._target.adapter.supports_operation(operation):
+            raise ExecutionFailed(
+                f"target '{self._target.id}' does not support driver operation "
+                f"'{operation}'"
+            )
+        base_url = self._target.adapter.base_url
+        if base_url is None:  # guarded by Adapter's model validator
+            raise ExecutionFailed(f"target '{self._target.id}' has no HTTP base URL")
+        route = self._target.adapter.operation_path(operation)
+        return base_url.rstrip("/") + "/" + route.lstrip("/")
+
     def send(
-        self, *, step_id: str, message: str, principal: str | None, session: str
+        self,
+        *,
+        operation: DriverOperation,
+        step_id: str,
+        principal: str | None,
+        session: str,
+        payload: str,
     ) -> TranscriptTurn:
         import httpx
 
-        payload: dict[str, Any] = {"message": message, "session_id": session}
+        url = self._operation_url(operation)
+        # Preserve the original chat contract exactly.  The target-driver
+        # envelope is only needed for newly introduced non-message operations;
+        # existing HTTP chat handlers must continue to receive just message,
+        # session_id, and (when configured) principal_token.
+        payload_doc: dict[str, Any] = (
+            {"message": payload, "session_id": session}
+            if operation == "send_message"
+            else {
+                "operation": operation,
+                "session_id": session,
+                "step_id": step_id,
+                "payload": payload,
+            }
+        )
         if principal:
             principal_env = self._target.principals.get(principal)
             if principal_env is None:
@@ -130,10 +207,10 @@ class HttpAdapter:
                     f"principal '{principal}' maps to unset environment variable "
                     f"{principal_env}"
                 )
-            payload["principal_token"] = token
+            payload_doc["principal_token"] = token
 
         try:
-            resp = self._client.post(self._url, json=payload)
+            resp = self._client.post(url, json=payload_doc)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             # Never echo the payload back: it carries the principal token.
@@ -154,12 +231,29 @@ class HttpAdapter:
             ) if isinstance(body, dict) else json.dumps(body, ensure_ascii=False)
 
         return TranscriptTurn(
-            role="assistant",
+            role="assistant" if operation == "send_message" else "system",
             content=str(content),
             step_id=step_id,
             principal=principal,
             timestamp=datetime.now(UTC),
         )
+
+    def cleanup(self, *, target_id: str, session: str) -> None:
+        import httpx
+
+        url = self._operation_url("cleanup")
+        payload: dict[str, Any] = {
+            "operation": "cleanup",
+            "session_id": session,
+            "target_id": target_id,
+        }
+
+        try:
+            self._client.post(url, json=payload).raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ExecutionFailed(
+                f"target cleanup failed for '{self._target.id}': {type(exc).__name__}"
+            ) from exc
 
     def close(self) -> None:
         self._client.close()

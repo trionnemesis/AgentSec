@@ -106,6 +106,31 @@ class AttackStep(_Base):
         return self
 
 
+DriverOperation = Literal[
+    "seed_resource",
+    "seed_memory",
+    "inject_tool_response",
+    "assume_identity",
+    "send_message",
+    "snapshot_state",
+    "cleanup",
+]
+
+
+_SCENARIO_KIND_TO_DRIVER_OPERATION: dict[str, DriverOperation] = {
+    "seed_resource": "seed_resource",
+    "seed_memory": "seed_memory",
+    "tool_response_injection": "inject_tool_response",
+    "assume_identity": "assume_identity",
+    "agent_message": "send_message",
+    "snapshot_state": "snapshot_state",
+}
+
+
+def driver_operation_for_step_kind(kind: str) -> DriverOperation | None:
+    return _SCENARIO_KIND_TO_DRIVER_OPERATION.get(kind)
+
+
 class Attack(_Base):
     executor: ExecutorName
     timeout_seconds: int = Field(default=300, ge=1, le=3600)
@@ -336,3 +361,22 @@ class Scenario(_Base):
         if c.response and c.response.mode != "not_tested":
             axes.append("response")
         return axes
+
+    @property
+    def required_driver_operations(self) -> list[DriverOperation]:
+        seen: set[DriverOperation] = set()
+        ordered: list[DriverOperation] = []
+        for step in self.spec.attack.steps:
+            operation = driver_operation_for_step_kind(step.kind)
+            if operation is None:
+                continue
+            if operation in seen:
+                continue
+            seen.add(operation)
+            ordered.append(operation)
+        # Cleanup is a lifecycle operation of the replay/HTTP driver rather
+        # than a scenario step.  Make it part of preflight so a live target can
+        # never start an attack that has no operator-owned cleanup route.
+        if self.spec.attack.executor == "replay" and "cleanup" not in seen:
+            ordered.append("cleanup")
+        return ordered

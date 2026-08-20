@@ -379,6 +379,17 @@ def _check_applicability(s: Scenario, t: Target, r: ValidationReport) -> None:
               f"target '{t.id}' allows {t.allowed_executors}, scenario needs "
               f"'{s.spec.attack.executor}'", "spec/attack/executor")
 
+    missing_ops = sorted(
+        set(s.required_driver_operations) - set(t.adapter.supported_operations())
+    )
+    if missing_ops:
+        r.add(
+            "error",
+            "unsupported_driver_operation",
+            f"target '{t.id}' does not support operation(s) {missing_ops}",
+            "spec/attack/steps",
+        )
+
     from agentsec.models.scenario import RISK_ORDER
 
     if RISK_ORDER[s.spec.risk.level] > RISK_ORDER[t.max_risk_level]:

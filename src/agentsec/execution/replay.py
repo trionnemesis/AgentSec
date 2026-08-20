@@ -16,10 +16,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from agentsec.errors import ExecutionFailed
-from agentsec.execution.adapters import build_adapter
+from agentsec.execution.adapters import TargetAdapter, build_adapter
 from agentsec.execution.base import ExecutionContext, make_result
 from agentsec.models.evidence import SourceMeta, TranscriptSource, TranscriptTurn
 from agentsec.models.run import ExecutionResult
+from agentsec.models.scenario import driver_operation_for_step_kind
 from agentsec.models.target import Target
 from agentsec.scenario.loader import resolve_payload
 
@@ -40,10 +41,14 @@ class ReplayExecutor:
         turns: list[TranscriptTurn] = []
         completed: list[str] = []
         deadline = time.monotonic() + ctx.timeout_seconds
-        adapter = build_adapter(ctx.target, ctx.scenario.id, self._workspace)
+        adapter: TargetAdapter | None = None
         current_principal: str | None = None
+        failure: str | None = None
+        cleanup_error: str | None = None
+        close_error: str | None = None
 
         try:
+            adapter = build_adapter(ctx.target, ctx.scenario.id, self._workspace)
             for step in ctx.scenario.spec.attack.steps:
                 if time.monotonic() > deadline:
                     raise ExecutionFailed(
@@ -52,85 +57,78 @@ class ReplayExecutor:
 
                 principal = step.as_principal or current_principal
 
-                if step.kind == "assume_identity":
-                    current_principal = step.as_principal
-                    turns.append(
-                        TranscriptTurn(
-                            role="system",
-                            content=f"switch principal -> {step.as_principal}",
-                            step_id=step.id,
-                            principal=step.as_principal,
-                            timestamp=datetime.now(UTC),
-                        )
-                    )
-                    completed.append(step.id)
-                    continue
-
                 if step.kind == "wait":
                     time.sleep(min(step.seconds or 0, max(0.0, deadline - time.monotonic())))
-                    completed.append(step.id)
-                    continue
-
-                if step.kind == "snapshot_state":
-                    # The state-diff collector reads the baseline itself; the step
-                    # exists so the transcript records *when* it was taken.
-                    turns.append(
-                        TranscriptTurn(
-                            role="system",
-                            content="state snapshot marker",
-                            step_id=step.id,
-                            timestamp=datetime.now(UTC),
-                        )
-                    )
+                    # ``wait`` is intentionally executor-local, but retaining
+                    # its completed marker preserves the execution contract;
+                    # target-driver steps are only marked after ``send``.
                     completed.append(step.id)
                     continue
 
                 payload = self._payload_for(ctx, step.payload, step.payload_ref)
+                operation = driver_operation_for_step_kind(step.kind)
+                if operation is None:
+                    raise ExecutionFailed(f"unsupported step kind '{step.kind}'")
 
-                if step.kind in {"seed_resource", "seed_memory", "tool_response_injection"}:
-                    # Seeding is modelled as a system turn carrying the injected
-                    # content. A real deployment wires these to the target's
-                    # ingest API; recording them keeps the transcript complete
-                    # either way.
+                if operation == "send_message":
                     turns.append(
                         TranscriptTurn(
-                            role="system",
-                            content=f"[{step.kind}] {payload}",
+                            role="user",
+                            content=payload,
                             step_id=step.id,
                             principal=principal,
                             timestamp=datetime.now(UTC),
                         )
                     )
-                    completed.append(step.id)
-                    continue
 
-                # agent_message
-                turns.append(
-                    TranscriptTurn(
-                        role="user",
-                        content=payload,
-                        step_id=step.id,
-                        principal=principal,
-                        timestamp=datetime.now(UTC),
-                    )
-                )
                 reply = adapter.send(
+                    operation=operation,
                     step_id=step.id,
-                    message=payload,
+                    payload=payload,
                     principal=principal,
                     session=ctx.run_id,
                 )
                 turns.append(reply)
                 completed.append(step.id)
+                if operation == "assume_identity":
+                    current_principal = step.as_principal
 
         except ExecutionFailed as exc:
+            failure = exc.message
+        except Exception as exc:  # noqa: BLE001
+            failure = f"{type(exc).__name__}: {exc}"
+        finally:
+            if adapter is not None:
+                cleanup_error = self._cleanup(adapter, ctx)
+                try:
+                    adapter.close()
+                except ExecutionFailed as exc:
+                    close_error = exc.message
+                except Exception as exc:  # noqa: BLE001
+                    close_error = f"{type(exc).__name__}: {exc}"
+
+        if failure is None and cleanup_error is not None:
+            failure = f"run completed, but cleanup failed: {cleanup_error}"
+        elif failure is not None and cleanup_error is not None:
+            failure = f"{failure}; cleanup failed: {cleanup_error}"
+        if close_error is not None:
+            failure = (
+                f"{failure}; client close failed: {close_error}"
+                if failure is not None
+                else f"client close failed: {close_error}"
+            )
+
+        if failure is not None:
             return (
-                make_result(self.name, started, ok=False, steps_completed=completed,
-                            error=exc.message),
+                make_result(
+                    self.name,
+                    started,
+                    ok=False,
+                    steps_completed=completed,
+                    error=failure,
+                ),
                 TranscriptSource(turns=turns, meta=self._meta(ctx)),
             )
-        finally:
-            adapter.close()
 
         return (
             make_result(self.name, started, ok=True, steps_completed=completed),
@@ -142,7 +140,10 @@ class ReplayExecutor:
         return SourceMeta(collector="replay", backend=ctx.target.adapter.kind)
 
     def _payload_for(
-        self, ctx: ExecutionContext, payload: object, payload_ref: str | None
+        self,
+        ctx: ExecutionContext,
+        payload: object,
+        payload_ref: str | None,
     ) -> str:
         if payload_ref:
             if ctx.scenario_path is None:
@@ -155,3 +156,12 @@ class ReplayExecutor:
         import json
 
         return json.dumps(payload, ensure_ascii=False)
+
+    def _cleanup(self, adapter: TargetAdapter, ctx: ExecutionContext) -> str | None:
+        try:
+            adapter.cleanup(target_id=ctx.target.id, session=ctx.run_id)
+        except ExecutionFailed as exc:
+            return exc.message
+        except Exception as exc:  # noqa: BLE001
+            return f"{type(exc).__name__}: {exc}"
+        return None
