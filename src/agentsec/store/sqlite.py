@@ -19,23 +19,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agentsec.errors import FindingNotFound, RunNotFound
+from agentsec.errors import AgentSecError, FindingNotFound, RunNotFound
 from agentsec.models.finding import Finding, FindingStatus
 from agentsec.models.run import Run
 
 SCHEMA_VERSION = 2
 
+# The version-1 shape: every table that existed before `run_counter`. Applied
+# unconditionally and idempotently on every open, including against a legacy
+# database, so it must never do more than `CREATE ... IF NOT EXISTS`.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL);
-
--- One row per day, incremented atomically. Deriving the next run id from
--- MAX(run_id) in Python let two processes on one workspace mint the same id,
--- and `save_run` upserts, so the second run silently overwrote the first --
--- losing a run without trace, in the component whose job is to be the record.
-CREATE TABLE IF NOT EXISTS run_counter (
-    day     TEXT PRIMARY KEY,
-    next_n  INTEGER NOT NULL
-);
 
 CREATE TABLE IF NOT EXISTS runs (
     run_id          TEXT PRIMARY KEY,
@@ -85,6 +79,53 @@ CREATE TABLE IF NOT EXISTS audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_log (at DESC);
 """
 
+# Ordered upgrades applied on top of _SCHEMA, oldest first. Each entry's `sql`
+# takes a database already at `version - 1` to `version`; it must be safe to
+# re-run (`IF NOT EXISTS` / idempotent DDL only), because a fresh database
+# gets every migration applied in sequence rather than starting pre-upgraded.
+_MIGRATIONS: list[tuple[int, str]] = [
+    (
+        2,
+        """
+        -- One row per day, incremented atomically. Deriving the next run id
+        -- from MAX(run_id) in Python let two processes on one workspace mint
+        -- the same id, and `save_run` upserts, so the second run silently
+        -- overwrote the first -- losing a run without trace, in the
+        -- component whose job is to be the record.
+        CREATE TABLE IF NOT EXISTS run_counter (
+            day     TEXT PRIMARY KEY,
+            next_n  INTEGER NOT NULL
+        );
+
+        -- A v1 database predates run_counter, so it may already hold runs for
+        -- "today" under the old MAX(run_id)-in-Python scheme. Leaving the
+        -- counter empty would hand out RUN-<day>-001 again, and because
+        -- save_run upserts on run_id, that would silently overwrite the
+        -- earlier run. Seed each day's counter from the highest suffix
+        -- already used, so the next claim continues past it.
+        INSERT INTO run_counter (day, next_n)
+        SELECT substr(run_id, 5, 8) AS day,
+               MAX(CAST(substr(run_id, 14, 3) AS INTEGER)) AS next_n
+        FROM runs
+        WHERE run_id LIKE 'RUN-________-___'
+        GROUP BY day
+        ON CONFLICT(day) DO UPDATE SET
+            next_n = MAX(run_counter.next_n, excluded.next_n);
+        """,
+    ),
+]
+
+
+class SchemaVersionError(AgentSecError):
+    """The database's recorded schema version is newer than this build knows.
+
+    Raised rather than silently proceeding: a store that guessed at an
+    unrecognised shape could corrupt data or misreport what it read, and
+    either is worse than refusing to open.
+    """
+
+    code = "schema_version_unsupported"
+
 
 class ResultStore:
     def __init__(self, path: Path) -> None:
@@ -105,10 +146,34 @@ class ResultStore:
 
     def _init_schema(self) -> None:
         with self._conn() as conn:
-            conn.executescript(_SCHEMA)
+            # Bootstrap only the version table first, and check it, before
+            # applying _SCHEMA or any migration: a database from a future
+            # build may have renamed or dropped a table _SCHEMA still
+            # expects, and running that script against it could mutate the
+            # database or raise a raw sqlite3.OperationalError instead of
+            # the clean refusal this guard promises.
+            conn.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)")
             row = conn.execute("SELECT version FROM schema_version").fetchone()
+            current = row["version"] if row is not None else 0
+
+            if current > SCHEMA_VERSION:
+                raise SchemaVersionError(
+                    f"{self.path} reports schema version {current}, newer than the "
+                    f"{SCHEMA_VERSION} this build supports; refusing to open it",
+                    details={"found_version": current, "supported_version": SCHEMA_VERSION},
+                )
+
+            conn.executescript(_SCHEMA)
+
+            for target_version, migration_sql in _MIGRATIONS:
+                if current < target_version:
+                    conn.executescript(migration_sql)
+                    current = target_version
+
             if row is None:
-                conn.execute("INSERT INTO schema_version (version) VALUES (?)", (SCHEMA_VERSION,))
+                conn.execute("INSERT INTO schema_version (version) VALUES (?)", (current,))
+            elif current != row["version"]:
+                conn.execute("UPDATE schema_version SET version = ?", (current,))
 
     # -- runs ---------------------------------------------------------------
 

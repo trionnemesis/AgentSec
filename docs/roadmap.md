@@ -31,6 +31,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | Evidence collectors: Wazuh, OTel, tool audit, state diff | ✅ | file backends tested; timeline rebasing for fixtures |
 | Run provenance (`recorded` / `live` / `mixed`) | ✅ | a fixture-derived `secure` is labelled as such ([#27](https://github.com/trionnemesis/AgentSec/issues/27)) |
 | SQLite store (runs, findings, audit log) | ✅ | latest-run-per-scenario aggregates |
+| Store schema migration runner | ✅ | ordered, idempotent, fails closed on an unrecognised future version ([#44](https://github.com/trionnemesis/AgentSec/issues/44)) |
 | CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
 | Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml`; relative locations only, traversal and symlink escape refused |
 | Runtime framework fingerprint engine | ✅ | deterministic, read-only detection for LangGraph/LangChain, OpenAI Agents SDK, AutoGen, Semantic Kernel, CrewAI and framework-neutral tool calling; development-agent config stays separate |
@@ -58,10 +59,6 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
       `environments: [ci, staging]` and `scan --verify` needs a real target.
 - [ ] Wazuh rule pack for the four original bundled scenarios
       (`100501`, `100610`, `100720`, `100810`)
-- [ ] **Migration runner — overdue.** `SCHEMA_VERSION` is `2`, and
-      `store/sqlite.py:_init_schema` writes the version row only when absent, so
-      a database created under version 1 reports version 1 forever and nothing
-      reads that row to decide anything.
 
 ---
 
