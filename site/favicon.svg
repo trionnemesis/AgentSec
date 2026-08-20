@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="AgentSec">
+  <rect width="64" height="64" rx="16" fill="#111216"/>
+  <path d="M32 10 49 17v13c0 11-6.9 19.2-17 24C21.9 49.2 15 41 15 30V17l17-7Z" fill="#a998ff"/>
+  <path d="m32 22 8 3.7v5.8c0 5.1-2.9 9.3-8 12.2-5.1-2.9-8-7.1-8-12.2v-5.8L32 22Z" fill="#111216"/>
+</svg>

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Start AgentSec with its offline fixture corpus, then bring the same contract into CI.">
+  <title>AgentSec — Start with one scenario</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <a class="brand" href="index.html" aria-label="AgentSec home"><span class="brand-mark" aria-hidden="true"></span><span>AgentSec</span></a>
+    <nav class="site-nav" aria-label="Site navigation"><span class="page-index">08 / 08</span><a href="https://github.com/trionnemesis/AgentSec" rel="noopener noreferrer">GitHub ↗</a></nav>
+  </header>
+
+  <main id="main-content" class="page page--split">
+    <div class="page-intro">
+      <p class="eyebrow">Get started</p>
+      <h2>Start with one scenario.</h2>
+      <p class="supporting-copy">Run the offline fixture corpus on a laptop—no agent, SIEM, or network required. Then connect a staging agent and bring the same contract into CI.</p>
+      <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/README.md#quick-start" rel="noopener noreferrer">Read the quick start ↗</a><a class="button" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md" rel="noopener noreferrer">See the roadmap ↗</a></div>
+      <span class="status-line">Alpha · follow the roadmap for proven paths and live-validation gaps</span>
+    </div>
+
+    <div class="terminal" aria-label="AgentSec quick start commands">
+      <div class="terminal-bar"><i aria-hidden="true"></i><span>agentsec / terminal</span></div>
+      <pre><code><span class="prompt">$</span> pip install git+https://github.com/trionnemesis/AgentSec.git
+<span class="prompt">$</span> agentsec validate
+<span class="prompt">$</span> agentsec preview --target demo-agent-fixture
+<span class="prompt">$</span> agentsec run --target demo-agent-fixture --profile nightly --html</code></pre>
+    </div>
+  </main>
+
+  <footer class="page-footer">
+    <nav class="page-footer__nav" aria-label="Page navigation"><a href="06-trust.html">← Previous</a><span class="page-footer__current">08 / 08</span><a href="index.html">Back to start ↗</a></nav>
+    <a href="https://github.com/trionnemesis/AgentSec" rel="noopener noreferrer">View on GitHub ↗</a>
+  </footer>
+</body>
+</html>
