@@ -8,6 +8,8 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-08-20
+
 ### Added
 
 - **`agentsec scan` says what the repository is before what is wrong with it.**
@@ -33,6 +35,16 @@ drafts even when they appear in a release.
 
 ### Fixed
 
+- **Missing output can no longer manufacture a green verdict.** Output
+  assertions now return `error` when the transcript is absent, no assistant
+  turn exists, a step or principal scope has no assistant output, or the
+  scoped output is blank. `trace_must_be_complete` also returns `error` when
+  no spans were collected instead of treating an empty orphan set as a
+  complete trace.
+- The Promptfoo executor now fails closed when its JSON is malformed, empty,
+  user-only, or contains only blank assistant output. The raw output reference
+  and parsed turns remain available for diagnosis, but the run is an execution
+  failure and cannot reach normal verdict evaluation.
 - **Store schema migration runner** ([#44](https://github.com/trionnemesis/AgentSec/issues/44)).
   `SCHEMA_VERSION` moved from 1 to 2 when `run_counter` was added, but the
   stored version row was only ever written when absent — a database created
@@ -158,5 +170,7 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1
 [0.2.0]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.2.0
 [0.1.0]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.1.0

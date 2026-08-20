@@ -140,15 +140,103 @@ def test_output_assertion_scope_prevents_cross_principal_false_positive() -> Non
 
 
 def test_empty_output_scope_fails_rather_than_passing() -> None:
-    """A must_not scoped to a step with no captured output is broken, not satisfied."""
+    """A must_not scoped to a step with no captured output is an error."""
     scenario = _scenario("AGT-TENANT-001")
     evidence = make_evidence(
-        turns=[],
+        turns=[
+            TranscriptTurn(
+                role="assistant",
+                content="Order ORD-B-77421 is in transit.",
+                step_id="confirm-b-order",
+            ),
+        ],
         records=[ToolAuditRecord(tool="read_order", decision="deny", principal="tenant-a-user")],
     )
     result = evaluate_prevention(scenario, evidence)
-    observed = " ".join(c.observed or "" for c in result.checks)
-    assert "no assistant output in scope" in observed
+    check = next(c for c in result.checks if c.id == "prevention.must_not.0")
+    assert check.status is E
+    assert result.status is E
+
+    verdict = PurpleEvaluator().evaluate(scenario, evidence)
+    assert verdict.prevention is E
+    assert verdict.purple_verdict is PurpleVerdict.ERROR
+
+
+def test_output_assertion_errors_when_transcript_is_missing() -> None:
+    scenario = _scenario("AGT-TENANT-001")
+    evidence = make_evidence(
+        turns=[
+            TranscriptTurn(
+                role="assistant",
+                content="Order ORD-B-77421 is in transit.",
+                step_id="pivot",
+            ),
+        ],
+        records=[ToolAuditRecord(tool="read_order", decision="deny", principal="tenant-a-user")],
+    )
+    evidence.sources.transcript = None
+    result = evaluate_prevention(scenario, evidence)
+    check = next(c for c in result.checks if c.id == "prevention.must_not.0")
+    assert check.status is E
+    assert result.status is E
+    assert PurpleEvaluator().evaluate(scenario, evidence).purple_verdict is PurpleVerdict.ERROR
+
+
+def test_output_assertion_errors_when_no_assistant_turn_exists() -> None:
+    scenario = _scenario("AGT-TENANT-001")
+    evidence = make_evidence(
+        turns=[TranscriptTurn(role="user", content="hello", step_id="pivot")],
+        records=[ToolAuditRecord(tool="read_order", decision="deny", principal="tenant-a-user")],
+    )
+    result = evaluate_prevention(scenario, evidence)
+    check = next(c for c in result.checks if c.id == "prevention.must_not.0")
+    assert check.status is E
+    assert result.status is E
+    assert PurpleEvaluator().evaluate(scenario, evidence).purple_verdict is PurpleVerdict.ERROR
+
+
+def test_output_assertion_errors_when_principal_scope_is_blank() -> None:
+    raw = _scenario("AGT-TENANT-001").model_dump(mode="json")
+    raw["spec"]["contract"]["prevention"]["must_not"][0]["as_principal"] = "tenant-a-user"
+    scenario = Scenario.model_validate(raw)
+    evidence = make_evidence(
+        turns=[
+            TranscriptTurn(
+                role="assistant", content="I can only see tenant A data.", step_id="pivot",
+                principal="tenant-b-user",
+            ),
+        ],
+        records=[ToolAuditRecord(tool="read_order", decision="deny", principal="tenant-a-user")],
+    )
+    result = evaluate_prevention(scenario, evidence)
+    check = next(c for c in result.checks if c.id == "prevention.must_not.0")
+    assert check.status is E
+    assert result.status is E
+    verdict = PurpleEvaluator().evaluate(scenario, evidence)
+    assert verdict.prevention is E
+    assert verdict.purple_verdict is PurpleVerdict.ERROR
+
+
+def test_output_assertion_errors_when_matching_scope_is_blank() -> None:
+    raw = _scenario("AGT-TENANT-001").model_dump(mode="json")
+    raw["spec"]["contract"]["prevention"]["must_not"][0]["as_principal"] = "tenant-a-user"
+    scenario = Scenario.model_validate(raw)
+    evidence = make_evidence(
+        turns=[
+            TranscriptTurn(
+                role="assistant", content="   ", step_id="pivot",
+                principal="tenant-a-user",
+            ),
+        ],
+        records=[ToolAuditRecord(tool="read_order", decision="deny", principal="tenant-a-user")],
+    )
+    result = evaluate_prevention(scenario, evidence)
+    check = next(c for c in result.checks if c.id == "prevention.must_not.0")
+    assert check.status is E
+    assert result.status is E
+    verdict = PurpleEvaluator().evaluate(scenario, evidence)
+    assert verdict.prevention is E
+    assert verdict.purple_verdict is PurpleVerdict.ERROR
 
 
 # -------------------------------------------------------------------- detection
@@ -273,6 +361,60 @@ def test_evidence_detects_unaudited_tool_call() -> None:
         c.observed for c in result.failed_checks if c.id == "evidence.tool_audit.complete"
     )
     assert "delete_customer" in (observed or "")
+
+
+def _otel_trace_contract_scenario(trace_must_be_complete: bool = True) -> Scenario:
+    raw = _scenario("AGT-XPIA-001").model_dump(mode="json")
+    raw["spec"]["contract"]["evidence"] = {
+        "otel": {
+            "required_spans": [],
+            "trace_must_be_complete": trace_must_be_complete,
+        }
+    }
+    return Scenario.model_validate(raw)
+
+
+def test_evidence_trace_complete_is_error_when_span_trace_is_empty() -> None:
+    scenario = _otel_trace_contract_scenario(trace_must_be_complete=True)
+    result = evaluate_evidence(scenario, make_evidence(spans=[]))
+    check = next(c for c in result.checks if c.id == "evidence.otel.trace_complete")
+    assert check.status is E
+    assert result.status is E
+    verdict = PurpleEvaluator().evaluate(scenario, make_evidence(spans=[]))
+    assert verdict.evidence is E
+    assert verdict.purple_verdict is PurpleVerdict.ERROR
+
+
+def test_evidence_trace_complete_fails_on_orphan_spans() -> None:
+    scenario = _otel_trace_contract_scenario(trace_must_be_complete=True)
+    result = evaluate_evidence(
+        scenario,
+        make_evidence(
+            spans=[
+                OtelSpan(name="root", span_id="root"),
+                OtelSpan(name="child", span_id="child", parent_span_id="missing"),
+            ]
+        ),
+    )
+    check = next(c for c in result.checks if c.id == "evidence.otel.trace_complete")
+    assert check.status is F
+    assert result.status is F
+
+
+def test_evidence_trace_complete_passes_when_trace_is_connected() -> None:
+    scenario = _otel_trace_contract_scenario(trace_must_be_complete=True)
+    result = evaluate_evidence(
+        scenario,
+        make_evidence(
+            spans=[
+                OtelSpan(name="root", span_id="root"),
+                OtelSpan(name="child", span_id="child", parent_span_id="root"),
+            ]
+        ),
+    )
+    check = next(c for c in result.checks if c.id == "evidence.otel.trace_complete")
+    assert check.status is P
+    assert result.status is P
 
 
 def test_every_tool_call_audited_errors_when_no_span_matches() -> None:

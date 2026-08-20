@@ -100,7 +100,7 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 
 ```bash
 # the released wheel (pinned, and what CI installs)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.2.0/agentsec-0.2.0-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.3.1/agentsec-0.3.1-py3-none-any.whl
 
 # or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -238,7 +238,7 @@ Call the reusable workflow from the repository that owns the agent, pinned to a 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.2.0
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.3.1
     with:
       target: order-agent-staging
       profile: pr
@@ -473,11 +473,12 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 * **Refusals are audited.** What a caller *tried* to do is the interesting record.
 * **A report cannot re-commit the breach it reports.** `AGT-TENANT-001` proves a cross-tenant leak by getting tenant B's order into tenant A's transcript, which makes that transcript both the evidence *and* the leaked record. Published output is therefore projected rather than filtered, and the report gateway declines to serve per-run evidence and the audit log at all. Adding a resource is a decision, not a default: every one names a publication policy, and the gateway refuses to start if a policy is missing.
 * **An uncollectable evidence source is an `error`, never a `pass`.** A scenario asserting on a backend the target does not have is rejected by the validator before anything runs; a collector that fails at run time degrades its axis to `error`, which outranks every other verdict. The report cannot turn green because the evidence pipeline broke — which is the most dangerous bug available to this kind of tool.
+* **Missing assistant output is an `error`, never proof that a `must_not` held.** An absent transcript, no assistant turn, an empty step or principal scope, blank output, or a Promptfoo result with no usable assistant response fails closed. A required complete trace with no spans is also `error`, not an empty success.
 * **No language model in the verdict.** See [ADR 0002](docs/adr/0002-deterministic-verdict.md).
 
 ## Status
 
-Alpha; latest release [`v0.2.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.2.0). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
+Alpha; latest release [`v0.3.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
 
 One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
 

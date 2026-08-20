@@ -100,7 +100,7 @@ flowchart TD
 
 ```bash
 # 已發佈的 wheel（版本固定，也是 CI 安裝的那一個）
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.2.0/agentsec-0.2.0-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.3.1/agentsec-0.3.1-py3-none-any.whl
 
 # 或安裝目前的 main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -230,7 +230,7 @@ claude mcp add agentsec -- agentsec-mcp
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.2.0
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.3.1
     with:
       target: order-agent-staging
       profile: pr
@@ -439,13 +439,14 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 * **被拒絕的請求同樣寫入稽核。** 呼叫端*試圖*做什麼，才是那筆值得留下的紀錄。
 * **報表不會把它要回報的那次外洩再洩一次。** `AGT-TENANT-001` 證明跨租戶外洩的方式，是讓租戶 B 的訂單出現在租戶 A 的對話裡 —— 於是那份逐字稿同時是這個 finding 的**證據**，也**就是**被洩漏的那筆紀錄。因此發布輸出是投影而非過濾，而報表 gateway 根本不提供單次執行的證據與稽核紀錄。新增一個資源是一個決策，不是預設值：每個資源都必須指名自己的發布政策，少了政策 gateway 就拒絕啟動。
 * **拿不到的證據來源一律是 `error`，絕不會是 `pass`。** 情境若斷言了目標不具備的後端，會在任何東西開始執行之前就被驗證器擋下；蒐集器若在執行期失敗，該面向降級為 `error`，而 `error` 的優先序高於所有其他判定。報表不可能因為證據管線壞掉而變綠 —— 那正是這類工具最危險的一種 bug。
+* **缺少 assistant output 一律是 `error`，不能當成 `must_not` 已成立的證據。** Transcript 缺失、沒有 assistant turn、step 或 principal scope 為空、輸出只有空白，或 Promptfoo 沒有可用的 assistant response，都會 fail closed。要求完整 trace 卻完全沒有 span 時同樣是 `error`，不是空集合造成的假成功。
 * **靜態掃描工具的分數永遠不是判定。** 匯入 AgentShield 或任何輸出 SARIF 的掃描工具報告時，會組成一個獨立的 `static_posture` 面向；它絕不會擴大 `PurpleVerdict`、絕不會變成第五個面向，乾淨的分數也不能讓一個未測試的情境讀起來像 `secure`。
 * **判定會標示自己是怎麼被證明的。** 每次執行都帶有 `provenance`（`recorded` / `live` / `mixed`），所以用內建 fixture 語料產生的 `secure`，絕不會被呈現得像是對真實 agent 驗證出來的結果。
 * **判定過程中沒有語言模型。** 見 [ADR 0002](docs/adr/0002-deterministic-verdict.md)。
 
 ## 狀態
 
-Alpha，最新版本為 [`v0.2.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.2.0)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
+Alpha，最新版本為 [`v0.3.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
 
 第一次執行前值得知道的一件事：情境目錄是從 `<workspace>/scenarios` 讀取的，所以在不是
 AgentSec checkout 的 repository 裡沒有東西可以比對，每一條風險都會落在 `not_verifiable`。

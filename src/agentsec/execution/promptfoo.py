@@ -113,6 +113,22 @@ class PromptfooExecutor:
             )
 
         turns = self._parse_output(output_path)
+        has_assistant_output = any(
+            turn.role == "assistant" and turn.content.strip() for turn in turns
+        )
+        if not has_assistant_output:
+            return (
+                make_result(
+                    self.name,
+                    started,
+                    ok=False,
+                    error="promptfoo produced no non-empty assistant output",
+                    raw_ref=str(output_path),
+                ),
+                TranscriptSource(
+                    turns=turns, meta=SourceMeta(collector="promptfoo", backend="cli")
+                ),
+            )
         return (
             make_result(
                 self.name, started, ok=True,
