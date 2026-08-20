@@ -4,9 +4,15 @@
 
 > "AgentSec is a purple-team harness for AI agents. A scenario declares an **Attack–Detection Contract** — what the attack does, what should have stopped it, and what your blue side should have seen — and a deterministic evaluator with no language model in the decision path returns one verdict per run. It answers the question most AI-security tooling skips: not just *did the attack get through*, but *if it had, would anyone have noticed?*"
 
-🌐 **[Project page](https://trionnemesis.github.io/AgentSec/)** ・ **繁體中文說明請見 [README.zh-TW.md](README.zh-TW.md)** ・ 📖 [Architecture](docs/architecture.md) ・ ✍️ [Writing a contract](docs/attack-detection-contract.md) ・ 🚀 [Deployment](docs/deployment.md) ・ 🗺️ [Roadmap](docs/roadmap.md) ・ 🐛 [Issues](https://github.com/trionnemesis/AgentSec/issues)
+🌐 **[GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/)** ・ **繁體中文說明請見 [README.zh-TW.md](README.zh-TW.md)** ・ 📖 [Architecture](docs/architecture.md) ・ ✍️ [Writing a contract](docs/attack-detection-contract.md) ・ 🚀 [Deployment](docs/deployment.md) ・ 🗺️ [Roadmap](docs/roadmap.md) ・ 🐛 [Issues](https://github.com/trionnemesis/AgentSec/issues)
 
-Jump to: [Why](#why) ・ [What it does](#what-it-does) ・ [How it works](#how-it-works) ・ [Quick start](#quick-start) ・ [The scenario contract](#the-scenario-contract) ・ [MCP tools](#mcp-tools) ・ [CLI](#cli) ・ [Contributing](#contributing)
+Jump to: [GitHub Pages](#github-pages) ・ [Why](#why) ・ [What it does](#what-it-does) ・ [How it works](#how-it-works) ・ [Quick start](#quick-start) ・ [The scenario contract](#the-scenario-contract) ・ [MCP tools](#mcp-tools) ・ [CLI](#cli) ・ [Contributing](#contributing)
+
+---
+
+## GitHub Pages
+
+The [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/) is the public-facing, eight-page English introduction to AgentSec. It gives a fast visual overview of the problem, the Attack–Detection Contract, deterministic verdicts, the execution pipeline, trust boundaries, and the offline quick start. Use this README and the linked docs for detailed commands, implementation guidance, deployment, and roadmap status.
 
 ---
 
