@@ -49,7 +49,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | 能力 | 說明 |
 |---|---|
 | **Repository 掃描** | 指向一個本機 repo：找出其中的 agent、skill、MCP server、hook、工具授權與 memory／RAG 攻擊面，排序風險，並指出哪些風險有情境能真正驗證 |
-| **Agent 指紋** | 這個 repository 究竟有沒有「實作」一個 AI Agent、用的是哪個框架 —— LangGraph、LangChain、OpenAI Agents SDK、AutoGen、Semantic Kernel、CrewAI，或不綁框架的工具呼叫 —— 從相依套件、import 與 builder 呼叫靜態判讀，不 import 也不執行任何 repo 內程式碼。其餘一律回報 `not_detected`，那代表「沒有證據」而不是「沒有 agent」。只有 `CLAUDE.md` 與 `.mcp.json` 的 repo 會判為 `configuration_only`，絕不會被說成 runtime agent |
+| **Agent 指紋** | 這個 repository 究竟有沒有「實作」一個 AI Agent、用的是哪個框架 —— LangGraph、LangChain、OpenAI Agents SDK、AutoGen、Semantic Kernel、CrewAI，或不綁框架的工具呼叫 —— 從相依套件、import 與 builder 呼叫靜態判讀，不 import 也不執行任何 repo 內程式碼。沒有框架證據的 repo 回報 `not_detected`，那代表「沒有證據」而不是「沒有 agent」；候選檔案無法解析時則回報 `unsupported`，不會被當成「不存在」計入。只有 `CLAUDE.md` 與 `.mcp.json` 的 repo 會判為 `configuration_only`，絕不會被說成 runtime agent |
 | **攻擊—偵測契約** | 單一 YAML 同時描述攻擊，以及預防／偵測／證據／應變四個面向的期待 |
 | **決定性判定** | 純函式評估器，決策路徑上沒有模型、沒有時鐘、沒有網路 —— 相同證據永遠得到相同判定 |
 | **證據蒐集** | OpenTelemetry span、Wazuh 告警、工具呼叫稽核、資料庫狀態差異，全部正規化成同一份綱要 |
@@ -378,7 +378,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 | `agentsec coverage` | OWASP Agentic Top 10 覆蓋率與判定分佈 | — |
 | `agentsec audit` | 查看稽核紀錄尾端，含被拒絕的請求 | `--limit` |
 | `agentsec finding list \| promote \| draft-regression` | 處理 finding 與其工作流程 | `--status`、`--regression`、`--detection` |
-| `agentsec targets list \| describe`、`agentsec scenarios list` | 檢視允許清單與情境目錄 | `--target` |
+| `agentsec targets list \| describe`、`agentsec scenarios list` | 檢視允許清單與情境目錄 | `targets describe` 用位置參數 `TARGET_ID`；`scenarios list` 用 `--target` |
 | `agentsec mcp-contract` | 以 JSON 輸出 MCP 工具／資源介面 | — |
 
 **結束碼就是契約：** `0` 乾淨、`1` 有阻擋級 finding、`2` 這套工具無法給你任何結論。把 `1` 和 `2` 混為一談，正是 pipeline 上的工作變成大家學會忽略的雜訊的方式。

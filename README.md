@@ -49,7 +49,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | Capability | Description |
 |---|---|
 | **Repository scan** | Point it at a local repo: finds the agents, skills, MCP servers, hooks, tool grants and memory stores in it, ranks the risks, and says which ones a scenario can actually settle |
-| **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework — LangGraph, LangChain, OpenAI Agents SDK, AutoGen, Semantic Kernel, CrewAI or framework-neutral tool calling — read from dependencies, imports and builder calls without importing or running any of it. Anything else reports `not_detected`, which means no evidence rather than no agent. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
+| **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework — LangGraph, LangChain, OpenAI Agents SDK, AutoGen, Semantic Kernel, CrewAI or framework-neutral tool calling — read from dependencies, imports and builder calls without importing or running any of it. A repository with no framework evidence reports `not_detected` — no evidence, never no agent — and one whose candidate files could not be parsed reports `unsupported` rather than being counted as an absence. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
 | **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against the surfaces discovered here and the scenarios that actually ran — a grade is never a verdict, and a finding no scenario covers stays `not_tested` |
 | **Run provenance** | Every verdict is marked `recorded` / `live` / `mixed`, derived from the executor and evidence backends actually used, so a fixture-derived `secure` is never read as one proven against a live agent |
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
@@ -414,7 +414,7 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | `agentsec coverage` | OWASP Agentic Top 10 coverage and the verdict histogram | — |
 | `agentsec audit` | Tail the audit log, including refused requests | `--limit` |
 | `agentsec finding list \| promote \| draft-regression` | Work with findings and their workflow | `--status`, `--regression`, `--detection` |
-| `agentsec targets list \| describe`, `agentsec scenarios list` | Inspect the allowlist and the catalogue | `--target` |
+| `agentsec targets list \| describe`, `agentsec scenarios list` | Inspect the allowlist and the catalogue | `TARGET_ID` positional on `targets describe`; `--target` on `scenarios list` |
 | `agentsec mcp-contract` | Print the MCP tool / resource surface as JSON | — |
 
 **Exit codes are the contract:** `0` clean, `1` a blocking finding, `2` the harness could not tell you anything. Conflating `1` and `2` is how a pipeline job becomes noise people learn to skip.
