@@ -4,7 +4,7 @@
 
 > "AgentSec is a purple-team harness for AI agents. A scenario declares an **Attack–Detection Contract** — what the attack does, what should have stopped it, and what your blue side should have seen — and a deterministic evaluator with no language model in the decision path returns one verdict per run. It answers the question most AI-security tooling skips: not just *did the attack get through*, but *if it had, would anyone have noticed?*"
 
-🌐 **[GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/)** ・ **繁體中文說明請見 [README.zh-TW.md](README.zh-TW.md)** ・ 📖 [Architecture](docs/architecture.md) ・ ✍️ [Writing a contract](docs/attack-detection-contract.md) ・ 🚀 [Deployment](docs/deployment.md) ・ 🗺️ [Roadmap](docs/roadmap.md) ・ 🐛 [Issues](https://github.com/trionnemesis/AgentSec/issues)
+🌐 **[GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/)** ・ **繁體中文說明請見 [README.zh-TW.md](README.zh-TW.md)** ・ 📖 [Architecture](docs/architecture.md) ・ ✍️ [Writing a contract](docs/attack-detection-contract.md) ・ 🚀 [Deployment](docs/deployment.md) ・ 🧭 [Feature matrix](docs/feature-matrix.md) ・ 🗺️ [Roadmap](docs/roadmap.md) ・ 📋 [Changelog](CHANGELOG.md) ・ 🐛 [Issues](https://github.com/trionnemesis/AgentSec/issues)
 
 Jump to: [GitHub Pages](#github-pages) ・ [Why](#why) ・ [What it does](#what-it-does) ・ [How it works](#how-it-works) ・ [Quick start](#quick-start) ・ [The scenario contract](#the-scenario-contract) ・ [MCP tools](#mcp-tools) ・ [CLI](#cli) ・ [Contributing](#contributing)
 
@@ -49,13 +49,13 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | Capability | Description |
 |---|---|
 | **Repository scan** | Point it at a local repo: finds the agents, skills, MCP servers, hooks, tool grants and memory stores in it, ranks the risks, and says which ones a scenario can actually settle |
-| **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework, read from dependencies, imports and builder calls without importing or running any of it. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
+| **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework — LangGraph, LangChain, OpenAI Agents SDK, AutoGen, Semantic Kernel, CrewAI or framework-neutral tool calling — read from dependencies, imports and builder calls without importing or running any of it. Anything else reports `not_detected`, which means no evidence rather than no agent. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
 | **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against the surfaces discovered here and the scenarios that actually ran — a grade is never a verdict, and a finding no scenario covers stays `not_tested` |
 | **Run provenance** | Every verdict is marked `recorded` / `live` / `mixed`, derived from the executor and evidence backends actually used, so a fixture-derived `secure` is never read as one proven against a live agent |
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
 | **Deterministic verdict** | Pure evaluator, no model, no clock, no network in the decision path — the same evidence always yields the same verdict |
 | **Evidence collection** | OpenTelemetry spans, Wazuh alerts, tool-call audit and database state diff, normalised into one schema |
-| **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network |
+| **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network — recorded for the four original scenarios; the `AGT-CONFIG-*` family still needs a `ci`/`staging` target |
 | **CI gate** | JUnit output plus meaningful exit codes, and a reusable GitHub workflow you call from the agent's own repo |
 | **Constrained MCP gateway** | 11 narrow tools and 10 read-only resources; no shell, no SQL, no free-text URL |
 | **Publication boundary** | A read-only report gateway serves a projected subset — turn digests, pseudonymous principals, no evidence or audit URIs — so a dashboard cannot re-commit the breach it reports |
@@ -67,6 +67,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 * **Agent capabilities exercised**: RAG, tool calling, persistent memory, multi-tenancy, email
 * **Frameworks mapped**: OWASP Agentic Top 10 (8/10 categories covered by the bundled scenarios: `AAI001`–`AAI004`, `AAI006`–`AAI009`) and OWASP LLM Top 10
 * **Bundled scenarios**: eight — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block)
+* **Where each runs today**: the first four are recorded in the fixture corpus, gate `blocking`, and run offline against `demo-agent-fixture`. The four `AGT-CONFIG-*` are scoped `environments: [ci, staging]` at `gate: warning` and have no recorded fixtures yet, so they need a real target — [`docs/feature-matrix.md`](docs/feature-matrix.md) keeps the running list of gaps like this one
 
 | Verdict | Meaning | Precedence |
 |---|---|---|
@@ -185,6 +186,12 @@ them through the Purple Harness, and returns the same four-axis verdict
 the whole path and [ADR 0009](docs/adr/0009-repository-first-golden-path.md) for
 why it starts here.
 
+The target has to be one the selected scenarios accept. The scenarios covering the
+configuration surfaces are scoped `environments: [ci, staging]`, so pointing
+`--verify` at the bundled `demo-agent-fixture` (environment `local`) exits `2`
+rather than quietly selecting nothing and reporting success — the same rule as an
+unasserted axis, one level up.
+
 ### 3. Run the offline pipeline
 
 ```bash
@@ -212,6 +219,8 @@ Expected output — deliberately not all green:
 ```
 
 Read that as: the tenant boundary is broken **but instrumented** — fix the code. Memory poisoning is broken **and invisible** — fix the code *and* ship a Wazuh rule. The run exits `1`, by design.
+
+Four scenarios, not eight: `demo-agent-fixture` is an `environments: [local]` target, and the `AGT-CONFIG-*` family is scoped to `ci` and `staging` until its fixtures are recorded. `agentsec preview` prints the selected set before anything runs, which is the reliable way to see what a profile resolves to on your target.
 
 **On "no Wazuh":** the fixture corpus supplies recorded Wazuh alerts and OTel spans from files, so the detection axis is genuinely evaluated offline — `AGT-MEMPOIS-001` is a `detection_gap` because rule `100720` is absent from those recorded alerts, not because nothing was checked. Gating a **real** agent on detection does need a live signal source, declared per target in `policy/targets.yaml`: a Wazuh indexer (`kind: opensearch`) or OTel. Wazuh is not mandatory — a contract asserting only `detection.otel` is valid — but it is currently the only SIEM collector implemented.
 
@@ -394,18 +403,18 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | `agentsec scan` | Classify whether this repository implements an agent, then rank its attack surface; `--verify` hands the provable high-risk subset to the harness | `--verify`, `--target`, `--profile`, `--output json` |
 | `agentsec validate` | Validate one scenario or the whole catalogue | `--scenario`, `--target`, `--strict` |
 | `agentsec preview` | Show what a run would do, without doing it | `--target`, `--profile`, `--scenario` |
-| `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--output junit`, `--output-file`, `--dry-run`, `--html` |
+| `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--scenario`, `--output junit`, `--output-file`, `--dry-run`, `--approval`, `--html` |
 | `agentsec report` | Render recent runs as HTML / JSON / JUnit | `--target`, `--profile`, `--format`, `--limit` |
 | `agentsec dashboard` | Print the composed dashboard document; `--html` also writes the page | `--target`, `--profile`, `--html` |
 | `agentsec init \| project show` | Write the project manifest; inventory what it declares | `--project-id`, `--name`, `--force` |
-| `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason` |
+| `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason`, `--by` |
 | `agentsec validate-detection` | Check detection expectations are checkable against a target | `--scenario`, `--target` |
 | `agentsec get-run` | Print one run as JSON | `RUN_ID` |
 | `agentsec compare` | Diff two runs check-by-check | `RUN_A RUN_B` |
 | `agentsec coverage` | OWASP Agentic Top 10 coverage and the verdict histogram | — |
 | `agentsec audit` | Tail the audit log, including refused requests | `--limit` |
-| `agentsec finding list \| promote \| draft` | Work with findings and their workflow | `--status`, `--regression`, `--detection` |
-| `agentsec targets \| scenarios list` | Inspect the allowlist and the catalogue | `--target` |
+| `agentsec finding list \| promote \| draft-regression` | Work with findings and their workflow | `--status`, `--regression`, `--detection` |
+| `agentsec targets list \| describe`, `agentsec scenarios list` | Inspect the allowlist and the catalogue | `--target` |
 | `agentsec mcp-contract` | Print the MCP tool / resource surface as JSON | — |
 
 **Exit codes are the contract:** `0` clean, `1` a blocking finding, `2` the harness could not tell you anything. Conflating `1` and `2` is how a pipeline job becomes noise people learn to skip.
@@ -416,7 +425,7 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 |---|---|---|
 | `AGENTSEC_WORKSPACE` | Workspace root holding `scenarios/`, `policy/`, `results/` | cwd |
 | `AGENTSEC_DB` | SQLite results path | `<workspace>/results/agentsec.db` |
-| `AGENTSEC_ACTOR` | Recorded on every audit row; CI should set `ci:<actor>` | `local` |
+| `AGENTSEC_ACTOR` | Recorded on every audit row; CI should set `ci:<actor>` | `cli` from the CLI, `mcp` from the gateway |
 | `AGENTSEC_MCP_READ_ONLY` | `1` runs the report gateway: non-read-only tools are refused at the dispatcher, and only the allowlisted resources are served | unset |
 | `AGENTSEC_PSEUDONYM_SALT` | Salt for the principal / tenant / actor labels in published output | a value that ships in the source |
 | `AGENTSEC_ALLOW_EXTERNAL_HOSTS` | Comma-separated hosts exempt from the private-address check | unset |
@@ -430,7 +439,8 @@ schemas/               JSON Schema for scenario, target, evidence, the project
                        manifest and the published dashboards — the portable assets
 scenarios/             The scenario catalogue (eight worked examples)
 policy/                Target allowlist, run profiles, approval ledger
-fixtures/              Recorded corpus so everything runs offline
+fixtures/              Recorded corpus for the four original scenarios, so the
+                       pipeline runs offline
 .agentsec/             Project manifest: stable id and reviewed relative locations
 
 src/agentsec/
@@ -440,7 +450,7 @@ src/agentsec/
 ├── posture/           # static posture ingestion, and which findings a scenario covers
 ├── scenario/          # loader, three-layer validator, catalogue + coverage
 ├── policy/            # allowlist, profiles, approvals, the single policy guard
-├── execution/         # red executors (replay, promptfoo) and target adapters
+├── execution/         # red executors (replay, promptfoo; pyrit/pytest refuse) + adapters
 ├── evidence/          # collectors: OTel, Wazuh, tool audit, DB state diff
 ├── evaluation/        # the four axes and the verdict resolver
 ├── reporting/         # normaliser → JUnit / HTML / JSON; publication projections
@@ -448,9 +458,13 @@ src/agentsec/
 ├── service/           # HarnessService — the internal API
 └── mcp/               # gateway: tool contract, resources, prompts, server
 
-docs/                  Architecture, contract guide, deployment options, roadmap, ADRs
+tests/                 The suite `make check` runs — the invariants live here
+docs/                  Architecture, contract guide, feature matrix, deployment
+                       options, roadmap, ADRs
+site/                  Source of the GitHub Pages introduction
 packaging/             Claude Desktop registration for the read-only report gateway
 .claude/               Skill, permissions and guard hook for the Claude Code workbench
+CLAUDE.md              Repository guidance for AI coding assistants working here
 ```
 
 The rule that keeps this from eroding: **a capability lands on `HarnessService` before it lands on the MCP gateway**, so the CLI and CI always reach it too. See the [ADRs](docs/adr/) for the decisions worth arguing about.
@@ -469,7 +483,9 @@ make demo      # full offline pipeline (exits 1 by design)
 make report    # regenerate HTML/JSON/JUnit from stored runs
 ```
 
-Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry collector, `.[pyrit]` for the PyRIT executor. The core install deliberately depends on nothing that touches an external system, so the deterministic path stays testable on an air-gapped runner.
+Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry collector, `.[pyrit]` for the PyRIT dependency (the executor itself still refuses cleanly). The core install deliberately depends on nothing that touches an external system, so the deterministic path stays testable on an air-gapped runner.
+
+CI runs the same three checks across Python 3.11, 3.12 and 3.13, and adds four things `make check` does not: coverage against a floor of 72% (raise it, never lower it), a `pip-audit` job with no allow-failure flag, a self-check that asserts the offline pipeline still exits `1`, and a separate job for the gateway. The `mcp` extra is deliberately absent from the main job — if a non-gateway test ever needs it, the gateway has stopped being a thin layer over `HarnessService`.
 
 ## Trust and safety posture
 
@@ -488,7 +504,11 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 
 Alpha; latest release [`v0.3.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
 
-One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
+Three gaps worth knowing before the first run, all of them tracked in [`docs/feature-matrix.md`](docs/feature-matrix.md):
+
+* **The catalogue does not travel with the CLI.** It is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Only the JSON Schemas ship as package data today; bundling the reviewed catalogue is on the roadmap.
+* **No scenario covers the tool-grant or settings surface.** `ASI-TOOL-PERMISSION-BYPASS` fires at `critical` and reports `not_verifiable`, because no `AGT-CONFIG-*` scenario is tagged at `.claude/settings.json`. The plane is honest about it; the catalogue gap is real, and it is the next scenario to write.
+* **No end-to-end run against a live agent has happened yet.** Everything above the replay executor and the file evidence backends is proven by fixtures and tests, not by a staging deployment.
 
 ## Contributing
 
