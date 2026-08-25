@@ -14,6 +14,7 @@ the database. Consequences worth stating plainly:
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -90,7 +91,16 @@ class _RunPreflight:
 
 
 class HarnessService:
-    def __init__(self, settings: Settings | None = None, *, actor: str | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        actor: str | None = None,
+        evidence_clock: Callable[[], datetime] | None = None,
+        evidence_sleeper: Callable[[float], None] | None = None,
+        evidence_poll_interval_seconds: float = 1.0,
+        telemetry_settle_seconds: float = 5.0,
+    ) -> None:
         self.settings = settings or load_settings()
         self.settings.ensure_dirs()
         self.actor = actor or self.settings.actor
@@ -101,7 +111,13 @@ class HarnessService:
         self.approvals = ApprovalStore(self.settings.approvals_file)
         self.guard = PolicyGuard(self.approvals)
         self.evaluator = PurpleEvaluator(self.settings.workspace)
-        self.collector = EvidenceCollector(self.settings.workspace)
+        self.collector = EvidenceCollector(
+            self.settings.workspace,
+            clock=evidence_clock,
+            sleeper=evidence_sleeper,
+            poll_interval_seconds=evidence_poll_interval_seconds,
+            telemetry_settle_seconds=telemetry_settle_seconds,
+        )
 
         self._catalog: ScenarioCatalog | None = None
         self._allowlist = None

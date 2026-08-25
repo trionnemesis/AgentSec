@@ -14,12 +14,13 @@ response    Did the documented or automated reaction actually happen?
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from agentsec.errors import ContractError
 from agentsec.evaluation import matchers as m
-from agentsec.models.evidence import Evidence, ToolAuditRecord, WazuhAlert
+from agentsec.models.evidence import CollectorError, Evidence, ToolAuditRecord, WazuhAlert
 from agentsec.models.run import AxisResult, AxisStatus, CheckResult
 from agentsec.models.scenario import BehaviourAssertion, Scenario
 
@@ -54,6 +55,10 @@ def _blocked_by_collector_error(
 ) -> AxisResult | None:
     """Degrade to ERROR when a source this axis needs could not be collected."""
     problems = [e for e in evidence.collector_errors if e.source in sources]
+    for source_name in sorted(sources):
+        correlation_problem = _correlation_problem(evidence, source_name)
+        if correlation_problem:
+            problems.append(CollectorError(source=source_name, message=correlation_problem))
     if not problems:
         return None
     return AxisResult(
@@ -72,6 +77,37 @@ def _blocked_by_collector_error(
             for p in problems
         ],
     )
+
+
+def _correlation_problem(evidence: Evidence, source_name: str) -> str | None:
+    """Validate correlation again at the evaluator boundary for injected bundles."""
+    source = getattr(evidence.sources, source_name, None)
+    if source is None:
+        return None
+    records = getattr(source, "spans", None)
+    if records is None:
+        records = getattr(source, "alerts", None)
+    if records is None:
+        records = getattr(source, "records", None)
+    if records is None:
+        return None
+    # A bundle that explicitly carries a different run ID is never a trusted
+    # synthetic fixture, even when its source metadata was omitted by a caller.
+    if any(
+        getattr(record, "run_id", None) not in (None, evidence.run_id)
+        for record in records
+    ):
+        return f"{source_name} evidence is correlated to another run"
+    trusted_fixture = (
+        source.meta is not None
+        and source.meta.backend == "file"
+        and source.meta.correlation == "trusted_fixture"
+    )
+    if trusted_fixture:
+        return None
+    if any(getattr(record, "run_id", None) != evidence.run_id for record in records):
+        return f"{source_name} evidence is missing current-run canonical correlation"
+    return None
 
 
 def _finish(axis: str, checks: list[CheckResult]) -> AxisResult:
@@ -98,9 +134,12 @@ def evaluate_prevention(scenario: Scenario, evidence: Evidence) -> AxisResult:
     if contract is None or not (contract.must or contract.must_not):
         return AxisResult(axis="prevention", status=AxisStatus.NOT_TESTED)
 
-    needed = {"tool_audit"} if _needs_audit(contract.must + contract.must_not) else set()
-    if _needs_state(contract.must + contract.must_not):
+    assertions = contract.must + contract.must_not
+    needed = {"tool_audit"} if _needs_audit(assertions) else set()
+    if _needs_state(assertions):
         needed.add("state_diff")
+    if any(assertion.kind == "http_egress" for assertion in assertions):
+        needed.add("otel")
     blocked = _blocked_by_collector_error("prevention", evidence, needed)
     if blocked:
         return blocked
@@ -516,15 +555,13 @@ def _every_tool_call_audited_check(scenario: Scenario, evidence: Evidence) -> Ch
     attr = tool_name_attribute(scenario)
     spans = m.spans(evidence)
 
-    traced: set[str] = set()
-    matched = 0
+    traced: list[tuple[Any, str, str | None]] = []
     for span in spans:
         if span.name != span_name:
             continue
-        matched += 1
         name = span.attributes.get(attr)
         if name is not None:
-            traced.add(str(name))
+            traced.append((span, str(name), span.tool_call_id or span.span_id))
 
     base = {
         "id": "evidence.tool_audit.complete",
@@ -532,19 +569,26 @@ def _every_tool_call_audited_check(scenario: Scenario, evidence: Evidence) -> Ch
         "assertion": f"every tool call traced as {span_name!r} has an audit record",
     }
 
-    if matched == 0:
+    matched = sum(1 for span in spans if span.name == span_name)
+    if not traced:
         seen = sorted({s.name for s in spans})
         detail = f"span names seen: {seen[:8]}" if seen else "no spans were collected at all"
+        reason = (
+            "a traced tool call has no tool name and cannot be matched to an audit record. "
+            f"If the target uses another attribute, set attack.config.{CONFIG_TOOL_NAME_ATTR}."
+            if matched
+            else "the audit log could not be cross-referenced against anything, so this "
+            "check proves nothing. If the target names tool-call spans differently, "
+            f"set attack.config.{CONFIG_TOOL_CALL_SPAN}."
+        )
         return CheckResult(
             **base,  # type: ignore[arg-type]
             status=AxisStatus.ERROR,
             observed=f"no span named {span_name!r}; {detail}",
-            reason="the audit log could not be cross-referenced against anything, so this "
-                   "check proves nothing. If the target names tool-call spans differently, "
-                   f"set attack.config.{CONFIG_TOOL_CALL_SPAN}.",
+            reason=reason,
         )
 
-    if not traced:
+    if matched != len(traced):
         return CheckResult(
             **base,  # type: ignore[arg-type]
             status=AxisStatus.ERROR,
@@ -554,14 +598,119 @@ def _every_tool_call_audited_check(scenario: Scenario, evidence: Evidence) -> Ch
                    f"attack.config.{CONFIG_TOOL_NAME_ATTR}.",
         )
 
-    missing = traced - {r.tool for r in m.tool_records(evidence)}
+    records = m.tool_records(evidence)
+    traced_ids = [call_id for _, _, call_id in traced]
+    if any(call_id is not None for call_id in traced_ids):
+        if any(call_id is None for call_id in traced_ids):
+            return CheckResult(
+                **base,  # type: ignore[arg-type]
+                status=AxisStatus.ERROR,
+                observed="some traced tool calls have no span_id/tool_call_id",
+                reason="partial invocation IDs make one-to-one audit correlation unsafe",
+            )
+        audit_ids = [r.tool_call_id or r.span_id for r in records]
+        if any(call_id is None for call_id in audit_ids):
+            return CheckResult(
+                **base,  # type: ignore[arg-type]
+                status=AxisStatus.ERROR,
+                observed="an audit record needed for ID correlation has no span_id/tool_call_id",
+                reason=(
+                    "missing invocation IDs require the documented multiset fallback, "
+                    "but the traced calls provide IDs"
+                ),
+            )
+        counts: dict[str, int] = {}
+        for call_id in audit_ids:
+            assert call_id is not None
+            counts[call_id] = counts.get(call_id, 0) + 1
+        missing = [call_id for call_id in traced_ids if call_id not in counts]
+        duplicate = [call_id for call_id, count in counts.items() if count > 1]
+        mismatched = [
+            call_id for (_, tool, call_id) in traced
+            if call_id is not None
+            and not any(
+                (r.tool_call_id or r.span_id) == call_id and r.tool == tool
+                for r in records
+            )
+        ]
+        if missing or duplicate or mismatched or len(records) < len(traced):
+            details: list[str] = []
+            if missing:
+                missing_ids = sorted({call_id for call_id in missing if call_id is not None})
+                details.append(f"missing IDs={missing_ids}")
+            if duplicate:
+                details.append("duplicate audit IDs")
+            if mismatched:
+                details.append("tool/ID mismatch")
+            return CheckResult(
+                **base,  # type: ignore[arg-type]
+                status=AxisStatus.FAIL,
+                observed="; ".join(details) or "audit record count is smaller than traced calls",
+                reason="each traced invocation must consume exactly one audit record",
+            )
+        return CheckResult(
+            **base,  # type: ignore[arg-type]
+            status=AxisStatus.PASS,
+            observed=f"all {len(traced)} traced tool call(s) have one matching audit record by ID",
+            reason="one-to-one span_id/tool_call_id correlation",
+        )
+
+    # No invocation IDs are available on the trace.  Match and consume records
+    # by trustworthy normalised attributes as a multiset; one record can never
+    # satisfy two traced calls.
+    remaining = list(records)
+    unmatched: list[str] = []
+    for span, tool, _ in traced:
+        candidates = [r for r in remaining if _fallback_audit_match(span, tool, r)]
+        if not candidates:
+            unmatched.append(tool)
+            continue
+        remaining.remove(candidates[0])
+    if unmatched:
+        return CheckResult(
+            **base,  # type: ignore[arg-type]
+            status=AxisStatus.FAIL,
+            observed=f"unaudited traced invocation(s): {sorted(unmatched)}",
+            reason="multiset fallback consumes one audit record per traced call",
+        )
     return CheckResult(
         **base,  # type: ignore[arg-type]
-        status=AxisStatus.PASS if not missing else AxisStatus.FAIL,
-        observed=f"unaudited tool calls: {sorted(missing)}" if missing
-        else f"all {len(traced)} traced tool call(s) are audited",
+        status=AxisStatus.PASS,
+        observed=f"all {len(traced)} traced tool call(s) are audited by multiset attributes",
         reason="a tool call with no audit record is invisible to an investigator",
     )
+
+
+def _fallback_audit_match(span: Any, tool: str, record: ToolAuditRecord) -> bool:
+    if record.tool != tool:
+        return False
+    attrs = span.attributes
+    for keys, observed in (
+        (
+            ("agentsec.policy.decision", "policy.decision"),
+            attrs.get("agentsec.policy.decision") or attrs.get("policy.decision"),
+        ),
+        (
+            ("agentsec.principal", "principal"),
+            attrs.get("agentsec.principal") or attrs.get("principal"),
+        ),
+        (
+            ("agentsec.arguments_digest", "arguments_digest"),
+            attrs.get("agentsec.arguments_digest") or attrs.get("arguments_digest"),
+        ),
+        (("agentsec.policy", "policy"), attrs.get("agentsec.policy") or attrs.get("policy")),
+    ):
+        if observed is None:
+            continue
+        if keys[0].endswith("decision") and record.decision != str(observed):
+            return False
+        if keys[0].endswith("principal") and record.principal != str(observed):
+            return False
+        if keys[0].endswith("digest") and record.arguments_digest != str(observed):
+            return False
+        if keys[0].endswith("policy") and record.policy != str(observed):
+            return False
+    return True
 
 
 # --------------------------------------------------------------------------
@@ -604,22 +753,29 @@ def evaluate_response(
             )
         )
 
-    blocked = _blocked_by_collector_error(
-        "response", evidence, {"tool_audit"} if contract.expected_actions else set()
-    )
+    required_response_sources = set()
+    if contract.expected_actions:
+        required_response_sources.update({"tool_audit", "otel"})
+    blocked = _blocked_by_collector_error("response", evidence, required_response_sources)
     if blocked:
         return blocked
 
     for i, expected in enumerate(contract.expected_actions):
-        matched = _response_action_seen(evidence, expected.action)
+        matched, error, observed = _response_action_status(evidence, expected)
         checks.append(
             CheckResult(
                 id=f"response.action.{i}",
                 axis="response",
                 assertion=f"response action '{expected.action}' occurs within "
                           f"{expected.within_seconds}s",
-                status=AxisStatus.PASS if matched else AxisStatus.FAIL,
-                observed="observed" if matched else "not observed",
+                status=(
+                    AxisStatus.ERROR
+                    if error
+                    else AxisStatus.PASS
+                    if matched
+                    else AxisStatus.FAIL
+                ),
+                observed=observed,
                 reason=expected.reason,
             )
         )
@@ -635,3 +791,57 @@ def _response_action_seen(evidence: Evidence, action: str) -> bool:
             return True
     target_span = f"agentsec.response.{action}"
     return any(s.name == target_span for s in m.spans(evidence))
+
+
+def _response_action_status(
+    evidence: Evidence, expected: Any
+) -> tuple[bool, bool, str]:
+    """Return (timely, malformed, observation) for one response contract."""
+    start = evidence.window.start if evidence.window else None
+    strict = any(
+        source is not None and source.meta is not None
+        for source in (evidence.sources.tool_audit, evidence.sources.otel)
+    )
+    events: list[tuple[datetime | None, str]] = []
+    for record in m.tool_records(evidence):
+        if record.tool == expected.action and record.decision == "allow":
+            events.append((record.timestamp, "tool-audit"))
+    for span in m.spans(evidence):
+        if span.name == f"agentsec.response.{expected.action}":
+            events.append((span.start_time or span.end_time, "otel"))
+    if not events:
+        return False, False, "not observed"
+
+    malformed = [source for timestamp, source in events if timestamp is None]
+    if malformed and strict:
+        return (
+            False,
+            True,
+            "response action has no trustworthy event timestamp",
+        )
+    if malformed and not strict:
+        return True, False, "observed (synthetic fixture context)"
+    if start is None:
+        if strict:
+            return False, True, "run evidence window is missing"
+        return True, False, "observed (synthetic fixture context)"
+
+    deadline = start + timedelta(seconds=expected.within_seconds)
+    timed: list[datetime] = []
+    late: list[datetime] = []
+    for timestamp, _ in events:
+        if timestamp is None:
+            # Existing in-memory fixture tests predate timestamped response
+            # evidence. Collector-backed sources always carry strict metadata.
+            continue
+        observed = timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=UTC)
+        if observed < start:
+            if strict:
+                return False, True, "response action timestamp precedes the run window"
+            continue
+        (timed if observed <= deadline else late).append(observed)
+    if timed:
+        return True, False, f"observed at {timed[0].isoformat()} within SLA"
+    if late:
+        return False, False, f"observed at {late[0].isoformat()} after SLA deadline"
+    return False, False, "not observed within SLA"

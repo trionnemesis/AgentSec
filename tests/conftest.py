@@ -77,11 +77,45 @@ def make_evidence(
 ) -> Evidence:
     """Hand-build an evidence bundle for axis-level unit tests."""
     start = window_start or datetime(2026, 7, 28, 9, 0, 0, tzinfo=UTC)
+    correlated_spans = (
+        [
+            span
+            if span.run_id is not None
+            else span.model_copy(update={"run_id": run_id})
+            for span in spans
+        ]
+        if spans is not None
+        else None
+    )
+    correlated_alerts = (
+        [
+            alert
+            if alert.run_id is not None
+            else alert.model_copy(update={"run_id": run_id})
+            for alert in alerts
+        ]
+        if alerts is not None
+        else None
+    )
+    correlated_records = (
+        [
+            record
+            if record.run_id is not None
+            else record.model_copy(update={"run_id": run_id})
+            for record in records
+        ]
+        if records is not None
+        else None
+    )
     sources = EvidenceSources(
         transcript=TranscriptSource(turns=turns or []),
-        otel=OtelSource(spans=spans) if spans is not None else None,
-        wazuh=WazuhSource(alerts=alerts) if alerts is not None else None,
-        tool_audit=ToolAuditSource(records=records) if records is not None else None,
+        otel=OtelSource(spans=correlated_spans) if correlated_spans is not None else None,
+        wazuh=WazuhSource(alerts=correlated_alerts)
+        if correlated_alerts is not None
+        else None,
+        tool_audit=ToolAuditSource(records=correlated_records)
+        if correlated_records is not None
+        else None,
     )
     if state_changes is not None:
         from agentsec.models.evidence import StateDiffSource
