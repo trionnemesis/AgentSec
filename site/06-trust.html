@@ -19,13 +19,13 @@
     <div class="page-intro">
       <p class="eyebrow">Safety boundaries</p>
       <h2>Keep the control surface narrow.</h2>
-      <p class="supporting-copy">Targets come from an operator-owned allowlist. Production is not expressible. The MCP gateway has no generic shell, SQL, arbitrary URL, or self-approval tool.</p>
+      <p class="supporting-copy">Targets come from an operator-owned allowlist. Production is not expressible. Live evidence must match the current run. The MCP gateway has no generic shell, SQL, arbitrary URL, or self-approval tool.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0003-constrained-mcp-tools.md" rel="noopener noreferrer">Read the security boundary ↗</a></div>
       <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span>Run provenance stays explicit: <code>recorded</code>, <code>live</code>, or <code>mixed</code>.</p>
     </div>
 
     <div class="boundary-grid" aria-label="AgentSec control boundaries">
-      <article class="boundary-card boundary-card--kept"><span class="card-number">kept in scope</span><h3>Operator-owned control</h3><p>Named targets, scenario IDs, policy checks, approvals, and audited runs.</p><ul class="boundary-list"><li>allowlisted target</li><li>declared scenario</li><li>staging environment</li></ul></article>
+      <article class="boundary-card boundary-card--kept"><span class="card-number">kept in scope</span><h3>Operator-owned control</h3><p>Named targets, scenario IDs, policy checks, approvals, and audited runs.</p><ul class="boundary-list"><li>allowlisted target</li><li>current-run evidence</li><li>staging environment</li></ul></article>
       <article class="boundary-card boundary-card--excluded"><span class="card-number">not exposed</span><h3>No generic capability</h3><p>A model cannot turn the gateway into a host-control or self-approval surface.</p><ul class="boundary-list"><li>execute shell</li><li>query SQL</li><li>call any URL</li><li>grant its own approval</li></ul></article>
     </div>
   </main>

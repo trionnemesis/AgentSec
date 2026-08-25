@@ -20,6 +20,10 @@ class CollectContext:
     workspace: Path
     window_start: datetime
     window_end: datetime
+    # Marks the bundled fixture execution workflow. Collectors may use the
+    # recorded-corpus placeholder only for their file backend; live HTTP and
+    # OpenSearch sources must never inherit this exemption.
+    trusted_fixture: bool = False
 
 
 def resolve_path(raw: str | None, ctx: CollectContext) -> Path:
@@ -114,3 +118,75 @@ def flatten(obj: Any, prefix: str = "") -> dict[str, Any]:
     else:
         out[prefix or "value"] = obj
     return out
+
+
+def canonical_run_id(raw: Any) -> str | None:
+    """Read the canonical ``agentsec.run_id`` from this object only.
+
+    Backends encode the field either as a direct dotted key or as a direct
+    ``agentsec`` object.  Deliberately do not recurse or accept a generic
+    ``run_id``: attacker-controlled arguments and unrelated backend fields are
+    not correlation proof.  If both supported encodings are present, they must
+    agree.
+    """
+    if not isinstance(raw, dict):
+        return None
+    observed: list[str] = []
+    value = raw.get("agentsec.run_id")
+    if value not in (None, ""):
+        observed.append(str(value))
+    agentsec = raw.get("agentsec")
+    if isinstance(agentsec, dict):
+        value = agentsec.get("run_id")
+        if value not in (None, ""):
+            observed.append(str(value))
+    if not observed:
+        return None
+    if any(value != observed[0] for value in observed[1:]):
+        raise EvidenceUnavailable("conflicting canonical agentsec.run_id values")
+    return observed[0]
+
+
+def require_run_id(
+    observed: str | None,
+    ctx: CollectContext,
+    *,
+    what: str,
+) -> str:
+    """Enforce current-run correlation, with the explicit fixture boundary."""
+    return require_run_id_value(
+        observed, ctx.run_id, trusted_fixture=ctx.trusted_fixture, what=what
+    )
+
+
+def require_run_id_value(
+    observed: str | None,
+    expected: str,
+    *,
+    trusted_fixture: bool,
+    what: str,
+) -> str:
+    """Value-only variant used by backend parsers before a full context exists."""
+    if observed == expected:
+        return expected
+    if observed is None and trusted_fixture:
+        return expected
+    if observed is None:
+        raise EvidenceUnavailable(f"{what} is missing canonical agentsec.run_id")
+    raise EvidenceUnavailable(f"{what} is correlated to another run")
+
+
+def rebase_timestamp(
+    timestamp: datetime | None,
+    window_start: datetime,
+    *,
+    earliest: datetime | None = None,
+) -> datetime | None:
+    """Rebase one recorded fixture timestamp while retaining its relative time."""
+    if timestamp is None:
+        return None
+    aware = timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=UTC)
+    origin = earliest or aware
+    if origin.tzinfo is None:
+        origin = origin.replace(tzinfo=UTC)
+    return aware + (window_start - origin)

@@ -11,11 +11,19 @@ hand to a read-only gateway.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from agentsec.errors import EvidenceUnavailable
-from agentsec.evidence.base import CollectContext, read_json, read_jsonl, resolve_path
+from agentsec.evidence.base import (
+    CollectContext,
+    canonical_run_id,
+    read_json,
+    read_jsonl,
+    rebase_timestamp,
+    require_run_id_value,
+    resolve_path,
+)
 from agentsec.models.evidence import SourceMeta, ToolAuditRecord, ToolAuditSource
 from agentsec.policy.allowlist import assert_private_url
 
@@ -28,9 +36,24 @@ def collect_tool_audit(ctx: CollectContext) -> ToolAuditSource:
     if backend.kind == "file":
         path = resolve_path(backend.path, ctx)
         rows = read_jsonl(path) if path.suffix == ".jsonl" else _as_rows(read_json(path))
+        allow_legacy_run_id = ctx.trusted_fixture and backend.kind == "file"
+        records = [
+            _normalise(r, ctx=ctx, trusted_fixture=allow_legacy_run_id) for r in rows
+        ]
+        if ctx.trusted_fixture:
+            origin = min((r.timestamp for r in records if r.timestamp), default=None)
+            for record in records:
+                record.timestamp = rebase_timestamp(
+                    record.timestamp, ctx.window_start, earliest=origin
+                )
         return ToolAuditSource(
-            records=[_normalise(r) for r in rows],
-            meta=SourceMeta(collector="tool_audit", backend="file", query=str(backend.path)),
+            records=records,
+            meta=SourceMeta(
+                collector="tool_audit",
+                backend="file",
+                query=str(backend.path),
+                correlation="trusted_fixture" if ctx.trusted_fixture else "verified",
+            ),
         )
 
     import httpx
@@ -55,22 +78,36 @@ def collect_tool_audit(ctx: CollectContext) -> ToolAuditSource:
         raise EvidenceUnavailable(f"tool-audit query failed: {type(exc).__name__}") from exc
 
     return ToolAuditSource(
-        records=[_normalise(r) for r in rows],
-        meta=SourceMeta(collector="tool_audit", backend="http", query=f"run_id={ctx.run_id}"),
+        records=[_normalise(r, ctx=ctx) for r in rows],
+        meta=SourceMeta(
+            collector="tool_audit",
+            backend="http",
+            query=f"run_id={ctx.run_id}",
+            correlation="verified",
+        ),
     )
 
 
 def _as_rows(raw: Any) -> list[dict[str, Any]]:
     if isinstance(raw, list):
-        return [r for r in raw if isinstance(r, dict)]
+        if not all(isinstance(r, dict) for r in raw):
+            raise EvidenceUnavailable("tool-audit payload contains a non-object record")
+        return raw
     if isinstance(raw, dict):
         for key in ("records", "items", "results"):
             if isinstance(raw.get(key), list):
-                return [r for r in raw[key] if isinstance(r, dict)]
+                if not all(isinstance(r, dict) for r in raw[key]):
+                    raise EvidenceUnavailable("tool-audit payload contains a non-object record")
+                return raw[key]
     raise EvidenceUnavailable("unrecognised tool-audit payload shape")
 
 
-def _normalise(row: dict[str, Any]) -> ToolAuditRecord:
+def _normalise(
+    row: dict[str, Any],
+    *,
+    ctx: CollectContext | None = None,
+    trusted_fixture: bool = False,
+) -> ToolAuditRecord:
     decision = str(row.get("decision") or row.get("outcome") or "allow").lower()
     if decision in {"denied", "block", "blocked", "refuse", "refused"}:
         decision = "deny"
@@ -81,6 +118,15 @@ def _normalise(row: dict[str, Any]) -> ToolAuditRecord:
     if decision not in {"allow", "deny", "escalate"}:
         raise EvidenceUnavailable(f"unrecognised tool-audit decision: {row.get('decision')!r}")
 
+    timestamp = _maybe_time(row.get("timestamp") or row.get("ts"))
+    run_id = canonical_run_id(row)
+    if ctx is not None:
+        run_id = require_run_id_value(
+            run_id,
+            ctx.run_id,
+            trusted_fixture=trusted_fixture,
+            what="tool-audit record",
+        )
     return ToolAuditRecord(
         tool=str(row.get("tool") or row.get("tool_name") or ""),
         decision=decision,  # type: ignore[arg-type]
@@ -88,15 +134,27 @@ def _normalise(row: dict[str, Any]) -> ToolAuditRecord:
         principal=row.get("principal") or row.get("user"),
         tenant_id=row.get("tenant_id"),
         arguments_digest=row.get("arguments_digest") or row.get("args_sha256"),
-        timestamp=_maybe_time(row.get("timestamp") or row.get("ts")),
+        timestamp=timestamp,
         policy=row.get("policy") or row.get("policy_id"),
         span_id=row.get("span_id"),
+        tool_call_id=(
+            row.get("tool_call_id")
+            or row.get("call_id")
+            or row.get("tool.call_id")
+            or row.get("agentsec.tool_call_id")
+        ),
+        run_id=run_id,
     )
 
 
 def _maybe_time(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value
+    if isinstance(value, int | float):
+        try:
+            return datetime.fromtimestamp(float(value), tz=UTC)
+        except (OSError, OverflowError, ValueError):
+            return None
     if isinstance(value, str):
         try:
             return datetime.fromisoformat(value.replace("Z", "+00:00"))

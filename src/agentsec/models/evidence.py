@@ -24,6 +24,10 @@ class SourceMeta(_Base):
     backend: str | None = None
     query: str | None = None
     """Redacted description of the query issued. Kept for audit, never credentials."""
+    # Live sources must prove that every record belongs to the current run.
+    # ``trusted_fixture`` is deliberately explicit: the bundled recordings were
+    # captured before run IDs existed and are normalised only at that boundary.
+    correlation: Literal["verified", "trusted_fixture"] | None = None
 
 
 class TranscriptTurn(_Base):
@@ -48,6 +52,8 @@ class OtelSpan(_Base):
     end_time: datetime | None = None
     status: Literal["unset", "ok", "error"] = "unset"
     attributes: dict[str, Scalar] = Field(default_factory=dict)
+    run_id: str | None = None
+    tool_call_id: str | None = None
 
 
 class OtelSource(_Base):
@@ -66,6 +72,7 @@ class WazuhAlert(_Base):
     agent_name: str | None = None
     fields: dict[str, Scalar] = Field(default_factory=dict)
     """Flattened alert document with dot-notation keys, for match_fields assertions."""
+    run_id: str | None = None
 
 
 class WazuhSource(_Base):
@@ -83,6 +90,8 @@ class ToolAuditRecord(_Base):
     timestamp: datetime | None = None
     policy: str | None = None
     span_id: str | None = None
+    tool_call_id: str | None = None
+    run_id: str | None = None
 
 
 class ToolAuditSource(_Base):

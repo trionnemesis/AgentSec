@@ -12,7 +12,7 @@ Jump to: [GitHub Pages](#github-pages) ・ [Why](#why) ・ [What it does](#what-
 
 ## GitHub Pages
 
-The [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/) is the public-facing, eight-page English introduction to AgentSec. It gives a fast visual overview of the problem, the Attack–Detection Contract, deterministic verdicts, the execution pipeline, trust boundaries, and the offline quick start. Use this README and the linked docs for detailed commands, implementation guidance, deployment, and roadmap status.
+The [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/) is the public-facing, eight-page English introduction to AgentSec. It gives a fast visual overview of the problem, the Attack–Detection Contract, deadline-aware and run-correlated evidence, deterministic verdicts, trust boundaries, and the offline quick start. Use this README and the linked docs for detailed commands, implementation guidance, deployment, and roadmap status.
 
 ---
 
@@ -55,6 +55,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
 | **Deterministic verdict** | Pure evaluator, no model, no clock, no network in the decision path — the same evidence always yields the same verdict |
 | **Evidence collection** | OpenTelemetry spans, Wazuh alerts, tool-call audit and database state diff, normalised into one schema |
+| **Evidence truthfulness** | Polls required sources through contract deadlines, rejects missing or foreign-run correlation, consumes one audit record per traced call, and evaluates response SLA against event time |
 | **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network |
 | **CI gate** | JUnit output plus meaningful exit codes, and a reusable GitHub workflow you call from the agent's own repo |
 | **Constrained MCP gateway** | 11 narrow tools and 10 read-only resources; no shell, no SQL, no free-text URL |
@@ -88,7 +89,7 @@ flowchart TD
     C --> D["Red executor<br/>replay / promptfoo"]
     D --> E["Agent under test<br/>staging only"]
     E -.emits.-> F["OTel · Wazuh · tool audit · DB"]
-    F --> G["Evidence collector<br/>→ normalised bundle"]
+    F --> G["Evidence collector<br/>poll · correlate · paginate · normalise"]
     G --> H["Purple evaluator<br/>4 axes → 1 verdict"]
     H --> I["SQLite store<br/>runs · findings · audit"]
     I --> J["Reports<br/>JUnit / HTML / JSON"]
@@ -215,6 +216,8 @@ Read that as: the tenant boundary is broken **but instrumented** — fix the cod
 
 **On "no Wazuh":** the fixture corpus supplies recorded Wazuh alerts and OTel spans from files, so the detection axis is genuinely evaluated offline — `AGT-MEMPOIS-001` is a `detection_gap` because rule `100720` is absent from those recorded alerts, not because nothing was checked. Gating a **real** agent on detection does need a live signal source, declared per target in `policy/targets.yaml`: a Wazuh indexer (`kind: opensearch`) or OTel. Wazuh is not mandatory — a contract asserting only `detection.otel` is valid — but it is currently the only SIEM collector implemented.
 
+**Evidence timing and correlation:** attack execution timeout, telemetry settle time, detection SLA, and response SLA are separate boundaries. The collector polls only the sources required by the contract, stops early once the required signals are decisive, and retains the events' observed timestamps. Live Wazuh, OTel, and tool-audit records must carry the current canonical `agentsec.run_id`; missing, conflicting, or foreign-run correlation is `error`, while the bundled recorded-file corpus has one explicit `trusted_fixture` compatibility path. Wazuh collection uses a bounded Scroll over the run window and consumes every page. `every_tool_call_audited` matches one audit record to each traced invocation, preferring `tool_call_id` / `span_id`, and a response present only after `within_seconds` remains a `response_gap`. These paths are covered by deterministic mocks and regression tests; the live Wazuh/OTel integration is still an alpha validation gap.
+
 **Live target-driver boundary:** an HTTP target declares the fixed relative endpoint for each replay operation (`seed_resource`, `seed_memory`, `inject_tool_response`, `assume_identity`, `send_message`, `snapshot_state`, and `cleanup`) under its operator-owned `adapter.operations` map. Scenarios and MCP callers can provide payloads and target ids only; they cannot provide a URL, path, or operation name that bypasses this map. Fixture targets implement the same operation set deterministically offline, while `wait` remains executor-local. Target-aware validation and preview report unsupported operations as errors and do not count them as runnable. `start_run` preflights the complete selected batch before consuming approvals, constructing adapters, or making target calls. Replay always invokes target cleanup on success and partial failure, then closes its local client; a cleanup failure fails closed and retains the primary execution error.
 
 ### 4. Add to Claude Code
@@ -297,6 +300,8 @@ spec:
 Two details carry most of the value:
 
 * **`must: policy_decision ... deny`** — asserting only that the agent *didn't* send the email would pass for an agent that merely happened not to. Requiring an explicit denial is the difference between testing a control and testing a mood.
+* **`within_seconds` uses event time** — collection may poll until the contract deadline, but an alert or response recorded after its own SLA does not become timely because it was eventually collected.
+* **`every_tool_call_audited` is per invocation** — two traced calls need two consumable audit records; a single same-name record cannot satisfy both.
 * **`response: not_tested`** — an omitted axis never rounds up to `pass`.
 
 Full authoring guide: [`docs/attack-detection-contract.md`](docs/attack-detection-contract.md).
@@ -481,6 +486,8 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 * **Refusals are audited.** What a caller *tried* to do is the interesting record.
 * **A report cannot re-commit the breach it reports.** `AGT-TENANT-001` proves a cross-tenant leak by getting tenant B's order into tenant A's transcript, which makes that transcript both the evidence *and* the leaked record. Published output is therefore projected rather than filtered, and the report gateway declines to serve per-run evidence and the audit log at all. Adding a resource is a decision, not a default: every one names a publication policy, and the gateway refuses to start if a policy is missing.
 * **An uncollectable evidence source is an `error`, never a `pass`.** A scenario asserting on a backend the target does not have is rejected by the validator before anything runs; a collector that fails at run time degrades its axis to `error`, which outranks every other verdict. The report cannot turn green because the evidence pipeline broke — which is the most dangerous bug available to this kind of tool.
+* **Evidence cannot cross runs.** Live Wazuh, OTel, and tool-audit records need the current canonical `agentsec.run_id`; missing, conflicting, nested lookalikes, and another run's value fail closed. Only the bundled recorded-file workflow can normalise legacy fixture records that predate run IDs.
+* **Deadlines are evaluated against event timestamps.** Polling makes delayed telemetry observable; it does not make a late alert or response timely.
 * **Missing assistant output is an `error`, never proof that a `must_not` held.** An absent transcript, no assistant turn, an empty step or principal scope, blank output, or a Promptfoo result with no usable assistant response fails closed. A required complete trace with no spans is also `error`, not an empty success.
 * **No language model in the verdict.** See [ADR 0002](docs/adr/0002-deterministic-verdict.md).
 
