@@ -193,8 +193,7 @@ def _parse_resource_spans(resource_spans: list[dict[str, Any]]) -> list[OtelSpan
 
 def _parse_simple(span: dict[str, Any]) -> OtelSpan:
     attrs = span.get("attributes", {})
-    if isinstance(attrs, list):
-        attrs = _kv_list(attrs)
+    attrs = _parse_attributes(attrs)
     return OtelSpan(
         name=span.get("name", ""),
         trace_id=span.get("trace_id") or span.get("traceId"),
@@ -203,7 +202,7 @@ def _parse_simple(span: dict[str, Any]) -> OtelSpan:
         start_time=_maybe_time(span.get("start_time") or span.get("startTime")),
         end_time=_maybe_time(span.get("end_time") or span.get("endTime")),
         status=_status_of(span.get("status")),
-        attributes={k: v for k, v in attrs.items()} if isinstance(attrs, dict) else {},
+        attributes=attrs,
         run_id=_span_run_id(attrs, span),
         tool_call_id=_tool_call_id(attrs, span),
     )
@@ -248,34 +247,173 @@ def _tool_call_id(attrs: Any, span: dict[str, Any]) -> str | None:
     return None
 
 
-def _kv_list(items: list[dict[str, Any]]) -> dict[str, Any]:
-    """Unwrap OTLP's ``[{key, value:{stringValue: ...}}]`` attribute encoding."""
-    out: dict[str, Any] = {}
-    for item in items:
-        key = item.get("key")
-        if key is None:
-            continue
-        value = item.get("value")
-        parsed: Any = None
-        if isinstance(value, dict):
-            for vk in ("stringValue", "intValue", "doubleValue", "boolValue"):
-                if vk in value:
-                    v = value[vk]
-                    parsed = int(v) if vk == "intValue" and isinstance(v, str) else v
-                    break
-            else:
-                parsed = str(value)
+def _decode_kv_value(raw: Any) -> Any:
+    if not isinstance(raw, dict):
+        return raw
+
+    for key in ("stringValue", "intValue", "doubleValue", "boolValue"):
+        if key in raw:
+            value = raw[key]
+            return int(value) if key == "intValue" and isinstance(value, str) else value
+    return str(raw)
+
+
+def _decode_kv_value_scalar(raw: Any) -> Any:
+    value = _decode_kv_value(raw)
+    if isinstance(value, dict | list):
+        return str(value)
+    return value
+
+
+def _decode_kv_nested_run_id_values(raw: Any) -> list[str]:
+    if not isinstance(raw, dict):
+        return []
+
+    nested_values: list[str] = []
+    for kv_key in ("kvlistValue", "kvListValue"):
+        nested_value_container = raw.get(kv_key)
+        if isinstance(nested_value_container, dict):
+            raw_values = nested_value_container.get("values")
+            if isinstance(raw_values, list):
+                for nested in raw_values:
+                    if not isinstance(nested, dict):
+                        continue
+                    if nested.get("key") != "run_id":
+                        continue
+                    value = nested.get("value")
+                    if not isinstance(value, dict):
+                        continue
+                    parsed = _decode_kv_value_scalar(value)
+                    if parsed is None or parsed == "":
+                        continue
+                    nested_values.append(str(parsed))
+
+    struct_value = raw.get("structValue")
+    if isinstance(struct_value, dict):
+        fields = struct_value.get("fields")
+        if isinstance(fields, dict):
+            value = fields.get("run_id")
+            if isinstance(value, dict) and "value" in value:
+                parsed = _decode_kv_value_scalar(value.get("value"))
+                if parsed is not None and parsed != "":
+                    nested_values.append(str(parsed))
+    return nested_values
+
+
+def _canonical_nested_run_id(raw: Any) -> str | None:
+    values = _decode_kv_nested_run_id_values(raw)
+    if not values:
+        return None
+    first = values[0]
+    if any(value != first for value in values[1:]):
+        raise EvidenceUnavailable(
+            "OTel attributes have conflicting canonical agentsec.run_id values"
+        )
+    return first
+
+
+def _canonical_kv_alias_run_id(key: str, value: Any) -> str | None:
+    if key == "agentsec.run_id":
+        return None if value is None else str(value)
+    if key == "agentsec":
+        return _canonical_nested_run_id(value)
+    return None
+
+
+def _normalise_agentsec_alias(
+    key: str, raw_value: Any, observed_run_id: str | None
+) -> tuple[str, Any, str | None]:
+    parsed = _decode_kv_value_scalar(raw_value)
+    alias_key = key
+    if key == "agentsec":
+        nested_run_id = _canonical_nested_run_id(raw_value)
+        if nested_run_id is not None:
+            parsed = nested_run_id
+            alias_key = "agentsec.run_id"
+            alias_run_id = nested_run_id
         else:
-            parsed = value
+            if isinstance(raw_value, dict):
+                direct_run_id = raw_value.get("run_id")
+                if direct_run_id not in (None, ""):
+                    parsed = str(direct_run_id)
+                    alias_key = "agentsec.run_id"
+                    alias_run_id = parsed
+                else:
+                    parsed = _decode_kv_value_scalar(raw_value)
+                    alias_key = key
+                    alias_run_id = None
+            else:
+                alias_key = key
+                alias_run_id = None
+    else:
+        alias_run_id = _canonical_kv_alias_run_id(key, parsed)
+
+    if alias_run_id is not None and observed_run_id is not None:
+        if observed_run_id != alias_run_id:
+            raise EvidenceUnavailable(
+                "OTel attributes have conflicting canonical agentsec.run_id values"
+            )
+        return alias_key, parsed, observed_run_id
+    if alias_run_id is not None:
+        return alias_key, parsed, alias_run_id
+    return alias_key, parsed, observed_run_id
+
+
+def _parse_attributes(attrs: Any) -> dict[str, Any]:
+    if isinstance(attrs, list):
+        return _kv_list(attrs)
+    if isinstance(attrs, dict):
+        return _kv_map(attrs)
+    return {}
+
+
+def _kv_map(attrs: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    observed_run_id: str | None = None
+    for key, raw_value in attrs.items():
+        if not isinstance(key, str):
+            continue
+        alias_key, parsed, next_observed_run_id = _normalise_agentsec_alias(
+            key, raw_value, observed_run_id
+        )
         if (
-            key == "agentsec.run_id"
-            and key in out
-            and str(out[key]) != str(parsed)
+            alias_key == "agentsec.run_id"
+            and alias_key in out
+            and str(out[alias_key]) != str(parsed)
         ):
             raise EvidenceUnavailable(
                 "OTel attributes have conflicting canonical agentsec.run_id values"
             )
-        out[key] = parsed
+        out[alias_key] = parsed
+        observed_run_id = next_observed_run_id
+    return out
+
+
+def _kv_list(items: list[dict[str, Any]]) -> dict[str, Any]:
+    """Unwrap OTLP's ``[{key, value:{stringValue: ...}}]`` attribute encoding."""
+    out: dict[str, Any] = {}
+    observed_run_id: str | None = None
+    for item in items:
+        key = item.get("key")
+        if key is None:
+            continue
+        if not isinstance(key, str):
+            continue
+
+        raw_value = item.get("value")
+        alias_key, parsed, observed_run_id = _normalise_agentsec_alias(
+            key, raw_value, observed_run_id
+        )
+
+        if (
+            alias_key == "agentsec.run_id"
+            and alias_key in out
+            and str(out[alias_key]) != str(parsed)
+        ):
+            raise EvidenceUnavailable(
+                "OTel attributes have conflicting canonical agentsec.run_id values"
+            )
+        out[alias_key] = parsed
     return out
 
 

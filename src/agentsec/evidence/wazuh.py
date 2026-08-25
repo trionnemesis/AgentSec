@@ -46,8 +46,11 @@ def collect_wazuh(ctx: CollectContext) -> WazuhSource:
             raise EvidenceUnavailable("unrecognised Wazuh payload shape")
         if not all(isinstance(d, dict) for d in docs):
             raise EvidenceUnavailable("Wazuh alert payload contains a non-object record")
+        allow_legacy_run_id = ctx.trusted_fixture and backend.kind == "file"
         alerts = [
-            _normalise(d, ctx=ctx, trusted_fixture=ctx.trusted_fixture) for d in docs
+            _normalise(
+                d, ctx=ctx, trusted_fixture=allow_legacy_run_id
+            ) for d in docs
         ]
         shifted = rebase_to_window([a.timestamp for a in alerts], ctx.window_start)
         for alert_obj, ts in zip(alerts, shifted, strict=True):

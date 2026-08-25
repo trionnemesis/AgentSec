@@ -18,8 +18,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from agentsec.errors import ContractError
+from agentsec.errors import ContractError, EvidenceUnavailable
 from agentsec.evaluation import matchers as m
+from agentsec.evidence.base import canonical_run_id
 from agentsec.models.evidence import CollectorError, Evidence, ToolAuditRecord, WazuhAlert
 from agentsec.models.run import AxisResult, AxisStatus, CheckResult
 from agentsec.models.scenario import BehaviourAssertion, Scenario
@@ -91,23 +92,49 @@ def _correlation_problem(evidence: Evidence, source_name: str) -> str | None:
         records = getattr(source, "records", None)
     if records is None:
         return None
-    # A bundle that explicitly carries a different run ID is never a trusted
-    # synthetic fixture, even when its source metadata was omitted by a caller.
-    if any(
-        getattr(record, "run_id", None) not in (None, evidence.run_id)
-        for record in records
-    ):
-        return f"{source_name} evidence is correlated to another run"
+    # A bundle that explicitly carries a different run ID is never synthetic
+    # fixture evidence, even if metadata was omitted.
     trusted_fixture = (
         source.meta is not None
         and source.meta.backend == "file"
         and source.meta.correlation == "trusted_fixture"
     )
-    if trusted_fixture:
-        return None
-    if any(getattr(record, "run_id", None) != evidence.run_id for record in records):
-        return f"{source_name} evidence is missing current-run canonical correlation"
+
+    for record in records:
+        try:
+            run_id = _record_run_id(record, source_name=source_name)
+        except ValueError as exc:
+            return str(exc)
+        if run_id is not None and run_id != evidence.run_id:
+            return f"{source_name} evidence is correlated to another run"
+        if run_id is None and not trusted_fixture:
+            return f"{source_name} evidence is missing current-run canonical correlation"
     return None
+
+
+def _record_run_id(record: Any, *, source_name: str) -> str | None:
+    run_id = getattr(record, "run_id", None)
+    if run_id is not None:
+        run_id = str(run_id)
+
+    for source in ("fields", "attributes"):
+        payload = getattr(record, source, None)
+        if not isinstance(payload, dict):
+            continue
+        try:
+            canonical = canonical_run_id(payload)
+        except EvidenceUnavailable as exc:
+            raise ValueError(str(exc)) from exc
+        if canonical is None:
+            continue
+        canonical = str(canonical)
+        if run_id is None:
+            run_id = canonical
+            continue
+        if run_id != canonical:
+            raise ValueError(f"{source_name} evidence has conflicting canonical run_id values")
+
+    return run_id
 
 
 def _finish(axis: str, checks: list[CheckResult]) -> AxisResult:

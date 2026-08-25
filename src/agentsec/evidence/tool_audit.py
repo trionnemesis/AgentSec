@@ -36,8 +36,9 @@ def collect_tool_audit(ctx: CollectContext) -> ToolAuditSource:
     if backend.kind == "file":
         path = resolve_path(backend.path, ctx)
         rows = read_jsonl(path) if path.suffix == ".jsonl" else _as_rows(read_json(path))
+        allow_legacy_run_id = ctx.trusted_fixture and backend.kind == "file"
         records = [
-            _normalise(r, ctx=ctx, trusted_fixture=ctx.trusted_fixture) for r in rows
+            _normalise(r, ctx=ctx, trusted_fixture=allow_legacy_run_id) for r in rows
         ]
         if ctx.trusted_fixture:
             origin = min((r.timestamp for r in records if r.timestamp), default=None)

@@ -21,6 +21,7 @@ from agentsec.evidence.base import CollectContext, canonical_run_id
 from agentsec.evidence.collector import EvidenceCollector
 from agentsec.evidence.otel import _parse_otlp
 from agentsec.evidence.tool_audit import _normalise as normalise_tool_audit
+from agentsec.evidence.tool_audit import collect_tool_audit
 from agentsec.evidence.wazuh import _normalise as normalise_wazuh
 from agentsec.evidence.wazuh import collect_wazuh
 from agentsec.models.evidence import (
@@ -42,6 +43,7 @@ from agentsec.models.target import (
     Adapter,
     EvidenceBackends,
     Target,
+    ToolAuditBackend,
     WazuhBackend,
 )
 from agentsec.scenario.loader import load_scenario_file
@@ -75,6 +77,10 @@ def _evidence(
             transcript=TranscriptSource(), wazuh=wazuh, otel=otel, tool_audit=audit
         ),
     )
+
+
+def _assert_scalar_attributes(attributes: dict[str, Any]) -> None:
+    assert all(isinstance(v, (str, int, float, bool)) or v is None for v in attributes.values())
 
 
 def _alert(timestamp: datetime, *, run_id: str | None = "RUN-20260728-001") -> WazuhAlert:
@@ -197,6 +203,156 @@ def test_fixture_adapter_does_not_exempt_live_evidence_records(tmp_path: Path) -
     assert normalise_wazuh(wazuh_doc, ctx=ctx, trusted_fixture=True).run_id == "RUN-1"
 
 
+def test_fixture_file_evidence_still_allows_missing_run_id(tmp_path: Path) -> None:
+    fixture = tmp_path / "tool_audit.jsonl"
+    fixture.write_text('{"tool":"send_email","decision":"deny"}\n', encoding="utf-8")
+    target = _target(
+        tmp_path,
+        backend=EvidenceBackends(
+            tool_audit=ToolAuditBackend(kind="file", path="tool_audit.jsonl")
+        ),
+        adapter_kind="fixture",
+    )
+    ctx = CollectContext(
+        run_id="RUN-1",
+        scenario_id="AGT-XPIA-001",
+        target=target,
+        workspace=tmp_path,
+        window_start=NOW,
+        window_end=NOW + timedelta(seconds=120),
+        trusted_fixture=True,
+    )
+    source = collect_tool_audit(ctx)
+    assert source.records[0].run_id == "RUN-1"
+
+
+def test_fixture_adapter_does_not_bypass_live_wazuh_correlation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Response:
+        def __init__(self, body: dict[str, Any]) -> None:
+            self.body = body
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, Any]:
+            return self.body
+
+    pages = [
+        {
+            "_scroll_id": "cursor-1",
+            "hits": {
+                "hits": [
+                    {
+                        "_index": "wazuh-alerts-2026.07.28",
+                        "_id": "a",
+                        "_source": {
+                            "timestamp": NOW.isoformat(),
+                            "rule": {"id": "1"},
+                        },
+                    }
+                ]
+            },
+        },
+        {"_scroll_id": "cursor-2", "hits": {"hits": []}},
+    ]
+    requests: list[dict[str, Any]] = []
+    cleared: list[dict[str, Any]] = []
+
+    class Client:
+        def __init__(self, **_: Any) -> None:
+            self.page = 0
+
+        def __enter__(self) -> Client:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def post(self, _url: str, *, json: dict[str, Any]) -> Response:
+            response = Response(pages[self.page])
+            self.page += 1
+            requests.append(json.copy())
+            return response
+
+        def request(
+            self, method: str, _url: str, *, json: dict[str, Any]
+        ) -> Response:
+            cleared.append(json.copy())
+            return Response({})
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    target = _target(
+        tmp_path,
+        backend=EvidenceBackends(
+            wazuh=WazuhBackend(kind="opensearch", url="http://127.0.0.1:9200")
+        ),
+        adapter_kind="fixture",
+    )
+    ctx = CollectContext(
+        run_id="RUN-1",
+        scenario_id="AGT-XPIA-001",
+        target=target,
+        workspace=tmp_path,
+        window_start=NOW,
+        window_end=NOW + timedelta(seconds=120),
+        trusted_fixture=True,
+    )
+    with pytest.raises(EvidenceUnavailable, match="missing canonical"):
+        collect_wazuh(ctx)
+
+
+def test_fixture_adapter_does_not_bypass_live_tool_audit_correlation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    class Response:
+        def __init__(self, payload: Any) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> Any:
+            return self._payload
+
+    class Client:
+        def __init__(self, **_: Any) -> None:
+            pass
+
+        def __enter__(self) -> Client:
+            return self
+
+        def __exit__(self, *_: Any) -> None:
+            return None
+
+        def get(self, *_: Any, **__: Any) -> Response:
+            return Response([{"tool": "send_email", "decision": "deny"}])
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    target = _target(
+        tmp_path,
+        backend=EvidenceBackends(
+            tool_audit=ToolAuditBackend(
+                kind="http",
+                url="http://127.0.0.1:8080",
+            )
+        ),
+        adapter_kind="fixture",
+    )
+    ctx = CollectContext(
+        run_id="RUN-1",
+        scenario_id="AGT-XPIA-001",
+        target=target,
+        workspace=tmp_path,
+        window_start=NOW,
+        window_end=NOW + timedelta(seconds=120),
+        trusted_fixture=True,
+    )
+    with pytest.raises(EvidenceUnavailable, match="missing canonical"):
+        collect_tool_audit(ctx)
+
+
 def test_conflicting_otel_run_id_locations_fail_closed() -> None:
     span = {
         "name": "agent.tool_call",
@@ -253,6 +409,297 @@ def test_duplicate_otel_run_id_attributes_must_agree() -> None:
         _parse_otlp([span], run_id="RUN-1")
 
 
+def test_otel_attributes_allow_matching_direct_and_nested_run_id_aliases() -> None:
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "agentsec.run_id",
+                            "value": {"stringValue": "RUN-1"},
+                        },
+                        {
+                            "key": "agentsec",
+                            "value": {
+                                "kvlistValue": {
+                                    "values": [
+                                        {
+                                            "key": "run_id",
+                                            "value": {"stringValue": "RUN-1"},
+                                        }
+                                    ]
+                                }
+                            },
+                        },
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "name": "agent.tool_call",
+                                "attributes": [
+                                    {
+                                        "key": "agentsec.run_id",
+                                        "value": {"stringValue": "RUN-1"},
+                                    },
+                                    {
+                                        "key": "agentsec",
+                                        "value": {
+                                            "kvlistValue": {
+                                                "values": [
+                                                    {
+                                                        "key": "run_id",
+                                                        "value": {"stringValue": "RUN-1"},
+                                                    }
+                                                ]
+                                            }
+                                        },
+                                    },
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
+    spans = _parse_otlp(payload, run_id="RUN-1")
+    assert spans[0].run_id == "RUN-1"
+    assert spans[0].attributes.get("agentsec.run_id") == "RUN-1"
+    assert "agentsec" not in spans[0].attributes
+    _assert_scalar_attributes(spans[0].attributes)
+
+
+def test_otel_attributes_allow_nested_resource_run_id_only() -> None:
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "agentsec",
+                            "value": {
+                                "kvlistValue": {
+                                    "values": [
+                                        {
+                                            "key": "run_id",
+                                            "value": {"stringValue": "RUN-1"},
+                                        }
+                                    ]
+                                }
+                            },
+                        },
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "name": "agent.tool_call",
+                                "attributes": [
+                                    {
+                                        "key": "tool.name",
+                                        "value": {"stringValue": "send_email"},
+                                    }
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
+    spans = _parse_otlp(payload, run_id="RUN-1")
+    assert spans[0].run_id == "RUN-1"
+    assert spans[0].attributes.get("agentsec.run_id") == "RUN-1"
+    _assert_scalar_attributes(spans[0].attributes)
+
+
+def test_otel_attributes_allow_nested_span_run_id_only() -> None:
+    span = {
+        "name": "agent.tool_call",
+        "attributes": [
+            {
+                "key": "agentsec",
+                "value": {
+                    "kvlistValue": {
+                        "values": [{"key": "run_id", "value": {"stringValue": "RUN-1"}}]
+                    }
+                },
+            },
+            {
+                "key": "tool.name",
+                "value": {"stringValue": "send_email"},
+            },
+        ],
+    }
+    spans = _parse_otlp([span], run_id="RUN-1")
+    assert spans[0].run_id == "RUN-1"
+    assert spans[0].attributes.get("agentsec.run_id") == "RUN-1"
+    _assert_scalar_attributes(spans[0].attributes)
+
+
+def test_otel_attributes_allow_nested_span_run_id_duplicates_with_same_value() -> None:
+    span = {
+        "name": "agent.tool_call",
+        "attributes": [
+            {
+                "key": "agentsec",
+                "value": {
+                    "kvlistValue": {
+                        "values": [
+                            {"key": "run_id", "value": {"stringValue": "RUN-1"}},
+                            {"key": "run_id", "value": {"stringValue": "RUN-1"}},
+                        ]
+                    }
+                },
+            },
+            {
+                "key": "tool.name",
+                "value": {"stringValue": "send_email"},
+            },
+        ],
+    }
+    spans = _parse_otlp([span], run_id="RUN-1")
+    assert spans[0].run_id == "RUN-1"
+    assert spans[0].attributes.get("agentsec.run_id") == "RUN-1"
+    _assert_scalar_attributes(spans[0].attributes)
+
+
+def test_otel_attributes_fail_closed_on_nested_span_run_id_duplicates_with_conflict() -> None:
+    span = {
+        "name": "agent.tool_call",
+        "attributes": [
+            {
+                "key": "agentsec",
+                "value": {
+                    "kvlistValue": {
+                        "values": [
+                            {"key": "run_id", "value": {"stringValue": "RUN-other"}},
+                            {"key": "run_id", "value": {"stringValue": "RUN-1"}},
+                        ]
+                    }
+                },
+            },
+            {
+                "key": "tool.name",
+                "value": {"stringValue": "send_email"},
+            },
+        ],
+    }
+    with pytest.raises(EvidenceUnavailable, match="conflicting canonical"):
+        _parse_otlp([span], run_id="RUN-1")
+
+
+def test_otel_attributes_fail_closed_on_direct_and_nested_alias_conflict() -> None:
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "agentsec.run_id",
+                            "value": {"stringValue": "RUN-1"},
+                        },
+                        {
+                            "key": "agentsec",
+                            "value": {
+                                "kvlistValue": {
+                                    "values": [
+                                        {
+                                            "key": "run_id",
+                                            "value": {"stringValue": "RUN-other"},
+                                        }
+                                    ]
+                                }
+                            },
+                        },
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "name": "agent.tool_call",
+                                "attributes": [
+                                    {"key": "tool.name", "value": {"stringValue": "send_email"}}
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
+    with pytest.raises(EvidenceUnavailable, match="conflicting canonical"):
+        _parse_otlp(payload, run_id="RUN-1")
+
+
+def test_resource_direct_and_standard_nested_run_id_foreign_then_expected_fail_closed(
+) -> None:
+    payload = {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        {
+                            "key": "agentsec.run_id",
+                            "value": {"stringValue": "RUN-1"},
+                        },
+                        {
+                            "key": "agentsec",
+                            "value": {
+                                "kvlistValue": {
+                                    "values": [
+                                        {
+                                            "key": "run_id",
+                                            "value": {"stringValue": "RUN-other"},
+                                        },
+                                        {
+                                            "key": "run_id",
+                                            "value": {"stringValue": "RUN-1"},
+                                        },
+                                    ]
+                                }
+                            },
+                        },
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "name": "agent.tool_call",
+                                "attributes": [
+                                    {"key": "tool.name", "value": {"stringValue": "send_email"}}
+                                ],
+                            }
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
+    with pytest.raises(EvidenceUnavailable, match="conflicting canonical"):
+        _parse_otlp(payload, run_id="RUN-1")
+
+
+def test_otel_attributes_allow_simple_nested_agentsec_dict() -> None:
+    span = {
+        "name": "agent.tool_call",
+        "attributes": {
+            "agentsec": {"run_id": "RUN-1"},
+            "tool.name": "send_email",
+        },
+    }
+    spans = _parse_otlp([span], run_id="RUN-1")
+    assert spans[0].run_id == "RUN-1"
+    assert spans[0].attributes.get("agentsec.run_id") == "RUN-1"
+    _assert_scalar_attributes(spans[0].attributes)
+
+
 def test_prevention_http_egress_rejects_another_runs_otel_span() -> None:
     source = OtelSource(
         spans=[
@@ -260,6 +707,23 @@ def test_prevention_http_egress_rejects_another_runs_otel_span() -> None:
                 name="http.client",
                 attributes={"http.url": "https://attacker-collect.example/ingest"},
                 run_id="RUN-other",
+            )
+        ]
+    )
+    result = evaluate_prevention(_scenario("AGT-CONFIG-001"), _evidence(otel=source))
+    assert result.status.value == "error"
+    assert "correlated to another run" in (result.summary or "")
+
+
+def test_prevention_http_egress_rejects_correlation_mismatch_in_otel_attributes() -> None:
+    source = OtelSource(
+        spans=[
+            OtelSpan(
+                name="http.client",
+                attributes={
+                    "http.url": "https://attacker-collect.example/ingest",
+                    "agentsec.run_id": "RUN-other",
+                },
             )
         ]
     )
@@ -379,6 +843,7 @@ def test_polling_stops_when_alert_arrives_at_three_seconds(monkeypatch, tmp_path
         transcript=TranscriptSource(),
         window_start=NOW,
     )
+    assert result.sources.wazuh is not None
     assert len(result.sources.wazuh.alerts) == 1
     assert sleeps == [1, 1, 1]
 

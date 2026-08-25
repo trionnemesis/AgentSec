@@ -9,7 +9,7 @@ degradation to green is the single most dangerous bug a purple harness can have.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -149,7 +149,7 @@ class EvidenceCollector:
             # Recorded fixtures are immutable snapshots, not a delayed live
             # backend.  Their explicit trusted-context normalisation preserves
             # the historical verdict matrix without sleeping through an SLA.
-            if ctx.trusted_fixture:
+            if _recorded_fixture_snapshot(ctx, required):
                 return latest
             if observed_end >= stop_at:
                 return latest
@@ -159,6 +159,20 @@ class EvidenceCollector:
             if delay <= 0:
                 return latest
             self._sleeper(delay)
+
+
+def _recorded_fixture_snapshot(
+    ctx: CollectContext, required: Iterable[str]
+) -> bool:
+    if not ctx.trusted_fixture:
+        return False
+    for source_name in required:
+        backend = getattr(ctx.target.evidence, source_name, None)
+        if backend is None or backend.kind == "none":
+            return False
+        if backend.kind != "file":
+            return False
+    return True
 
 
 def _max_contractual_deadline(scenario: Scenario) -> float:
