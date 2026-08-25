@@ -19,7 +19,7 @@
     <div class="page-intro">
       <p class="eyebrow">One pipeline</p>
       <h2>Run the same logic locally and in CI.</h2>
-      <p class="supporting-copy">Validate the contract. Check policy. Replay against staging. Collect telemetry. Publish JUnit, HTML, or JSON. The gate does not need an AI client to decide.</p>
+      <p class="supporting-copy">Validate the contract. Check policy. Replay against staging. Poll and correlate telemetry to its deadline. Publish JUnit, HTML, or JSON. The gate does not need an AI client to decide.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/architecture.md" rel="noopener noreferrer">View the architecture ↗</a></div>
     </div>
 
@@ -27,10 +27,11 @@
       <div class="flow-step"><span>01</span><strong>Validate<br>the contract</strong></div>
       <div class="flow-step"><span>02</span><strong>Check<br>policy</strong></div>
       <div class="flow-step"><span>03</span><strong>Replay<br>the scenario</strong></div>
-      <div class="flow-step"><span>04</span><strong>Collect<br>evidence</strong></div>
+      <div class="flow-step"><span>04</span><strong>Poll + correlate<br>evidence</strong></div>
       <div class="flow-step"><span>05</span><strong>Resolve<br>the verdict</strong></div>
       <div class="flow-step"><span>06</span><strong>Publish<br>the report</strong></div>
     </div>
+    <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>Wazuh pagination consumes the bounded run window; OTel and audit records must carry the current <code>agentsec.run_id</code>.</span></p>
   </main>
 
   <footer class="page-footer">

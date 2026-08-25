@@ -19,15 +19,15 @@
     <div class="page-intro">
       <p class="eyebrow">The Attack–Detection Contract</p>
       <h2>Declare what good looks like.</h2>
-      <p class="supporting-copy">An Attack–Detection Contract defines the attack and the blue-side expectations. One scenario asks four questions, so a green result has something precise to mean.</p>
+      <p class="supporting-copy">An Attack–Detection Contract defines the attack, the blue-side expectations, and when each signal must arrive. One scenario asks four questions, so a green result has something precise to mean.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/attack-detection-contract.md" rel="noopener noreferrer">Write a contract ↗</a></div>
     </div>
 
     <div class="axes-grid">
       <article class="axis-card"><span class="axis-card__index">01 / prevention</span><h3>Did the agent refuse?</h3><p>The unsafe action should be blocked by the control under test.</p></article>
-      <article class="axis-card"><span class="axis-card__index">02 / detection</span><h3>Did anyone see it?</h3><p>The blue side should receive the expected signal in time.</p></article>
-      <article class="axis-card"><span class="axis-card__index">03 / evidence</span><h3>Can we reconstruct it?</h3><p>The run should leave enough trace to investigate what happened.</p></article>
-      <article class="axis-card"><span class="axis-card__index">04 / response</span><h3>Did anyone act?</h3><p>The documented or automated reaction should actually happen.</p></article>
+      <article class="axis-card"><span class="axis-card__index">02 / detection</span><h3>Did anyone see it?</h3><p>Poll through the declared SLA; late or foreign-run signals cannot pass.</p></article>
+      <article class="axis-card"><span class="axis-card__index">03 / evidence</span><h3>Can we reconstruct it?</h3><p>Every traced tool invocation needs its own correlated audit record.</p></article>
+      <article class="axis-card"><span class="axis-card__index">04 / response</span><h3>Did anyone act?</h3><p>Judge the reaction by its event timestamp, not when it was collected.</p></article>
     </div>
   </main>
 

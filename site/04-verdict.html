@@ -19,14 +19,14 @@
     <div class="page-intro">
       <p class="eyebrow">Deterministic evaluation</p>
       <h2>Turn evidence into one verdict.</h2>
-      <p class="supporting-copy">No language model, clock, or network decides the result. The same evidence produces the same verdict, and broken evidence cannot become a pass.</p>
+      <p class="supporting-copy">No language model, clock, or network decides the result. The same correlated evidence produces the same verdict, and missing, late, or broken evidence cannot become a pass.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0002-deterministic-verdict.md" rel="noopener noreferrer">Read the verdict model ↗</a></div>
     </div>
 
     <div class="visual-panel" aria-label="AgentSec verdict precedence">
       <p class="visual-label">Verdict precedence</p>
       <div class="verdict-stack" role="list">
-        <div class="verdict-row verdict-row--error" role="listitem"><span>01</span><code>error</code><span>the evidence pipeline broke</span></div>
+        <div class="verdict-row verdict-row--error" role="listitem"><span>01</span><code>error</code><span>collection or run correlation broke</span></div>
         <div class="verdict-row" role="listitem"><span>02</span><code>detection_gap</code><span>the attack worked silently</span></div>
         <div class="verdict-row" role="listitem"><span>03</span><code>prevention_gap</code><span>the attack worked, but was seen</span></div>
         <div class="verdict-row" role="listitem"><span>04</span><code>evidence_gap</code><span>the incident cannot be reconstructed</span></div>
