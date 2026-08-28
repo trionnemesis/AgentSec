@@ -98,9 +98,17 @@ Three things to get right:
 alert of that level, including unrelated noise. The validator cannot catch this
 for you, but `agentsec validate-detection` will point it out.
 
-**`within_seconds` is a real assertion.** An alert that fires an hour later is an
-alert, not a detection. Set it to the latency you would actually accept during an
-incident.
+**`within_seconds` is judged against the alert's own timestamp, not against
+when the collector saw it.** An alert that fires an hour later is an alert,
+not a detection — set it to the latency you would actually accept during an
+incident. This SLA is one of four separate deadlines: attack timeout,
+telemetry-settle time, detection SLA and response SLA are all different
+boundaries, and the collector polls the required backends up to each
+deadline, stopping early once every required signal has arrived. Polling only
+makes a late signal *visible*; a signal recorded after its own deadline is
+still a gap, however quickly it was eventually collected. See the README's
+"Evidence timing and correlation" section for how the four deadlines relate
+and how polling is implemented.
 
 **`match_fields` uses flattened dot-notation** against the whole alert document.
 String and number forms are equivalent, so `"true"` and `true` both match.
@@ -149,6 +157,27 @@ The same reasoning applies to the source itself: the check needs spans, so a con
 that asserts `every_tool_call_audited` while collecting no OTel evidence gets a
 `tool_audit_without_spans` warning from `agentsec validate`. Add an `otel` block, or
 set `every_tool_call_audited: false` and rely on `required_records`.
+
+**Matching is per invocation, not per tool name.** Two identical `send_email`
+calls need two audit records; one record can satisfy only one traced call. The
+evaluator first tries to pair each traced call to a record by `tool_call_id` or
+`span_id` — one-to-one, no ambiguity. When either side is missing an invocation
+id, it falls back to the documented multiset key: `tool` name (mandatory) plus
+whichever of `decision`, `principal`, `arguments_digest` and `policy` the span's
+attributes carry, matched against the same fields on the audit record and
+consumed once per match so it cannot satisfy a second call
+(`agentsec.evaluation.axes._fallback_audit_match`). A trace that carries
+invocation ids while the audit log does not (or the reverse) is `error`, not a
+best-effort guess at correlation.
+
+**Live evidence must carry the current run.** Wazuh, OTel and tool-audit
+records collected from a live backend are checked against this run's own
+canonical `agentsec.run_id`; missing, conflicting or another run's id is
+`error` on that axis, never a quietly-passing gap — a matching alert or audit
+record from a different run must not be able to satisfy this one. The bundled
+recorded-file fixture corpus predates run ids and is the one documented
+exemption. See the README's "Evidence timing and correlation" section for the
+full mechanism, including Wazuh pagination.
 
 `must_be_empty: false` is legitimate. The memory-poisoning scenario asserts the
 poisoned entry *is* visible in stored state, so an investigator can find and
@@ -217,6 +246,9 @@ then promote.
 
 ## Validator messages worth knowing
 
+These run on the scenario alone — `agentsec validate --scenario <id>`, no
+`--target` needed:
+
 | Code | Level | What it is telling you |
 |---|---|---|
 | `empty_contract` | error | asserts nothing; would report `secure` forever |
@@ -224,12 +256,30 @@ then promote.
 | `output_assertion_without_value` | error | can never match, so every `must_not` using it passes |
 | `egress_without_resource` | error | matches nothing |
 | `unscoped_tool_assertion` | warning | matches any tool; rarely what was meant |
-| `detection_backend_missing` | error | asserting on evidence this target does not collect |
 | `single_principal_tenancy_test` | warning | cannot demonstrate a cross-tenant failure |
 | `no_stimulus` | warning | nothing drives the agent |
 | `sensitive_data_without_approval` | error | touches PII/secrets with no approval requirement |
 | `destructive_in_pr_gate` | warning | will wedge the merge queue when cleanup fails |
 | `unmapped_scenario` | info | no OWASP/MITRE mapping, so absent from coverage |
+
+These need a target — `agentsec validate --scenario <id> --target <id>`, or
+running inside `agentsec_preview_run` / `agentsec_start_run`, which always
+supply one. They check the scenario against *this* target's declared shape,
+not the scenario in isolation, and `agentsec_start_run` runs them against the
+whole selected batch before any approval-consuming decision — a scenario that
+fails one of these never reaches approval or contacts the target:
+
+| Code | Level | What it is telling you |
+|---|---|---|
+| `environment_mismatch` | error | target's environment isn't one this scenario allows |
+| `missing_capabilities` | error | target does not declare a capability the scenario needs |
+| `target_not_pinned` | error | scenario is pinned to other target ids |
+| `executor_not_allowed` | error | target's allowlist does not include this scenario's executor |
+| `unsupported_driver_operation` | error | target's adapter does not implement a driver operation one of the steps needs |
+| `risk_exceeds_target` | error | scenario risk level exceeds the target's ceiling |
+| `destructive_not_allowed` | error | target does not permit destructive scenarios |
+| `detection_backend_missing` | error | asserting detection on evidence this target does not collect |
+| `evidence_backend_missing` | error | asserting evidence (otel/tool_audit/state_diff) this target does not collect |
 
 ---
 
