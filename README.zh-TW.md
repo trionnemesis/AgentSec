@@ -317,7 +317,7 @@ spec:
 
 ### `agentsec_start_run`
 
-唯一會實際動作的工具。高風險與破壞性情境還需要核准權杖，而**沒有任何工具可以簽發**它 —— 必須由人在 CLI 執行 `agentsec approve`。
+唯一會對 target 實際執行攻擊的工具。（`agentsec_promote_finding` 與 `agentsec_generate_report` 也會寫入，但只寫在本機——SQLite 儲存與報告檔案——不會碰觸 target。）高風險與破壞性情境還需要核准權杖，而**沒有任何工具可以簽發**它 —— 必須由人在 CLI 執行 `agentsec approve`。
 
 | 參數 | 型別 | 說明 |
 |---|---|---|

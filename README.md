@@ -340,7 +340,7 @@ grant its own.
 
 ### `agentsec_start_run`
 
-The only tool that acts. High-risk and destructive scenarios additionally require an approval token, which **no tool can mint** — a human runs `agentsec approve` on the CLI.
+The only tool that executes an attack against the target. (`agentsec_promote_finding` and `agentsec_generate_report` also write — locally, to the SQLite store and to report files — but neither touches a target.) High-risk and destructive scenarios additionally require an approval token, which **no tool can mint** — a human runs `agentsec approve` on the CLI.
 
 | Parameter | Type | Description |
 |---|---|---|
