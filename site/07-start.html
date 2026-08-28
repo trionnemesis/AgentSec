@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Start AgentSec with its offline fixture corpus, then bring the same contract into CI.">
-  <title>AgentSec — Start with one scenario</title>
+  <meta name="description" content="Triage a repository's real attack surface with agentsec scan, then bring a verifiable risk into CI as a reviewed contract.">
+  <title>AgentSec — Triage the repository first</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
@@ -18,8 +18,8 @@
   <main id="main-content" class="page page--split">
     <div class="page-intro">
       <p class="eyebrow">Get started</p>
-      <h2>Start with one scenario.</h2>
-      <p class="supporting-copy">Run the offline fixture corpus on a laptop—no agent, SIEM, or network required. Then connect a staging agent and bring the same contract into CI.</p>
+      <h2>Triage the repository first.</h2>
+      <p class="supporting-copy"><code>agentsec init</code> and <code>agentsec scan</code> need nothing configured, and rank a repository's real attack surface before anything runs. A <code>verifiable</code> risk then becomes a reviewed scenario against a real target—try the offline fixture corpus first if you don't have one yet.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/README.md#quick-start" rel="noopener noreferrer">Read the quick start ↗</a><a class="button" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md" rel="noopener noreferrer">See the roadmap ↗</a></div>
       <span class="status-line">Alpha · offline path verified; live Wazuh/OTel staging remains a validation gap</span>
     </div>
@@ -27,9 +27,10 @@
     <div class="terminal" aria-label="AgentSec quick start commands">
       <div class="terminal-bar"><i aria-hidden="true"></i><span>agentsec / terminal</span></div>
       <pre><code><span class="prompt">$</span> pip install git+https://github.com/trionnemesis/AgentSec.git
-<span class="prompt">$</span> agentsec validate
-<span class="prompt">$</span> agentsec preview --target demo-agent-fixture
-<span class="prompt">$</span> agentsec run --target demo-agent-fixture --profile nightly --html</code></pre>
+<span class="prompt">$</span> agentsec init
+<span class="prompt">$</span> agentsec scan
+<span class="prompt">$</span> agentsec scan --verify --target order-agent-staging
+<span class="prompt">$</span> agentsec dashboard</code></pre>
     </div>
   </main>
 

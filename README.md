@@ -242,6 +242,8 @@ Or commit it, so the whole team gets the same gateway:
 
 Add `"AGENTSEC_MCP_READ_ONLY": "1"` for a review-only session — in that mode `agentsec_start_run` is refused by the dispatcher, not merely discouraged, and the resource surface narrows to the [published subset](#resources). The repo also ships a Claude Code skill and a permission hook under [`.claude/`](.claude/README.md).
 
+The shipped skill walks a four-phase playbook: repository risk triage → red execution plan → blue evidence plan → purple remediation. It starts from `agentsec://project/risks` or `agentsec scan` — never from drafting scenario YAML — and only turns a `verifiable` risk into a reviewed Attack–Detection Contract; see [`.claude/skills/agentsec/SKILL.md`](.claude/skills/agentsec/SKILL.md) for the full operating rules.
+
 ### 5. Gate a real agent in CI
 
 Call the reusable workflow from the repository that owns the agent, pinned to a release tag:

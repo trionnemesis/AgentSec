@@ -223,6 +223,8 @@ claude mcp add agentsec -- agentsec-mcp
 
 若只是要檢視結果，加上 `"AGENTSEC_MCP_READ_ONLY": "1"` 進入唯讀模式 —— 此時 `agentsec_start_run` 會在 dispatcher 直接被拒絕，而不只是「不建議使用」，資源介面也會收斂成[發布子集](#資源)。本 repo 也在 [`.claude/`](.claude/README.md) 附上 Claude Code 的 skill 與權限 hook。
 
+這份 skill 會走一套四階段流程：repository risk triage → red execution plan → blue evidence plan → purple remediation。它從 `agentsec://project/risks` 或 `agentsec scan` 開始 —— 而不是直接動手寫 scenario YAML —— 只有 `verifiable` 的風險才會進入一份經過審查的攻擊—偵測契約；完整操作規則見 [`.claude/skills/agentsec/SKILL.md`](.claude/skills/agentsec/SKILL.md)。
+
 ### 5. 在 CI 中為真實 Agent 把關
 
 從擁有該 agent 的 repo 呼叫這個可重複使用的 workflow，並固定在某個 release tag 上：
