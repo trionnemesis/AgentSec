@@ -132,13 +132,14 @@ exemption, since it predates run ids.)
 
 - Prefer matching by `tool_call_id` / `span_id` — one traced call, one audit
   record, one-to-one.
-- When invocation ids are missing from both sides, fall back to the documented
+- When the trace carries no invocation ids, fall back to the documented
   multiset key: `tool` name (mandatory) plus whichever of `decision`,
   `principal`, `arguments_digest` and `policy` the span's attributes carry,
   matched against the same fields on a `ToolAuditRecord`
   (`evaluation/axes.py::_fallback_audit_match`). Each record is consumed once
   it is matched, so two identically-named traced calls can never be satisfied
-  by one audit record.
+  by one audit record. A trace with ids on only some calls is `error`, not a
+  fallback candidate.
 
 Backend outage, a Wazuh pagination failure (collection scrolls and must
 consume every page), a missing required source, or undecidable correlation are
