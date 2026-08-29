@@ -1,0 +1,14 @@
+apiVersion: agentsec.dev/v1alpha1
+kind: SkillEvalSuite
+suite_id: agentsec-static
+profile: static
+skill_id: agentsec
+entrypoint:
+  path: .claude/skills/agentsec/SKILL.md
+  digest: sha256:ed2b30895c3fd438a240fcf0ff6f9e2c4a5db4db65b78e12e9a376c74630fd82
+references:
+  - path: .claude/skills/agentsec/references/red-execution.md
+    digest: sha256:f0233808af09a99d8d31d72e2b668c7030a3a10006893deced2eda84f2194a9f
+  - path: .claude/skills/agentsec/references/blue-evidence.md
+    digest: sha256:ec57d2a3390a122a72aa3785b7a63a3427b76126daff4635ac928044845c8146
+scripts: []

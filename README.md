@@ -32,7 +32,9 @@ AgentSec closes both. Every scenario carries a contract over four axes, every ru
 | **Evidence** | Could an investigator reconstruct the incident afterwards? |
 | **Response** | Did the documented or automated reaction actually happen? |
 
-The verdict names which half is broken: `prevention_gap` means the control failed but you can watch it fail; `detection_gap` means it failed silently.
+The verdict names which half is broken: `prevention_gap` means prevention failed
+but detection saw it; `detection_gap` means detection was silent, whether or not
+prevention blocked the attempt.
 
 Once the MCP gateway is wired into Claude Code, just ask:
 
@@ -50,13 +52,14 @@ Once the MCP gateway is wired into Claude Code, just ask:
 |---|---|
 | **Repository scan** | Point it at a local repo: finds the agents, skills, MCP servers, hooks, tool grants and memory stores in it, ranks the risks, and says which ones a scenario can actually settle |
 | **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework, read from dependencies, imports and builder calls without importing or running any of it. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
+| **Static skill-package gate** | `agentsec skill validate --profile static` checks current workspace bytes against a reviewed, fixed-location `SkillEvalSuite`: strict skill frontmatter, declared lane assets and scripts, full SHA-256 pins, and parsed Markdown destinations, without a model or credentials. It protects package integrity; it does not test whether a model followed the skill |
 | **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against the surfaces discovered here and the scenarios that actually ran — a grade is never a verdict, and a finding no scenario covers stays `not_tested` |
 | **Run provenance** | Every verdict is marked `recorded` / `live` / `mixed`, derived from the executor and evidence backends actually used, so a fixture-derived `secure` is never read as one proven against a live agent |
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
 | **Deterministic verdict** | Pure evaluator, no model, no clock, no network in the decision path — the same evidence always yields the same verdict |
 | **Evidence collection** | OpenTelemetry spans, Wazuh alerts, tool-call audit and database state diff, normalised into one schema |
 | **Evidence truthfulness** | Polls required sources through contract deadlines, rejects missing or foreign-run correlation, consumes one audit record per traced call, and evaluates response SLA against event time |
-| **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network |
+| **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network for the four original scenarios; the `AGT-CONFIG-*` family still needs a `ci` or `staging` target |
 | **CI gate** | JUnit output plus meaningful exit codes, and a reusable GitHub workflow you call from the agent's own repo |
 | **Constrained MCP gateway** | 11 narrow tools and 10 read-only resources; no shell, no SQL, no free-text URL |
 | **Publication boundary** | A read-only report gateway serves a projected subset — turn digests, pseudonymous principals, no evidence or audit URIs — so a dashboard cannot re-commit the breach it reports |
@@ -68,11 +71,12 @@ Once the MCP gateway is wired into Claude Code, just ask:
 * **Agent capabilities exercised**: RAG, tool calling, persistent memory, multi-tenancy, email
 * **Frameworks mapped**: OWASP Agentic Top 10 (8/10 categories covered by the bundled scenarios: `AAI001`–`AAI004`, `AAI006`–`AAI009`) and OWASP LLM Top 10
 * **Bundled scenarios**: eight — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block)
+* **Where each runs today**: the first four have recorded fixtures and run offline against `demo-agent-fixture`; the four `AGT-CONFIG-*` scenarios are scoped to `ci` / `staging` and do not yet have recorded fixtures
 
 | Verdict | Meaning | Precedence |
 |---|---|---|
 | `error` | The evidence pipeline broke — the run proves nothing and must not imply it does | highest |
-| `detection_gap` | The attack worked and nothing alerted | ↓ |
+| `detection_gap` | Nothing alerted, whether or not prevention blocked the attempt | ↓ |
 | `prevention_gap` | The attack worked, but it was seen | ↓ |
 | `evidence_gap` | You could not reconstruct what happened | ↓ |
 | `response_gap` | Nobody reacted to the alert | ↓ |
@@ -107,7 +111,7 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 
 ```bash
 # the released wheel (pinned, and what CI installs)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.3.2/agentsec-0.3.2-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.0/agentsec-0.4.0-py3-none-any.whl
 
 # or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -214,6 +218,11 @@ Expected output — deliberately not all green:
 
 Read that as: the tenant boundary is broken **but instrumented** — fix the code. Memory poisoning is broken **and invisible** — fix the code *and* ship a Wazuh rule. The run exits `1`, by design.
 
+That offline run selects four scenarios, not all eight. `demo-agent-fixture` is
+a `local` target; the `AGT-CONFIG-*` family is scoped to `ci` and `staging`
+until its fixtures are recorded. `agentsec preview` prints the selected set
+before anything runs.
+
 **On "no Wazuh":** the fixture corpus supplies recorded Wazuh alerts and OTel spans from files, so the detection axis is genuinely evaluated offline — `AGT-MEMPOIS-001` is a `detection_gap` because rule `100720` is absent from those recorded alerts, not because nothing was checked. Gating a **real** agent on detection does need a live signal source, declared per target in `policy/targets.yaml`: a Wazuh indexer (`kind: opensearch`) or OTel. Wazuh is not mandatory — a contract asserting only `detection.otel` is valid — but it is currently the only SIEM collector implemented.
 
 **Evidence timing and correlation:** attack execution timeout, telemetry settle time, detection SLA, and response SLA are separate boundaries. The collector polls only the sources required by the contract, stops early once the required signals are decisive, and retains the events' observed timestamps. Live Wazuh, OTel, and tool-audit records must carry the current canonical `agentsec.run_id`; missing, conflicting, or foreign-run correlation is `error`, while the bundled recorded-file corpus has one explicit `trusted_fixture` compatibility path. Wazuh collection uses a bounded Scroll over the run window and consumes every page. `every_tool_call_audited` matches one audit record to each traced invocation, preferring `tool_call_id` / `span_id`, and a response present only after `within_seconds` remains a `response_gap`. These paths are covered by deterministic mocks and regression tests; the live Wazuh/OTel integration is still an alpha validation gap.
@@ -242,7 +251,34 @@ Or commit it, so the whole team gets the same gateway:
 
 Add `"AGENTSEC_MCP_READ_ONLY": "1"` for a review-only session — in that mode `agentsec_start_run` is refused by the dispatcher, not merely discouraged, and the resource surface narrows to the [published subset](#resources). The repo also ships a Claude Code skill and a permission hook under [`.claude/`](.claude/README.md).
 
-The shipped skill walks a four-phase playbook: repository risk triage → red execution plan → blue evidence plan → purple remediation. It starts from `agentsec://project/risks` or `agentsec scan` — never from drafting scenario YAML — and only turns a `verifiable` risk into a reviewed Attack–Detection Contract; see [`.claude/skills/agentsec/SKILL.md`](.claude/skills/agentsec/SKILL.md) for the full operating rules.
+The repository ships **one purple-team workbench skill**, not separate red- and
+blue-team skills. [`.claude/skills/agentsec/SKILL.md`](.claude/skills/agentsec/SKILL.md)
+owns the six non-negotiables and routes one four-phase playbook: repository risk
+triage → red execution plan → blue evidence plan → purple remediation. It
+starts from `agentsec://project/risks` or `agentsec scan` — never from a blank
+scenario — and only a `verifiable` risk enters one reviewed Attack–Detection
+Contract. It progressively routes attack-step design to
+[`references/red-execution.md`](.claude/skills/agentsec/references/red-execution.md)
+and evidence design to
+[`references/blue-evidence.md`](.claude/skills/agentsec/references/blue-evidence.md)
+before returning to the shared remediation phase. The references are lanes
+inside the same workbench, not independently executable skills.
+
+Phase 0 static assurance is deliberately narrower. Run
+`agentsec skill validate --profile static` to validate current workspace bytes
+against the reviewed `SkillEvalSuite`, strict frontmatter, declared lane assets
+and scripts, full SHA-256 pins, and parsed Markdown destinations. The check is
+read-only and model- and credential-free; structural drift fails its separate
+CI workflow. It does **not** execute the playbook, prove that a model followed
+the six rules, write the dashboard, or produce or change a `PurpleVerdict`.
+Those documents remain guidance; runtime boundaries remain in the service,
+closed schemas, permissions, hook, and tests. Dynamic Skill Assurance remains
+`not_tested`; its Phase 1/2 runner is still parked. A discovered skill without a
+static suite is `not_tested`; malformed or unsupported inputs fail closed as
+`invalid` or `error`. The exact-set scan assumes an isolated checkout with no
+concurrent process mutating the skill tree, which is the environment supplied by
+the standalone CI workflow. It is not a semantic scan of prose, code spans or
+bare URLs.
 
 ### 5. Gate a real agent in CI
 
@@ -251,7 +287,7 @@ Call the reusable workflow from the repository that owns the agent, pinned to a 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.3.2
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.0
     with:
       target: order-agent-staging
       profile: pr
@@ -399,23 +435,28 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 | Command | Purpose | Common flags |
 |---|---|---|
 | `agentsec scan` | Classify whether this repository implements an agent, then rank its attack surface; `--verify` hands the provable high-risk subset to the harness | `--verify`, `--target`, `--profile`, `--output json` |
+| `agentsec skill validate` | Validate current skill bytes against a reviewed suite with the model-free Phase 0 static profile; package integrity only, never model behaviour or a Purple verdict | `--profile static`, `--workspace` |
 | `agentsec validate` | Validate one scenario or the whole catalogue | `--scenario`, `--target`, `--strict` |
 | `agentsec preview` | Show what a run would do, without doing it | `--target`, `--profile`, `--scenario` |
-| `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--output junit`, `--output-file`, `--dry-run`, `--html` |
+| `agentsec run` | Run scenarios and exit non-zero on a blocking finding | `--target`, `--profile`, `--scenario`, `--output junit`, `--output-file`, `--dry-run`, `--approval`, `--html` |
 | `agentsec report` | Render recent runs as HTML / JSON / JUnit | `--target`, `--profile`, `--format`, `--limit` |
 | `agentsec dashboard` | Print the composed dashboard document; `--html` also writes the page | `--target`, `--profile`, `--html` |
 | `agentsec init \| project show` | Write the project manifest; inventory what it declares | `--project-id`, `--name`, `--force` |
-| `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason` |
+| `agentsec approve` | Mint a scoped, expiring, single-use approval token | `--scenario`, `--target`, `--ttl`, `--reason`, `--by` |
 | `agentsec validate-detection` | Check detection expectations are checkable against a target | `--scenario`, `--target` |
 | `agentsec get-run` | Print one run as JSON | `RUN_ID` |
 | `agentsec compare` | Diff two runs check-by-check | `RUN_A RUN_B` |
 | `agentsec coverage` | OWASP Agentic Top 10 coverage and the verdict histogram | — |
 | `agentsec audit` | Tail the audit log, including refused requests | `--limit` |
-| `agentsec finding list \| promote \| draft` | Work with findings and their workflow | `--status`, `--regression`, `--detection` |
-| `agentsec targets \| scenarios list` | Inspect the allowlist and the catalogue | `--target` |
+| `agentsec finding list \| promote \| draft-regression` | Work with findings and their workflow | `--status`, `--regression`, `--detection` |
+| `agentsec targets list \| describe`, `agentsec scenarios list` | Inspect the allowlist and the catalogue | `TARGET_ID` on `targets describe`; `--target` on `scenarios list` |
 | `agentsec mcp-contract` | Print the MCP tool / resource surface as JSON | — |
 
-**Exit codes are the contract:** `0` clean, `1` a blocking finding, `2` the harness could not tell you anything. Conflating `1` and `2` is how a pipeline job becomes noise people learn to skip.
+**Exit codes are the contract:** `0` is success (no blocking finding, or a valid
+static package); `1` is a command-specific conclusive negative result (a
+blocking finding, or an invalid static package); `2` means the command could
+not reach a conclusion. Conflating `1` and `2` is how a pipeline job becomes
+noise people learn to skip.
 
 ## Environment variables
 
@@ -423,7 +464,7 @@ The CLI is the interface CI uses, and therefore the one that must never depend o
 |---|---|---|
 | `AGENTSEC_WORKSPACE` | Workspace root holding `scenarios/`, `policy/`, `results/` | cwd |
 | `AGENTSEC_DB` | SQLite results path | `<workspace>/results/agentsec.db` |
-| `AGENTSEC_ACTOR` | Recorded on every audit row; CI should set `ci:<actor>` | `local` |
+| `AGENTSEC_ACTOR` | Recorded on every audit row; CI should set `ci:<actor>` | `cli` from the CLI; `mcp` from the gateway |
 | `AGENTSEC_MCP_READ_ONLY` | `1` runs the report gateway: non-read-only tools are refused at the dispatcher, and only the allowlisted resources are served | unset |
 | `AGENTSEC_PSEUDONYM_SALT` | Salt for the principal / tenant / actor labels in published output | a value that ships in the source |
 | `AGENTSEC_ALLOW_EXTERNAL_HOSTS` | Comma-separated hosts exempt from the private-address check | unset |
@@ -433,21 +474,22 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ## Architecture
 
 ```
-schemas/               JSON Schema for scenario, target, evidence, the project
-                       manifest and the published dashboards — the portable assets
+schemas/               JSON Schema for scenario, target, evidence, project and
+                       SkillEvalSuite manifests, and published dashboards
 scenarios/             The scenario catalogue (eight worked examples)
 policy/                Target allowlist, run profiles, approval ledger
-fixtures/              Recorded corpus so everything runs offline
-.agentsec/             Project manifest: stable id and reviewed relative locations
+fixtures/              Recorded corpus for the four original scenarios
+.agentsec/             Project manifest and reviewed static skill suite
 
 src/agentsec/
 ├── models/            # typed contracts crossing every layer boundary
 ├── project/           # selected-project resolution, surface discovery, agent fingerprint
 ├── inspect/           # deterministic repository risk rules → the risk plane
+├── skill_eval/        # model-free Phase 0 skill package integrity
 ├── posture/           # static posture ingestion, and which findings a scenario covers
 ├── scenario/          # loader, three-layer validator, catalogue + coverage
 ├── policy/            # allowlist, profiles, approvals, the single policy guard
-├── execution/         # red executors (replay, promptfoo) and target adapters
+├── execution/         # red executors (replay, promptfoo; pyrit/pytest refuse) + adapters
 ├── evidence/          # collectors: OTel, Wazuh, tool audit, DB state diff
 ├── evaluation/        # the four axes and the verdict resolver
 ├── reporting/         # normaliser → JUnit / HTML / JSON; publication projections
@@ -476,7 +518,11 @@ make demo      # full offline pipeline (exits 1 by design)
 make report    # regenerate HTML/JSON/JUnit from stored runs
 ```
 
-Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry collector, `.[pyrit]` for the PyRIT executor. The core install deliberately depends on nothing that touches an external system, so the deterministic path stays testable on an air-gapped runner.
+Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry
+collector, and `.[pyrit]` for the PyRIT dependency (the executor itself still
+refuses cleanly). The core install deliberately depends on nothing that touches
+an external system, so the deterministic path stays testable on an air-gapped
+runner.
 
 ## Trust and safety posture
 
@@ -495,7 +541,7 @@ Optional extras: `.[mcp]` for the gateway, `.[otel]` for the OpenTelemetry colle
 
 ## Status
 
-Alpha; latest release [`v0.3.2`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.2). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
+Alpha; latest release [`v0.4.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.0). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
 
 One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
 

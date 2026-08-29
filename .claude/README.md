@@ -8,10 +8,25 @@ Three pieces, in ascending order of how much they can be talked out of:
 | `settings.json` `permissions` | harness rule | no |
 | `hooks/guard_agentsec.py` | executed code | no |
 
+The separate Phase 0 static profile is orthogonal to those three runtime
+layers. `agentsec skill validate --profile static` checks current workspace
+bytes against the reviewed `SkillEvalSuite`, frontmatter, declared lane assets
+and scripts, exact SHA-256 pins, and parsed Markdown destinations without a model
+or credentials. It is not a semantic scan of prose, code spans or bare URLs. It fails CI on
+package drift, but it cannot observe whether a model followed this guidance and
+does not write the dashboard, store a result, or produce a `PurpleVerdict`.
+
 That ordering is the reason the hook exists. This tool reads adversarial content
 by design — poisoned documents, injected tool responses — so anything expressed
 only as instructions is one convincing paragraph from being ignored. The hook runs
 as a subprocess and returns a decision the harness enforces.
+
+The workbench remains one purple-team skill. `skills/agentsec/SKILL.md` owns the
+six shared rules and routes red execution work to
+`skills/agentsec/references/red-execution.md` and blue evidence work to
+`skills/agentsec/references/blue-evidence.md` only when those lanes are reached.
+Neither reference is an independently executable skill or an enforcement
+boundary.
 
 ## What the hook refuses
 

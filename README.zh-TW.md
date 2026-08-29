@@ -26,7 +26,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **Evidence（證據）** | 事後調查人員能不能重建整起事件？ |
 | **Response（應變）** | 文件上或自動化的反應，實際上有沒有發生？ |
 
-判定結果會直接指出壞掉的是哪一半：`prevention_gap` 代表控制措施失效、但你看得見它失效；`detection_gap` 代表它無聲地失效了。
+判定結果會直接指出壞掉的是哪一半：`prevention_gap` 代表預防失效、但偵測看見了；`detection_gap` 代表偵測沒有發出訊號，不論預防是否擋下這次嘗試。
 
 把 MCP gateway 接上 Claude Code 之後，直接問就好：
 
@@ -44,10 +44,11 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 |---|---|
 | **Repository 掃描** | 指向一個本機 repo：找出其中的 agent、skill、MCP server、hook、工具授權與 memory／RAG 攻擊面，排序風險，並指出哪些風險有情境能真正驗證 |
 | **Agent 指紋** | 這個 repository 究竟有沒有「實作」一個 AI Agent、用的是哪個框架 —— 從相依套件、import 與 builder 呼叫靜態判讀，不 import 也不執行任何 repo 內程式碼。只有 `CLAUDE.md` 與 `.mcp.json` 的 repo 會判為 `configuration_only`，絕不會被說成 runtime agent |
+| **靜態 skill package 閘門** | `agentsec skill validate --profile static` 不需要模型或憑證，會用固定位置、經審查的 `SkillEvalSuite` 檢查目前 workspace 的 bytes、嚴格 frontmatter、已宣告的 lane assets 與 scripts、完整 SHA-256 pin，以及解析到的 Markdown destinations。它保護 package 完整性，不會測試模型是否遵循 skill |
 | **攻擊—偵測契約** | 單一 YAML 同時描述攻擊，以及預防／偵測／證據／應變四個面向的期待 |
 | **決定性判定** | 純函式評估器，決策路徑上沒有模型、沒有時鐘、沒有網路 —— 相同證據永遠得到相同判定 |
 | **證據蒐集** | OpenTelemetry span、Wazuh 告警、工具呼叫稽核、資料庫狀態差異，全部正規化成同一份綱要 |
-| **離線 fixture 語料** | 完整流程可在筆電上執行，不需要 agent、不需要 SIEM、不需要網路 |
+| **離線 fixture 語料** | 最初四個情境的完整流程可在筆電上執行，不需要 agent、不需要 SIEM、不需要網路；`AGT-CONFIG-*` 家族仍需要 `ci` 或 `staging` 目標 |
 | **CI 把關** | 輸出 JUnit 並回傳有意義的結束碼，另提供可重複使用的 GitHub workflow，從 agent 自己的 repo 呼叫 |
 | **受限的 MCP gateway** | 11 個窄工具與 10 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
@@ -61,11 +62,12 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 * **涵蓋的 Agent 能力**：RAG、工具呼叫、持久記憶、多租戶、寄送郵件
 * **對應框架**：OWASP Agentic Top 10（內建情境覆蓋 8/10 個類別：`AAI001`–`AAI004`、`AAI006`–`AAI009`）與 OWASP LLM Top 10
 * **內建情境**：八個 —— 跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴，以及針對 agent「設定」下手的攻擊家族（被下毒的專案指令外洩密鑰、agent 定義檔中隱藏的零寬 Unicode 指令、把不可信內容插進 shell 指令的 hook、工作階段中途新增且帶有憑證形狀 env 區塊的 MCP server）
+* **目前各自跑在哪裡**：前四個已有錄製 fixture，可離線對 `demo-agent-fixture` 執行；四個 `AGT-CONFIG-*` 情境只涵蓋 `ci`／`staging`，而且還沒有錄製 fixture
 
 | 判定 | 意義 | 優先序 |
 |---|---|---|
 | `error` | 證據管線壞掉 —— 這次執行什麼都沒證明，也不得暗示自己證明了什麼 | 最高 |
-| `detection_gap` | 攻擊成功，而且沒有任何告警 | ↓ |
+| `detection_gap` | 沒有任何告警，不論預防是否擋下這次嘗試 | ↓ |
 | `prevention_gap` | 攻擊成功，但至少被看見了 | ↓ |
 | `evidence_gap` | 你無法重建當時發生了什麼 | ↓ |
 | `response_gap` | 沒有人對告警做出反應 | ↓ |
@@ -100,7 +102,7 @@ flowchart TD
 
 ```bash
 # 已發佈的 wheel（版本固定，也是 CI 安裝的那一個）
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.3.1/agentsec-0.3.1-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.0/agentsec-0.4.0-py3-none-any.whl
 
 # 或安裝目前的 main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -199,6 +201,10 @@ agentsec run --target demo-agent-fixture --profile nightly --html
 
 這份輸出要這樣讀：租戶邊界壞了，**但有被監控到** —— 修程式即可。記憶投毒則是壞了**而且看不見** —— 程式要修，Wazuh 規則也要補。這次執行會以 `1` 結束，這是設計如此。
 
+這次離線執行會選出四個情境，不是全部八個。`demo-agent-fixture` 是
+`local` 目標；`AGT-CONFIG-*` 家族在 fixture 錄好之前只涵蓋 `ci` 與
+`staging`。`agentsec preview` 會在任何東西執行前印出實際選取的集合。
+
 **關於「不需要 Wazuh」：** fixture 語料是以檔案提供錄製好的 Wazuh 告警與 OTel span，因此偵測面向在離線狀態下**確實有被評估** —— `AGT-MEMPOIS-001` 之所以是 `detection_gap`，是因為那份錄製告警裡找不到規則 `100720`，而不是因為沒檢查。但若要對**真實** agent 的偵測能力把關，就需要一個活的訊號來源，在 `policy/targets.yaml` 中逐一為目標宣告：Wazuh indexer（`kind: opensearch`）或 OTel。Wazuh 並非必要 —— 只斷言 `detection.otel` 的契約同樣合法 —— 但它目前是唯一已實作的 SIEM 蒐集器。
 
 ### 4. 加入 Claude Code
@@ -223,7 +229,32 @@ claude mcp add agentsec -- agentsec-mcp
 
 若只是要檢視結果，加上 `"AGENTSEC_MCP_READ_ONLY": "1"` 進入唯讀模式 —— 此時 `agentsec_start_run` 會在 dispatcher 直接被拒絕，而不只是「不建議使用」，資源介面也會收斂成[發布子集](#資源)。本 repo 也在 [`.claude/`](.claude/README.md) 附上 Claude Code 的 skill 與權限 hook。
 
-這份 skill 會走一套四階段流程：repository risk triage → red execution plan → blue evidence plan → purple remediation。它從 `agentsec://project/risks` 或 `agentsec scan` 開始 —— 而不是直接動手寫 scenario YAML —— 只有 `verifiable` 的風險才會進入一份經過審查的攻擊—偵測契約；完整操作規則見 [`.claude/skills/agentsec/SKILL.md`](.claude/skills/agentsec/SKILL.md)。
+本 repo 只提供**一個紫隊 workbench skill**，不把紅隊與藍隊拆成兩個
+skill。[`.claude/skills/agentsec/SKILL.md`](.claude/skills/agentsec/SKILL.md)
+集中管理六項不可妥協原則，並路由同一套四階段流程：repository risk
+triage → red execution plan → blue evidence plan → purple remediation。它從
+`agentsec://project/risks` 或 `agentsec scan` 開始 —— 而不是從空白 scenario
+開始 —— 也只有 `verifiable` 風險會進入同一份經過審查的攻擊—偵測
+契約。它在攻擊步驟設計時逐步導向
+[`references/red-execution.md`](.claude/skills/agentsec/references/red-execution.md)，
+在證據設計時導向
+[`references/blue-evidence.md`](.claude/skills/agentsec/references/blue-evidence.md)，
+最後回到共用的 remediation 階段。兩份 reference 都只是同一 workbench
+裡的 lane，不是可以獨立執行的 skill。
+
+Phase 0 靜態保證刻意只處理較窄的範圍。執行
+`agentsec skill validate --profile static` 會使用經審查的 `SkillEvalSuite`
+驗證目前 workspace 的 bytes、嚴格 frontmatter、已宣告的 lane assets 與
+scripts、完整 SHA-256 pin，以及解析到的 Markdown destinations。這項檢查是唯讀的，不需要模型或認證
+憑證；結構漂移會讓獨立的 CI workflow 回報失敗。但它**不會**執行 playbook、
+證明模型遵循六項原則、寫入 dashboard，或產生、改變 `PurpleVerdict`。
+文件仍然只是 guidance；真正的執行期邊界仍在 service、封閉 schema、
+permissions、hook 與 tests。動態 Skill Assurance 仍為 `not_tested`，其
+Phase 1/2 runner 也仍維持 parked。已探索到的 skill 若沒有靜態 suite，會
+回報 `not_tested`；格式錯誤或不支援的輸入會 fail closed 成 `invalid` 或
+`error`。完整檔案集合的掃描假設 checkout 是隔離的，沒有另一個 process
+同時改寫 skill tree；獨立 CI workflow 提供的就是這種環境。
+它不是對 prose、code spans 或 bare URLs 的語意掃描。
 
 ### 5. 在 CI 中為真實 Agent 把關
 
@@ -232,7 +263,7 @@ claude mcp add agentsec -- agentsec-mcp
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.3.1
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.0
     with:
       target: order-agent-staging
       profile: pr
@@ -352,23 +383,27 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 | 指令 | 用途 | 常用參數 |
 |---|---|---|
 | `agentsec scan` | 判定這個 repository 是否實作 agent，再掃描並排序其攻擊面；`--verify` 把可驗證的高風險子集交給 harness | `--verify`、`--target`、`--profile`、`--output json` |
+| `agentsec skill validate` | 使用不依賴模型的 Phase 0 靜態 profile，依經審查的 suite 驗證目前 skill bytes；只保證 package 完整性，不判定模型行為，也不產生 Purple verdict | `--profile static`、`--workspace` |
 | `agentsec validate` | 驗證單一情境或整份目錄 | `--scenario`、`--target`、`--strict` |
 | `agentsec preview` | 顯示執行會做什麼，但不執行 | `--target`、`--profile`、`--scenario` |
-| `agentsec run` | 執行情境，遇到阻擋級 finding 時以非零結束 | `--target`、`--profile`、`--output junit`、`--output-file`、`--dry-run`、`--html` |
+| `agentsec run` | 執行情境，遇到阻擋級 finding 時以非零結束 | `--target`、`--profile`、`--scenario`、`--output junit`、`--output-file`、`--dry-run`、`--approval`、`--html` |
 | `agentsec report` | 將近期執行輸出成 HTML / JSON / JUnit | `--target`、`--profile`、`--format`、`--limit` |
 | `agentsec dashboard` | 輸出組合後的儀表板文件；加 `--html` 則同時寫出頁面 | `--target`、`--profile`、`--html` |
 | `agentsec init \| project show` | 寫出專案宣告檔；盤點它宣告了什麼 | `--project-id`、`--name`、`--force` |
-| `agentsec approve` | 簽發有作用域、會過期、只能用一次的核准權杖 | `--scenario`、`--target`、`--ttl`、`--reason` |
+| `agentsec approve` | 簽發有作用域、會過期、只能用一次的核准權杖 | `--scenario`、`--target`、`--ttl`、`--reason`、`--by` |
 | `agentsec validate-detection` | 檢查偵測期待在該目標上是否檢查得了 | `--scenario`、`--target` |
 | `agentsec get-run` | 以 JSON 輸出單次執行 | `RUN_ID` |
 | `agentsec compare` | 逐項比對兩次執行 | `RUN_A RUN_B` |
 | `agentsec coverage` | OWASP Agentic Top 10 覆蓋率與判定分佈 | — |
 | `agentsec audit` | 查看稽核紀錄尾端，含被拒絕的請求 | `--limit` |
-| `agentsec finding list \| promote \| draft` | 處理 finding 與其工作流程 | `--status`、`--regression`、`--detection` |
-| `agentsec targets \| scenarios list` | 檢視允許清單與情境目錄 | `--target` |
+| `agentsec finding list \| promote \| draft-regression` | 處理 finding 與其工作流程 | `--status`、`--regression`、`--detection` |
+| `agentsec targets list \| describe`、`agentsec scenarios list` | 檢視允許清單與情境目錄 | `targets describe` 用位置參數 `TARGET_ID`；`scenarios list` 用 `--target` |
 | `agentsec mcp-contract` | 以 JSON 輸出 MCP 工具／資源介面 | — |
 
-**結束碼就是契約：** `0` 乾淨、`1` 有阻擋級 finding、`2` 這套工具無法給你任何結論。把 `1` 和 `2` 混為一談，正是 pipeline 上的工作變成大家學會忽略的雜訊的方式。
+**結束碼就是契約：** `0` 表示成功（沒有阻擋級 finding，或靜態 package
+有效）；`1` 表示該指令得出可定論的負面結果（阻擋級 finding，或無效的
+靜態 package）；`2` 表示指令無法得出結論。把 `1` 和 `2` 混為一談，正是
+pipeline 上的工作變成大家學會忽略的雜訊的方式。
 
 ## 環境變數
 
@@ -376,7 +411,7 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 |---|---|---|
 | `AGENTSEC_WORKSPACE` | 工作區根目錄，內含 `scenarios/`、`policy/`、`results/` | 目前目錄 |
 | `AGENTSEC_DB` | SQLite 結果檔路徑 | `<workspace>/results/agentsec.db` |
-| `AGENTSEC_ACTOR` | 寫入每一筆稽核紀錄；CI 應設為 `ci:<actor>` | `local` |
+| `AGENTSEC_ACTOR` | 寫入每一筆稽核紀錄；CI 應設為 `ci:<actor>` | CLI 為 `cli`；gateway 為 `mcp` |
 | `AGENTSEC_MCP_READ_ONLY` | 設為 `1` 時進入報表 gateway：dispatcher 拒絕所有非唯讀工具，資源也只提供允許清單內的那幾個 | 未設定 |
 | `AGENTSEC_PSEUDONYM_SALT` | 發布輸出中 principal / 租戶 / actor 代號所用的 salt | 原始碼內附的預設值 |
 | `AGENTSEC_ALLOW_EXTERNAL_HOSTS` | 以逗號分隔、豁免私有位址檢查的主機清單 | 未設定 |
@@ -386,21 +421,22 @@ CLI 是 CI 使用的介面，因此它絕不能依賴任何模型存在。
 ## 架構
 
 ```
-schemas/               scenario / target / evidence、專案宣告檔與發布用儀表板的
-                       JSON Schema —— 可攜的核心資產
+schemas/               scenario / target / evidence、project / SkillEvalSuite
+                       宣告檔與發布用儀表板的 JSON Schema
 scenarios/             情境目錄（八個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
-fixtures/              錄製語料，讓一切都能離線執行
-.agentsec/             專案宣告檔：穩定 id 與經審查的相對位置
+fixtures/              最初四個情境的錄製語料
+.agentsec/             專案宣告檔與經審查的靜態 skill suite
 
 src/agentsec/
 ├── models/            # 跨越所有層邊界的型別化契約
 ├── project/           # 選定專案的解析、表面探索與 agent 指紋
 ├── inspect/           # repository 風險規則（決定性）→ 風險面
+├── skill_eval/        # 不需模型的 Phase 0 skill package 完整性檢查
 ├── posture/           # 靜態態勢匯入，以及哪些 finding 有情境涵蓋
 ├── scenario/          # 載入器、三層驗證器、目錄與覆蓋率
 ├── policy/            # 允許清單、profile、核准，以及唯一的政策守門點
-├── execution/         # 紅隊執行器（replay、promptfoo）與目標轉接器
+├── execution/         # 紅隊執行器（replay、promptfoo；pyrit/pytest 會拒絕）與轉接器
 ├── evidence/          # 蒐集器：OTel、Wazuh、工具稽核、DB 狀態差異
 ├── evaluation/        # 四個面向與判定解析器
 ├── reporting/         # 正規化器 → JUnit / HTML / JSON；發布投影
@@ -429,7 +465,10 @@ make demo      # 完整離線流程（設計上會以 1 結束）
 make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 ```
 
-選用套件：`.[mcp]` 提供 gateway、`.[otel]` 提供 OpenTelemetry 蒐集器、`.[pyrit]` 提供 PyRIT 執行器。核心安裝刻意不依賴任何會碰到外部系統的套件，好讓決定性路徑在完全離線的 runner 上也測得動。
+選用套件：`.[mcp]` 提供 gateway、`.[otel]` 提供 OpenTelemetry 蒐集器、
+`.[pyrit]` 只安裝 PyRIT 相依套件（執行器本身仍會乾淨地拒絕）。核心安裝
+刻意不依賴任何會碰到外部系統的套件，好讓決定性路徑在完全離線的
+runner 上也測得動。
 
 ## 信任與安全設計
 
@@ -448,7 +487,7 @@ make report    # 由已儲存的執行重新產生 HTML/JSON/JUnit
 
 ## 狀態
 
-Alpha，最新版本為 [`v0.3.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
+Alpha，最新版本為 [`v0.4.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.0)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
 
 第一次執行前值得知道的一件事：情境目錄是從 `<workspace>/scenarios` 讀取的，所以在不是
 AgentSec checkout 的 repository 裡沒有東西可以比對，每一條風險都會落在 `not_verifiable`。

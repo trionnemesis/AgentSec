@@ -1,4 +1,4 @@
-.PHONY: help install test lint types check demo report clean schemas
+.PHONY: help install test lint types skill-static check demo report clean schemas
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -15,7 +15,10 @@ lint:  ## ruff
 types:  ## mypy
 	mypy
 
-check: lint types test  ## local lint, types and tests
+skill-static:  ## deterministic static Skill Assurance (no model or credentials)
+	agentsec skill validate --profile static
+
+check: lint types test skill-static  ## local lint, types, tests and skill integrity
 
 demo:  ## offline pipeline; expected run exit 1 is ignored, so this target succeeds
 	agentsec validate --strict

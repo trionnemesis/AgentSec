@@ -8,6 +8,80 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-29
+
+### Added
+
+- **One purple-team workbench with progressive red and blue lanes**
+  ([#64](https://github.com/trionnemesis/AgentSec/issues/64)).
+  `.claude/skills/agentsec/SKILL.md` remains the only skill and the owner of
+  the six non-negotiables and four-phase playbook. Detailed attack execution
+  and evidence planning moved into `references/red-execution.md` and
+  `references/blue-evidence.md`; the router instructs the workbench to read each
+  only when its lane is reached. Neither reference is an independently executable skill or an
+  enforcement boundary.
+- **Phase 0 static skill-package validation.** The public
+  `agentsec skill validate --profile static` command validates current workspace
+  bytes against the fixed-location, reviewed `SkillEvalSuite` and
+  `schemas/skill-eval-suite.schema.json`, then checks
+  strict skill frontmatter, declared lane assets and scripts, exact full
+  SHA-256 pins, and parsed Markdown destinations, symlinks and non-regular or
+  out-of-workspace files. It is read-only and needs no model or
+  credentials; `.github/workflows/skill-eval-static.yml` makes package drift a
+  failing CI result.
+
+### Changed
+
+- README, Traditional Chinese README and GitHub Pages now describe the single
+  purple workbench and distinguish progressive guidance from enforcement.
+- Repository-first workbench and public-guide improvements landed after
+  `v0.3.2`, and the Pages glossary now defines `detection_gap` as detection
+  silence regardless of prevention outcome ([#61](https://github.com/trionnemesis/AgentSec/pull/61),
+  [#62](https://github.com/trionnemesis/AgentSec/pull/62),
+  [#63](https://github.com/trionnemesis/AgentSec/pull/63)).
+- Package, release-workflow examples, reusable-gate examples and Claude Desktop
+  manifest are prepared consistently for `v0.4.0`.
+
+### Notes
+
+- Phase 0 proves package structure and integrity only. It does not execute the
+  playbook, judge model behaviour, write the store or dashboard, or produce or
+  change a `PurpleVerdict`. Dynamic Skill Assurance Phase 1/2 remains parked,
+  and the dashboard `skill_assurance` plane remains `not_tested`.
+- PurpleVerdict, four-axis precedence, the existing scenario, evidence and
+  dashboard schemas, executor registry and MCP surface are unchanged. The new
+  `SkillEvalSuite` schema is a separate Phase 0 input contract.
+
+## [0.3.2] — 2026-08-25
+
+### Added
+
+- The public GitHub Pages introduction was redesigned as an eight-page,
+  responsive, self-contained project walkthrough, and the README links to it.
+- HTTP and fixture targets gained an explicit seven-operation driver contract.
+  Target-aware validation and whole-batch preflight reject unsupported
+  operations before approvals are consumed or a target is contacted; replay
+  cleanup runs on success and partial failure and fails closed when cleanup
+  itself fails. Approval claims are now atomic and single-use across concurrent
+  processes, with fail-closed ledger locking and writes
+  ([#56](https://github.com/trionnemesis/AgentSec/pull/56)).
+
+### Changed
+
+- GitHub-owned Actions were upgraded to Node 24 runtime releases while
+  remaining pinned to full commit SHAs
+  ([#52](https://github.com/trionnemesis/AgentSec/pull/52)).
+
+### Fixed
+
+- Evidence collection now separates execution, telemetry-settle, detection and
+  response deadlines; judges SLAs using event time; polls and fully paginates
+  required sources; and matches one audit record per traced tool invocation.
+- Live Wazuh, OTel and tool-audit evidence now fails closed on missing,
+  conflicting or foreign canonical `agentsec.run_id` correlation, while the
+  recorded fixture corpus retains its explicit compatibility path
+  ([#58](https://github.com/trionnemesis/AgentSec/pull/58)).
+
 ## [0.3.1] — 2026-08-20
 
 ### Added
@@ -170,7 +244,9 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
-[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/trionnemesis/AgentSec/compare/v0.3.2...v0.4.0
+[0.3.2]: https://github.com/trionnemesis/AgentSec/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1
 [0.2.0]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.2.0
 [0.1.0]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.1.0

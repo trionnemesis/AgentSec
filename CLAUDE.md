@@ -43,6 +43,7 @@ ruff check src tests
 mypy                                                # config lives in pyproject.toml, not a CLI flag
 
 agentsec scan                                       # inspect *this* repo's own agent surface
+agentsec skill validate --profile static            # validate current skill bytes against the reviewed suite; no model or credentials
 agentsec validate --strict                          # lint the scenario catalogue
 agentsec preview --target demo-agent-fixture --profile nightly
 agentsec run --target demo-agent-fixture --profile nightly --html   # exits 1: two blocking findings by design
@@ -57,16 +58,18 @@ thin layer over `HarnessService`.
 ## Architecture
 
 ```
-schemas/               JSON Schema for scenario, target, evidence, project manifest, dashboards
+schemas/               JSON Schema for scenario, target, evidence, project manifest, skill suite, dashboards
 scenarios/              The scenario catalogue (eight worked examples)
 policy/                 Target allowlist, run profiles, approval ledger — reviewed like a firewall change
 fixtures/               Recorded OTel/Wazuh/audit/state corpus so the whole pipeline runs offline
 .agentsec/project.yaml  This repo's own project manifest (see "What this repository is")
+.agentsec/skill_eval/agentsec-static.yaml  reviewed Phase 0 suite with full artifact digests
 
 src/agentsec/
 ├── models/            typed contracts crossing every layer boundary
 ├── project/           selected-project resolution and surface discovery (for `agentsec scan`)
 ├── inspect/            deterministic repository risk rules → the risk plane
+├── skill_eval/         Phase 0 static skill-package validation; no model, store or verdict
 ├── posture/            static posture ingestion; which findings a scenario can settle
 ├── scenario/           loader, three-layer validator, catalogue + coverage
 ├── policy/             allowlist, profiles, approvals, the single `PolicyGuard.check`
@@ -101,6 +104,7 @@ Practical implications when extending:
 | new assertion kind | `models/scenario.py`, `evaluation/axes.py`, `scenario.schema.json` | collectors |
 | new output format | `reporting/`, `service/harness.py::generate_report`, CLI format help, and the MCP `formats` enum | `evaluation/` |
 | new operation exposed to Claude/CI | `service/harness.py` **first**, then `mcp/contract.py`; add `cli.py` when CLI parity is intended | `evaluation/` |
+| new Phase 0 skill-package check | `skill_eval/`, `schemas/skill-eval-suite.schema.json`, the reviewed suite manifest and static workflow | `evaluation/`, stores, dashboard, MCP |
 
 Two invariants enforced by tests, not just convention:
 
@@ -126,7 +130,7 @@ which apply to this session too:
   actor and the session's MCP permission path. The CLI itself still delegates
   to `HarnessService`, runs `PolicyGuard.check`, and records audit entries.
   Use `agentsec_start_run` (requires the `agentsec` server from `.mcp.json`);
-  read-only subcommands (`validate`, `preview`, `targets`, `scenarios`,
+  read-only subcommands (`validate`, `skill validate`, `preview`, `targets`, `scenarios`,
   `coverage`, `get-run`, `compare`, `finding list`, `validate-detection`,
   `mcp-contract`, `audit`) are allowed directly.
 - Direct `Write` / `Edit` / `NotebookEdit` operations targeting

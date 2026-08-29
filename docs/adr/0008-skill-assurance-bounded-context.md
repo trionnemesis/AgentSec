@@ -2,17 +2,23 @@
 
 **Status:** Accepted · **Date:** 2026-07-31
 
-This ADR pins a direction before any code exists. Nothing described under
-"Decision" is built yet; the point is to fix the boundaries now, while changing
-them is free.
+**Implementation status (2026-08-29):** Issue #64 implements the model-free
+Phase 0 static package profile, its separate schema, CLI namespace and workflow.
+The behavioural runner, verdict, store and dashboard integration described for
+later phases remain unbuilt and `not_tested`.
+
+This ADR originally pinned the direction before code existed. The implementation
+status above records the Phase 0 slice now built; the behavioural phases under
+"Decision" remain a boundary for future work rather than a claim of current
+capability.
 
 ## Context
 
 This repository ships an agent skill of its own,
 `.claude/skills/agentsec/SKILL.md`, and it is written as a list of executable
 invariants: preview before run, never claim a verdict, never mint approvals,
-`not_tested` is not `pass`, a detection gap is two fixes, check the plumbing
-before believing the gap. Nothing verifies any of them. `.claude/README.md`
+`not_tested` is not `pass`, a detection gap with failed prevention is two fixes,
+check the plumbing before believing the gap. Nothing verifies any of them. `.claude/README.md`
 already ranks that file as the one layer a prompt can talk out of — so the
 invariants most worth trusting are the ones with the least enforcement behind
 them.

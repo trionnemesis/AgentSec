@@ -20,7 +20,7 @@ This document fixes the order. It does not remove anything that works.
 agentsec init                     select the repository
 agentsec scan                     find the attack surface and rank it
 agentsec scan --verify -t <id>    hand the provable high-risk subset to the harness
-agentsec dashboard --html         render it, or read agentsec://project/risks live
+agentsec dashboard --html results/dashboard.html  render it, or read agentsec://project/risks live
 ```
 
 Stated once, in one sentence:
@@ -69,7 +69,7 @@ Changes here need an ADR. These are load-bearing.
 | Run provenance | `RunSummary.provenance` | `recorded` / `live` / `mixed`. A fixture-derived `secure` is never presented as a live one ([#27](https://github.com/trionnemesis/AgentSec/issues/27)). |
 | Policy guard, approvals, target allowlist | `policy/` | One decision point for CLI, MCP and CI. `production` is not expressible. |
 | Publication projection | `reporting/publish.py` | Fail-closed. An output kind with no policy is refused, not sent. |
-| CLI exit codes | `cli.py` | `0` clean · `1` blocking finding · `2` could not tell. The distinction is the gate's credibility. |
+| CLI exit codes | `cli.py` | `0` success · `1` command-specific blocking/invalid result · `2` could not tell. The distinction is the gate's credibility. |
 
 ### The rule that keeps the planes apart
 
@@ -89,6 +89,14 @@ Each status enum is spelled differently on purpose. A single number averaging
 them would answer none of the four questions, and the fastest way to build one
 by accident is to give two planes the same words.
 
+The Phase 0 `agentsec skill validate --profile static` command is not a sixth
+plane and does not populate `skill_assurance`. It is a model- and credential-free
+package-integrity gate over current workspace bytes and a reviewed
+`SkillEvalSuite`: strict frontmatter, declared lane assets and scripts, exact
+SHA-256 pins, and parsed Markdown destinations. It is not a semantic prose or
+bare-URL scan. Its report is stdout-only; dynamic skill behaviour remains
+`not_tested`.
+
 ---
 
 ## Supporting — earns its place by serving the path
@@ -104,6 +112,7 @@ for the golden path.
 | MCP gateway | Built, thinly proven | An adapter. `HarnessService` is the API; the gateway may not grow behaviour the CLI does not have. |
 | Claude Desktop / Cowork packaging | Built, manual | Read-only registration for the Artifact path. |
 | Static posture ingestion | Built | Opt-in. Requires a third-party scanner's report; absent by default and `not_tested` when absent ([#25](https://github.com/trionnemesis/AgentSec/issues/25)). |
+| Phase 0 static skill-package gate | Built | `skill_eval/` validates structure and integrity in a separate fail-closed workflow. It does not execute the workbench, judge model behaviour, write a store/dashboard, or produce a Purple verdict ([#64](https://github.com/trionnemesis/AgentSec/issues/64)). |
 | Scenario authoring: `validate`, `preview`, `approve`, `validate-detection` | Built | Expert mode. Engineers on the golden path do not write scenario YAML. |
 | OWASP Agentic Top 10 coverage | Built | Reporting, not a gate. |
 
@@ -130,7 +139,7 @@ is refusing to widen the surface while the middle of it is unproven.
 
 | Capability | Why parked |
 |---|---|
-| Skill Assurance (`skill_eval`) | Separate schema, runner, store, CLI and workflow ([ADR 0008](adr/0008-skill-assurance-bounded-context.md)) — the standard indicators of a separate repository. The plane reports `not_tested` honestly today, which costs nothing. |
+| Dynamic Skill Assurance (Phase 1/2) | Model-driven or executable skill behaviour still needs a separate runner, store and verdict workflow ([ADR 0008](adr/0008-skill-assurance-bounded-context.md)). Phase 0 validates package structure only, so the plane reports `not_tested` honestly today. |
 | PyRIT executor | Attack generation is the cheap half. Adding a third executor before one live path works buys nothing. |
 | pytest executor | Same. |
 | MITRE ATLAS coverage | A second taxonomy over the same eight scenarios. |
