@@ -128,7 +128,10 @@ only in the environment.
 
 `agentsec project show` is an inventory, never a verdict. `skill_assurance`
 reports `not_tested` in every case today, distinguishing *no skill surface* from
-*skills present, no evaluator*, because `skill_eval` is not built
+*skills present, no evaluator*. The Phase 0
+`agentsec skill validate --profile static` command is built, but it is a
+stdout-only package-integrity check; the dynamic evaluator that could populate
+this dashboard plane is not built
 ([ADR 0008](adr/0008-skill-assurance-bounded-context.md),
 [#14](https://github.com/trionnemesis/AgentSec/issues/14)). A surface that is
 unreadable, malformed or unsupported becomes an entry in `problems` rather than
@@ -226,7 +229,8 @@ this repository's own agent configuration exposes, and per risk whether a
 scenario could settle it (`verified` / `verifiable` / `not_verifiable`). It is
 never a verdict — nothing in it has executed anything
 ([ADR 0009](adr/0009-repository-first-golden-path.md)). `skill_assurance` is `not_tested` in every case today, because
-`skill_eval` is not built
+only the Phase 0 static package-integrity profile is built; the dynamic
+evaluator and runner that could write this plane are not
 ([ADR 0008](adr/0008-skill-assurance-bounded-context.md),
 [#14](https://github.com/trionnemesis/AgentSec/issues/14)), and it says which
 absence it means rather than reporting an empty pass. `static_posture` follows

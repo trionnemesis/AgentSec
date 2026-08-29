@@ -32,12 +32,12 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | Run provenance (`recorded` / `live` / `mixed`) | ✅ | a fixture-derived `secure` is labelled as such ([#27](https://github.com/trionnemesis/AgentSec/issues/27)) |
 | SQLite store (runs, findings, audit log) | ✅ | latest-run-per-scenario aggregates |
 | Store schema migration runner | ✅ | ordered, idempotent, fails closed on an unrecognised future version ([#44](https://github.com/trionnemesis/AgentSec/issues/44)) |
-| CLI with meaningful exit codes | ✅ | `0` clean, `1` blocking, `2` could not tell |
+| CLI with meaningful exit codes | ✅ | `0` success, `1` command-specific blocking/invalid result, `2` could not tell |
 | Selected-project manifest and discovery | ✅ | `.agentsec/project.yaml`; relative locations only, traversal and symlink escape refused |
 | Runtime framework fingerprint engine | ✅ | deterministic, read-only detection for LangGraph/LangChain, OpenAI Agents SDK, AutoGen, Semantic Kernel, CrewAI and framework-neutral tool calling; development-agent config stays separate |
 | Fingerprint composed into `scan`, dashboard and MCP resource | ✅ | `project.fingerprint`; reported even before `agentsec init`, and `not_detected` never renders as a pass ([#32](https://github.com/trionnemesis/AgentSec/issues/32)) |
 | Tool-grant and memory surfaces | ✅ | one entry per permission rule; `.claude/memory` declared like any other surface ([#32](https://github.com/trionnemesis/AgentSec/issues/32)) |
-| **Repository risk plane** (`agentsec scan`) | ✅ | 10 deterministic rules across agents, skills, hooks, tool grants, MCP and memory ([ADR 0009](adr/0009-repository-first-golden-path.md)) |
+| **Repository risk plane** (`agentsec scan`) | ✅ | 12 deterministic rules across agents, skills, hooks, tool grants, MCP and memory ([ADR 0009](adr/0009-repository-first-golden-path.md)) |
 | **Risk → scenario triage** | ✅ | `verified` / `verifiable` / `not_verifiable`; `scan --verify` drains the queue |
 | `config-surface:` correlation, shared | ✅ | `scenario/surface_tags.py`; the risk and posture planes cannot disagree |
 | `AGT-CONFIG-*` agent-configuration family | ✅ | 4 scenarios ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); `gate: warning` until stable across nightlies |
@@ -72,10 +72,11 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
 | Composed dashboard resource | ✅ | `agentsec://dashboard/latest`, five planes kept separate |
 | Repository risk resource | ✅ | `agentsec://project/risks`, read-only, takes no arguments |
-| Dashboard page / Live Artifact source | ✅ | `agentsec dashboard --html` renders the same template a hosted Artifact does |
+| Dashboard page / Live Artifact source | ✅ | `agentsec dashboard --html results/dashboard.html` renders the same template a hosted Artifact does |
 | Claude Desktop / Cowork packaging | ✅ | `packaging/claude-desktop/` |
 | Resource allowlist for the report gateway | ✅ | evidence, audit and target authoring detail are unregistered under `AGENTSEC_MCP_READ_ONLY=1` |
 | MCP server (FastMCP binding) | 🟡 | a real stdio client drives a spawned server in CI; no other client has connected |
+| **Phase 0 static skill-package gate** | ✅ | `agentsec skill validate --profile static`; model- and credential-free validation of `SkillEvalSuite`, frontmatter, declared lane assets/scripts, full SHA-256 pins and parsed Markdown destinations. The separate `skill-eval-static.yml` workflow fails on package drift; no model behaviour or Purple verdict is evaluated ([#64](https://github.com/trionnemesis/AgentSec/issues/64)) |
 
 ### Adoption — open
 
@@ -117,7 +118,7 @@ is declining to widen the surface while the middle is unproven.
 
 | Component | Why parked |
 |---|---|
-| Skill Assurance (`skill_eval`) | Separate schema, runner, store, CLI and workflow — the standard indicators of a separate repository ([ADR 0008](adr/0008-skill-assurance-bounded-context.md), [#14](https://github.com/trionnemesis/AgentSec/issues/14)). The plane reports `not_tested` honestly today. |
+| Dynamic Skill Assurance (Phase 1/2) | Model-driven or executable skill behaviour needs its own runner, store and verdict workflow ([ADR 0008](adr/0008-skill-assurance-bounded-context.md), [#14](https://github.com/trionnemesis/AgentSec/issues/14)). The new Phase 0 static package gate does not implement that evaluator, so the dashboard plane still reports `not_tested`. |
 | PyRIT executor | A third executor before one live path works buys nothing |
 | pytest executor | Same |
 | MITRE ATLAS coverage | A second taxonomy over the same eight scenarios |

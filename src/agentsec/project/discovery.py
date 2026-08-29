@@ -1,11 +1,12 @@
 """What is in this repository that AgentSec can look at.
 
 Inventory, not judgement. Discovery answers "what surfaces exist and can we read
-them", and nothing here decides whether any of them is any good — that is
-`skill_eval`'s job ([ADR 0008](../../../docs/adr/0008-skill-assurance-bounded-context.md),
-[#14](https://github.com/trionnemesis/AgentSec/issues/14)), which does not exist
-yet. The `skill_assurance` block therefore reports `not_tested` in every case,
-with a reason that distinguishes *nothing to test* from *nothing to test with*.
+them", and nothing here decides whether any of them is any good. ADR 0008's
+Phase 0 static package validator exists under ``skill_eval``; it checks reviewed
+structure and digests through a separate CLI/workflow and is not a behavioural
+evaluator or a dashboard result. The `skill_assurance` block therefore still
+reports `not_tested` in every case, with a reason that distinguishes *nothing to
+test* from *no behavioural result to compose*.
 
 Three properties this module is built to hold:
 
@@ -151,7 +152,8 @@ class Discovery:
         failure this project exists to prevent:
 
         * no skill surface at all — there is nothing to evaluate;
-        * skills present — but no evaluator has been built to evaluate them.
+        * skills present — Phase 0 can validate their package integrity, but no
+          behavioural evaluator result is composed into this inventory.
         """
         if not self.supported_skills:
             return {
@@ -163,7 +165,8 @@ class Discovery:
             "status": "not_tested",
             "reason": "no_evaluator",
             "detail": (
-                "skills were discovered but skill_eval is not built; see ADR 0008 and "
+                "skills were discovered; the Phase 0 static skill_eval gate is separate, "
+                "and no behavioural evaluator result is composed here. See ADR 0008 and "
                 "issue #14. Discovery is an inventory and never a verdict."
             ),
         }

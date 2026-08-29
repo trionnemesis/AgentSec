@@ -17,6 +17,8 @@ from tests.conftest import REPO_ROOT
 
 DOC_FILES: tuple[Path, ...] = (
     REPO_ROOT / ".claude" / "skills" / "agentsec" / "SKILL.md",
+    REPO_ROOT / ".claude" / "skills" / "agentsec" / "references" / "red-execution.md",
+    REPO_ROOT / ".claude" / "skills" / "agentsec" / "references" / "blue-evidence.md",
     REPO_ROOT / "README.md",
     REPO_ROOT / "README.zh-TW.md",
 )

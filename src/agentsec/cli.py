@@ -1,15 +1,15 @@
 """AgentSec CLI — the interface CI uses, and therefore the one that must never
 depend on a model being present.
 
-Exit codes are the contract:
+Exit codes are the contract, interpreted in the command's own domain:
 
-  0  no blocking findings
-  1  at least one blocking finding (a gate the profile declares fatal)
-  2  usage, configuration or policy error — the run did not happen
+  0  success: no blocking finding, or a valid static package
+  1  a conclusive blocking/invalid result
+  2  usage, configuration, policy or evaluation error — no conclusion
 
-The distinction between 1 and 2 matters in a pipeline: 1 means "your change broke
-a control", 2 means "the harness could not tell you anything", and treating those
-the same is how teams learn to ignore the job.
+The distinction between 1 and 2 matters in a pipeline: 1 means the command
+reached an authoritative negative result; 2 means it could not tell. Treating
+those the same is how teams learn to ignore the job.
 """
 
 from __future__ import annotations
@@ -36,10 +36,12 @@ targets_app = typer.Typer(help="Inspect allowlisted targets.", no_args_is_help=T
 scenarios_app = typer.Typer(help="Inspect the scenario catalogue.", no_args_is_help=True)
 finding_app = typer.Typer(help="Work with findings.", no_args_is_help=True)
 project_app = typer.Typer(help="Inspect the selected project.", no_args_is_help=True)
+skill_app = typer.Typer(help="Validate reviewed skill packages.", no_args_is_help=True)
 app.add_typer(targets_app, name="targets")
 app.add_typer(scenarios_app, name="scenarios")
 app.add_typer(finding_app, name="finding")
 app.add_typer(project_app, name="project")
+app.add_typer(skill_app, name="skill")
 
 EXIT_OK = 0
 EXIT_BLOCKING = 1
@@ -65,6 +67,57 @@ def _fail(exc: AgentSecError) -> None:
         typer.secho(json.dumps(exc.details, indent=2, default=str), fg=typer.colors.YELLOW,
                     err=True)
     raise typer.Exit(EXIT_ERROR)
+
+
+# --------------------------------------------------------------------------
+# static Skill Assurance (ADR 0008 Phase 0)
+# --------------------------------------------------------------------------
+
+
+@skill_app.command("validate")
+def skill_validate(
+    profile: Annotated[
+        str,
+        typer.Option("--profile", "-p", help="Static only; no model or runner is invoked."),
+    ] = "static",
+    workspace: WorkspaceOpt = None,
+) -> None:
+    """Validate current skill bytes against a reviewed static suite.
+
+    This command is read-only. A valid static profile is an integrity result,
+    not a SkillEvalVerdict and not proof that the skill behaved correctly.
+    """
+    from agentsec.skill_eval import validate_static
+    from agentsec.skill_eval.static import REPORT_API_VERSION, REPORT_KIND
+
+    if profile != "static":
+        _echo_json(
+            {
+                "apiVersion": REPORT_API_VERSION,
+                "kind": REPORT_KIND,
+                "profile": profile,
+                "status": "error",
+                "issues": [
+                    {"code": "skill_eval_profile_unsupported", "path": ".agentsec/skill_eval"}
+                ],
+            }
+        )
+        raise typer.Exit(EXIT_ERROR)
+    try:
+        report = validate_static(workspace)
+    except AgentSecError as exc:
+        _echo_json(
+            {
+                "apiVersion": REPORT_API_VERSION,
+                "kind": REPORT_KIND,
+                "profile": "static",
+                "status": "error",
+                "issues": [{"code": exc.code, "path": ".agentsec/project.yaml"}],
+            }
+        )
+        raise typer.Exit(EXIT_ERROR) from exc
+    _echo_json(report.to_dict())
+    raise typer.Exit(report.exit_code)
 
 
 # --------------------------------------------------------------------------
