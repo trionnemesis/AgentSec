@@ -146,7 +146,7 @@ bundle manifest and a `claude_desktop_config.json` entry — and both pin
 `AGENTSEC_MCP_READ_ONLY=1`.
 
 That last point is the design, not a default. The Desktop registration is a
-*report* gateway: eight read-only tools, six published resources, and no
+*report* gateway: eight read-only tools, seven published resources, and no
 `agentsec_start_run` to plan around. Runs are started from the execution host —
 Claude Code through `.mcp.json`, or the CLI — where the audit actor and the
 approval check apply. `tests/test_packaging.py` starts a server from the
