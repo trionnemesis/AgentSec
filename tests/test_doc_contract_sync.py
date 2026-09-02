@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from agentsec.mcp.contract import RESOURCES, TOOLS, contract_summary
+from agentsec.mcp.prompts import INVESTIGATE_FINDING
 from tests.conftest import REPO_ROOT
 
 DOC_FILES: tuple[Path, ...] = (
@@ -97,3 +98,21 @@ def test_skill_points_at_project_risks_and_dashboard_resources() -> None:
     skill_text = _read(REPO_ROOT / ".claude" / "skills" / "agentsec" / "SKILL.md")
     for uri in ("agentsec://project/risks", "agentsec://dashboard/latest"):
         assert uri in skill_text, f"SKILL.md no longer mentions {uri}"
+
+
+def test_investigation_prompt_routes_detection_gap_by_prevention_axis() -> None:
+    """A detection verdict alone cannot decide whether application code is broken.
+
+    ADR 0004 deliberately gives ``detection_gap`` to both blocked-but-silent and
+    succeeded-and-silent attempts.  The investigation prompt must therefore read
+    the prevention axis before it recommends a remediation lane.
+    """
+    prompt = " ".join(INVESTIGATE_FINDING.template.split())
+
+    assert "Read the prevention axis" in prompt
+    assert "`detection_gap` with prevention `pass`" in prompt
+    assert "do not change an application control that held" in prompt
+    assert "`detection_gap` with prevention `fail`" in prompt
+    assert "application or policy control and detection" in prompt
+    assert "A pipeline `error` is a stop reason" in prompt
+    assert "the fix has two halves" not in prompt

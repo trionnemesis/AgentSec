@@ -70,6 +70,8 @@ will see a wall of `detection_gap` on first adoption. That is an accurate
 description of the situation rather than a flaw in the ordering, and the `pr`
 profile lets them start with `gate: warning` while they catch up.
 
-**Gained.** The verdict names the work. `detection_gap` means "write a rule and
-fix the code"; `prevention_gap` means "fix the code". A team can act on that
-without reading the axis table.
+**Gained.** The verdict names the first priority, while the preserved axes name
+the complete work. `detection_gap` with prevention `pass` means fix detection
+only; with prevention `fail`, fix both the application or policy control and
+detection. `prevention_gap` means fix the control. A team can route the work
+without inventing meaning that the verdict alone does not carry.

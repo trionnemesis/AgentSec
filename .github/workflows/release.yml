@@ -1,6 +1,6 @@
 # Cut a release from a version tag.
 #
-#   git tag v0.4.0 && git push origin v0.4.0
+#   git tag v0.4.1 && git push origin v0.4.1
 #
 # Builds the sdist and wheel, refuses a tag that disagrees with
 # pyproject.toml, and publishes a GitHub Release with the artifacts
@@ -23,7 +23,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to cut, e.g. v0.4.0. Must match pyproject.toml."
+        description: "Version tag to cut, e.g. v0.4.1. Must match pyproject.toml."
         required: true
         type: string
       commit:
@@ -41,7 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # The dispatch path tags a named commit, which is rarely the branch
-          # head — 0.4.0 is cut from where the version was prepared, not from
+          # head — a release is cut from where the version was prepared, not from
           # whatever landed since. Full history so `git tag` can reach it.
           ref: ${{ inputs.commit || github.sha }}
           fetch-depth: 0

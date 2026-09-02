@@ -8,6 +8,27 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-02
+
+### Fixed
+
+- **Finding investigation now routes `detection_gap` remediation through the
+  prevention axis.** The MCP investigation prompt previously told an agent to
+  change application code for every detection gap, even when prevention had
+  passed. It now preserves a control that held, sends that case to detection
+  remediation only, sends prevention `fail` to both sides, and treats pipeline
+  `error` as an explicit stop reason. A regression test prevents the prompt from
+  collapsing those typed states again
+  ([#32 handoff](https://github.com/trionnemesis/AgentSec/issues/32#issuecomment-5503155615)).
+- README, Traditional Chinese README, ADR 0004 and GitHub Pages now state the
+  same remediation split.
+
+### Notes
+
+- `PurpleVerdict`, four-axis precedence, schemas, executor registry, MCP
+  capability, target activity, stores and publication boundaries are unchanged.
+- This is a guidance-drift patch, not an operation-router subsystem.
+
 ## [0.4.0] — 2026-08-29
 
 ### Added
@@ -244,7 +265,8 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
-[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/trionnemesis/AgentSec/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/trionnemesis/AgentSec/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/trionnemesis/AgentSec/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/trionnemesis/AgentSec/releases/tag/v0.3.1

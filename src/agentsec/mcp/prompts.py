@@ -71,9 +71,15 @@ Investigate finding `{finding_id}`.
 3. Locate the responsible code. Quote the file and line where the check should
    have happened, and explain why it did not.
 
-4. Propose the smallest fix that closes the gap. If the verdict is
-   `detection_gap`, the fix has two halves: the code change *and* the Wazuh rule
-   or span that would have caught it. Do not stop after the code.
+4. Read the prevention axis before choosing the smallest remediation:
+   - `detection_gap` with prevention `pass`: the control held. Add the missing
+     telemetry, mapping, rule or span; do not change an application control that
+     held.
+   - `detection_gap` with prevention `fail`: both sides failed. Fix the
+     application or policy control and detection, retaining regression evidence
+     for both.
+   A pipeline `error` is a stop reason, not a security finding: repair the
+   backend, schema, correlation or collector before drawing a conclusion.
 
 5. Call `agentsec_create_regression_draft` and include the YAML in your write-up.
 
