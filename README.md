@@ -84,6 +84,11 @@ Once the MCP gateway is wired into Claude Code, just ask:
 
 `detection_gap` deliberately outranks `prevention_gap`: you can schedule a fix for a control you can watch failing, but you cannot fix what you never learn about.
 
+Remediation still reads the prevention axis. A `detection_gap` with prevention
+`pass` is a Blue-only gap: keep the control that held and fix telemetry, mapping
+or detection. With prevention `fail`, fix both the application or policy control
+and detection. The verdict sets priority; the axes determine the work.
+
 ## How it works
 
 ```mermaid
@@ -111,7 +116,7 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 
 ```bash
 # the released wheel (pinned, and what CI installs)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.0/agentsec-0.4.0-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.1/agentsec-0.4.1-py3-none-any.whl
 
 # or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -287,7 +292,7 @@ Call the reusable workflow from the repository that owns the agent, pinned to a 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.0
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.1
     with:
       target: order-agent-staging
       profile: pr
@@ -541,7 +546,7 @@ runner.
 
 ## Status
 
-Alpha; latest release [`v0.4.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.0). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
+Alpha; latest release [`v0.4.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.1). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
 
 One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
 

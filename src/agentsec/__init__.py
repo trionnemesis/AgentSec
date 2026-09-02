@@ -12,5 +12,5 @@ Layering, in strict order:
 Nothing above the service boundary may reach below it.
 """
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __all__ = ["__version__"]

@@ -2,7 +2,7 @@
   "manifest_version": "0.1",
   "name": "agentsec-report",
   "display_name": "AgentSec (report)",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Read-only AgentSec report gateway: purple-team verdicts, four-axis coverage and findings for the selected repository. Cannot start a run.",
   "long_description": "Registers the AgentSec MCP server in read-only mode, so a local Cowork session or a Live Artifact can read results without being able to execute anything. Execution tools are not registered in this mode — not refused at dispatch, absent from the listing — and the resource set is the published allowlist. To run scenarios, use the Claude Code project registration in .mcp.json or the CLI on the execution host.",
   "author": { "name": "trionnemesis" },
