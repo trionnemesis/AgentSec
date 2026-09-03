@@ -93,6 +93,9 @@ class FixtureAdapter:
             role: Literal["assistant", "system"] = "assistant"
             content = self._replies[step_id]
         else:
+            # Non-message operations are deterministic driver acknowledgements;
+            # their effects are asserted through the target's evidence sources,
+            # not by pretending the fixture has an assistant reply for them.
             role = "system"
             content = f"{operation} completed"
         return TranscriptTurn(
@@ -161,7 +164,7 @@ class HttpAdapter:
                 f"'{operation}'"
             )
         base_url = self._target.adapter.base_url
-        if base_url is None:
+        if base_url is None:  # guarded by Adapter's model validator
             raise ExecutionFailed(f"target '{self._target.id}' has no HTTP base URL")
         route = self._target.adapter.operation_path(operation)
         return base_url.rstrip("/") + "/" + route.lstrip("/")
@@ -178,6 +181,10 @@ class HttpAdapter:
         import httpx
 
         url = self._operation_url(operation)
+        # Preserve the original chat contract exactly.  The target-driver
+        # envelope is only needed for newly introduced non-message operations;
+        # existing HTTP chat handlers must continue to receive just message,
+        # session_id, and (when configured) principal_token.
         payload_doc: dict[str, Any] = (
             {"message": payload, "session_id": session}
             if operation == "send_message"
@@ -207,6 +214,7 @@ class HttpAdapter:
             resp = self._client.post(url, json=payload_doc)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
+            # Never echo the payload back: it carries the principal token.
             raise ExecutionFailed(
                 f"target request failed at step '{step_id}': {type(exc).__name__}"
             ) from exc
