@@ -53,7 +53,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **受限的 MCP gateway** | 11 個窄工具與 10 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
-| **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、以及實際執行過的判定互相比對 —— 分數永遠不是判定，未能對應到任何情境的發現預設為 `not_tested` |
+| **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、finding 所屬的威脅類別、以及實際執行過的判定互相比對 —— 分數永遠不是判定，兩者對不上的發現預設為 `not_tested` |
 | **執行來源（provenance）** | 每個判定都會標示 `recorded` / `live` / `mixed`，由實際使用的執行器與證據後端推導而來 —— 用 fixture 產生的 `secure` 絕不會被誤讀成對真實 agent 驗證出來的結果 |
 
 **適用範圍**
@@ -106,7 +106,7 @@ flowchart TD
 
 ```bash
 # 已發佈的 wheel（版本固定，也是 CI 安裝的那一個）
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.1/agentsec-0.4.1-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.2/agentsec-0.4.2-py3-none-any.whl
 
 # 或安裝目前的 main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -267,7 +267,7 @@ Phase 1/2 runner 也仍維持 parked。已探索到的 skill 若沒有靜態 sui
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.1
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.2
     with:
       target: order-agent-staging
       profile: pr
@@ -491,7 +491,7 @@ runner 上也測得動。
 
 ## 狀態
 
-Alpha，最新版本為 [`v0.4.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.1)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
+Alpha，最新版本為 [`v0.4.2`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.2)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
 
 第一次執行前值得知道的一件事：情境目錄是從 `<workspace>/scenarios` 讀取的，所以在不是
 AgentSec checkout 的 repository 裡沒有東西可以比對，每一條風險都會落在 `not_verifiable`。

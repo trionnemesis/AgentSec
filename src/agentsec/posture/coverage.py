@@ -3,22 +3,49 @@
 AgentShield (or any SARIF-emitting scanner) can flag a surface as risky.
 ``not_tested`` is the default here for exactly the reason it is the default
 for an axis a contract never asserted on (#20, ADR 0002): a surface that was
-*scanned* has not thereby been *tested*. A finding is ``covered`` only once a
-scenario that exercises its file has actually produced a verdict — existing
-in the catalogue is not enough, the same way a scenario nobody has run yet is
-not "coverage" of anything.
+*scanned* has not thereby been *tested*. A finding is ``covered`` only once
+**one scenario** satisfies all three parts of the contract:
 
-Correlation needs a scenario to say which configuration surface it exercises,
-and the scenario schema (``extra="forbid"``) has no dedicated field for that.
-Rather than widen the contract, this reuses the existing ``metadata.tags``
-extensibility point with one convention:
+    path_match(finding.file, scenario config-surface tags)
+    AND threat_semantic_match(finding.category, scenario threat-class tags)
+    AND scenario_id in scenarios_with_a_verdict
 
-    tags: ["config-surface:.claude/hooks/guard_agentsec.py"]
+Everything else on a known surface is ``not_tested``; an unknown surface is
+``n/a``. Path and threat both matching is not enough on its own either —
+existing in the catalogue is not "coverage" any more than a scenario nobody
+has run yet is, the same reason a scenario declaring a ``config-surface:`` but
+no ``threat-class:`` never covers a finding: it has not said which threat it
+settles, so there is nothing to check the finding's category against.
 
-A tag naming a directory (``config-surface:.claude/hooks``) covers every file
-under it. This is also the convention the ``AGT-CONFIG-*`` family (#26) is
-written to use, but nothing here depends on that family existing — an
-uncorrelated finding simply stays ``not_tested``.
+Both correlations reuse the existing ``metadata.tags`` extensibility point —
+the scenario schema is ``extra="forbid"`` and has no dedicated field for
+either — with one convention each:
+
+    tags:
+      - config-surface:.claude/hooks/guard_agentsec.py
+      - threat-class:injection
+
+A ``config-surface:`` tag naming a directory covers every file under it.
+``threat-class:<value>`` matches a finding whose scanner-emitted ``category``
+equals ``<value>``, compared lowercased and whitespace-stripped. Why category
+and not the scanner's own rule id, why no AgentSec-maintained rule -> threat
+table, and why a ``threat-class:`` tag must never be given the value
+``uncategorised`` are all answered in ``scenario/surface_tags.py``, which owns
+both tag conventions.
+
+The risk plane (``inspect/triage.py``) asks its own version of the surface
+question but stops at the path match: a :class:`~agentsec.models.risk.RepoRisk`
+comes from this repository's own deterministic rules, not a scanner report, so
+it carries no scanner-emitted category for a threat-class tag to match against
+— the threat requirement is not merely deferred there, it is not yet
+expressible. That is a deliberate asymmetry between the two planes, not an
+oversight: extending ``scenarios_covering`` itself would grow a parameter the
+risk plane has no value to pass, which is why the threat match is a separate,
+additional predicate the posture plane alone applies.
+
+This is also the convention the ``AGT-CONFIG-*`` family (#26) is written to
+use, but nothing here depends on that family existing — an uncorrelated
+finding simply stays ``not_tested``.
 """
 
 from __future__ import annotations
@@ -34,7 +61,8 @@ from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.surface_tags import (
     CONFIG_SURFACE_TAG_PREFIX,
     scenario_surface_tags,
-    scenarios_covering,
+    scenario_threat_classes,
+    scenarios_matching_threat,
 )
 from agentsec.scenario.surface_tags import under as _under
 
@@ -91,6 +119,7 @@ def compute_posture_coverage(
     """
     known_surfaces = _known_surface_paths(discovery)
     scenario_tags = scenario_surface_tags(catalog)
+    threat_tags = scenario_threat_classes(catalog)
 
     results: list[FindingCoverage] = []
     problems: list[dict[str, str]] = []
@@ -107,7 +136,9 @@ def compute_posture_coverage(
             results.append(FindingCoverage(finding=finding, state="n/a"))
             continue
 
-        matched = scenarios_covering(finding.file, scenario_tags)
+        matched = scenarios_matching_threat(
+            finding.file, finding.category, scenario_tags, threat_tags
+        )
         run_matched = [sid for sid in matched if sid in scenarios_with_a_verdict]
         if run_matched:
             results.append(

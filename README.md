@@ -53,7 +53,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | **Repository scan** | Point it at a local repo: finds the agents, skills, MCP servers, hooks, tool grants and memory stores in it, ranks the risks, and says which ones a scenario can actually settle |
 | **Agent fingerprint** | Whether the repository *implements* an AI agent and in what framework, read from dependencies, imports and builder calls without importing or running any of it. A repository holding only a `CLAUDE.md` and a `.mcp.json` is `configuration_only`, never a runtime agent |
 | **Static skill-package gate** | `agentsec skill validate --profile static` checks current workspace bytes against a reviewed, fixed-location `SkillEvalSuite`: strict skill frontmatter, declared lane assets and scripts, full SHA-256 pins, and parsed Markdown destinations, without a model or credentials. It protects package integrity; it does not test whether a model followed the skill |
-| **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against the surfaces discovered here and the scenarios that actually ran — a grade is never a verdict, and a finding no scenario covers stays `not_tested` |
+| **Static posture ingestion** | Correlates a static scanner's report (AgentShield JSON or SARIF) against the surfaces discovered here, the threat class each finding names, and the scenarios that actually ran — a grade is never a verdict, and a finding no scenario covers on both counts stays `not_tested` |
 | **Run provenance** | Every verdict is marked `recorded` / `live` / `mixed`, derived from the executor and evidence backends actually used, so a fixture-derived `secure` is never read as one proven against a live agent |
 | **Attack–Detection Contract** | One YAML file declares the attack *and* the prevention / detection / evidence / response expectations |
 | **Deterministic verdict** | Pure evaluator, no model, no clock, no network in the decision path — the same evidence always yields the same verdict |
@@ -116,7 +116,7 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 
 ```bash
 # the released wheel (pinned, and what CI installs)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.1/agentsec-0.4.1-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.2/agentsec-0.4.2-py3-none-any.whl
 
 # or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -292,7 +292,7 @@ Call the reusable workflow from the repository that owns the agent, pinned to a 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.1
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.2
     with:
       target: order-agent-staging
       profile: pr
@@ -546,7 +546,7 @@ runner.
 
 ## Status
 
-Alpha; latest release [`v0.4.1`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.1). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
+Alpha; latest release [`v0.4.2`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.2). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly.
 
 One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
 

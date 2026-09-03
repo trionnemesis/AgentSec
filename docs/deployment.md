@@ -258,10 +258,19 @@ between the two, never to close it by fiat:
   `.agentsec/project.yaml: static_posture_report`; a missing report is
   `not_tested`, never green and never an install prompt.
 * **Coverage, not a scan count.** Each finding is correlated against the
-  surfaces `agentsec project show` discovered and the scenarios that actually
-  produced a verdict (not merely exist in the catalogue), reported as
-  `covered`, `not_tested` or `n/a`. `not_tested` is the default: being scanned
-  is not the same as being tested.
+  surfaces `agentsec project show` discovered, the threat class its own
+  `category` names, and the scenarios that actually produced a verdict (not
+  merely exist in the catalogue), reported as `covered`, `not_tested` or
+  `n/a`. `not_tested` is the default: being scanned is not the same as being
+  tested, and matching the surface alone is not the same as matching the
+  threat a scenario actually settles
+  ([#68](https://github.com/trionnemesis/AgentSec/issues/68)). A real
+  AgentShield scan of a hooks directory will therefore show mostly
+  `not_tested` against `AGT-CONFIG-003`'s `threat-class:injection` tag — it
+  matches only 2 of that ruleset's 38 finding-emission sites; the other 36
+  (29 `hooks`, 4 `exposure`, 2 `misconfiguration`, 1 `exfiltration`) flag
+  things this contract genuinely does not test. That is intended, not a
+  regression.
 * **Findings are observed data.** They name files and can quote a scanner's
   own rule description; the matched source text is never captured in the
   first place (`models/posture.py`), and the publisher projects only rule id,

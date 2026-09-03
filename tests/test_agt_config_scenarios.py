@@ -136,3 +136,20 @@ def test_config_surface_tags_follow_the_convention_posture_coverage_reads() -> N
     for scenario_id in CONFIG_SCENARIO_IDS:
         tags = catalog.get(scenario_id).metadata.tags
         assert any(t.startswith("config-surface:") for t in tags), scenario_id
+
+
+def test_config_scenarios_also_declare_the_threat_class_they_settle() -> None:
+    """#68's threat-semantic coverage additionally reads `threat-class:<value>`
+    tags; confirm every `AGT-CONFIG-*` carries at least one with a non-empty,
+    lowercase value, or it can never cover a posture finding no matter how
+    well its `config-surface:` tag matches. Deliberately does not pin which
+    values are used — that vocabulary belongs to the upstream scanner, not to
+    this test."""
+    catalog = ScenarioCatalog.from_dir(SCENARIO_DIR)
+    for scenario_id in CONFIG_SCENARIO_IDS:
+        tags = catalog.get(scenario_id).metadata.tags
+        threat_values = [
+            tag[len("threat-class:"):] for tag in tags if tag.startswith("threat-class:")
+        ]
+        assert threat_values, scenario_id
+        assert all(v.strip() and v == v.lower() for v in threat_values), scenario_id

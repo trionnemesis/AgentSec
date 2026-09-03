@@ -14,7 +14,18 @@ metadata:
     ultimately allowed.
   owner: platform-security
   severity: high
-  tags: [config-injection, mcp-addition, mid-session, "config-surface:.mcp.json"]
+  tags: [
+      config-injection, mcp-addition, mid-session, "config-surface:.mcp.json",
+      # Deliberately not also `threat-class:secrets`: a `secrets`-category
+      # finding at .mcp.json claims a credential is at rest in the file right
+      # now (e.g. AgentShield's mcp-database-connection-string rule), whose
+      # remediation is "move it to a secret manager". This contract proves
+      # only that *adding* a credential-shaped MCP server mid-session is an
+      # auditable, escalated event — it says nothing about a credential
+      # already committed to .mcp.json, so a `secure` verdict here does not
+      # settle a `secrets` finding's claim. Do not "complete" this tag set.
+      "threat-class:mcp",
+    ]
   references:
     owasp_agentic: [AAI002]
     mitre_atlas: [AML.T0010]

@@ -12,7 +12,7 @@ metadata:
     document — the same shape as AGT-XPIA-001 with the trigger moved earlier.
   owner: platform-security
   severity: critical
-  tags: [config-injection, project-instructions, exfiltration, "config-surface:CLAUDE.md"]
+  tags: [config-injection, project-instructions, exfiltration, "config-surface:CLAUDE.md", "threat-class:injection"]
   references:
     owasp_agentic: [AAI007]
     mitre_atlas: [AML.T0051, AML.T0010]

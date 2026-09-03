@@ -146,9 +146,11 @@ def test_resolve_report_path_refuses_a_traversal(tmp_path: Path) -> None:
 # -- coverage --------------------------------------------------------------
 
 
-def _finding(rule_id: str, file: str, severity: str = "high") -> StaticPostureFinding:
+def _finding(
+    rule_id: str, file: str, severity: str = "high", category: str = "hooks"
+) -> StaticPostureFinding:
     return StaticPostureFinding(
-        rule_id=rule_id, severity=severity, category="hooks", file=file,
+        rule_id=rule_id, severity=severity, category=category, file=file,
         title=rule_id, source_tool="agentshield",
     )
 
@@ -195,7 +197,9 @@ def test_a_known_surface_with_no_tagged_scenario_is_not_tested(tmp_path: Path) -
 
 def test_a_tagged_scenario_that_never_ran_is_still_not_tested(tmp_path: Path) -> None:
     """Existing in the catalogue is not coverage — something has to have run."""
-    scenario = _scenario("AGT-CONFIG-900", ["config-surface:.claude/hooks/guard.py"])
+    scenario = _scenario(
+        "AGT-CONFIG-900", ["config-surface:.claude/hooks/guard.py", "threat-class:hooks"]
+    )
     catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
     rows, _ = compute_posture_coverage(
         [_finding("r1", ".claude/hooks/guard.py")],
@@ -207,7 +211,9 @@ def test_a_tagged_scenario_that_never_ran_is_still_not_tested(tmp_path: Path) ->
 
 
 def test_a_tagged_scenario_with_a_verdict_makes_the_finding_covered(tmp_path: Path) -> None:
-    scenario = _scenario("AGT-CONFIG-900", ["config-surface:.claude/hooks/guard.py"])
+    scenario = _scenario(
+        "AGT-CONFIG-900", ["config-surface:.claude/hooks/guard.py", "threat-class:hooks"]
+    )
     catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
     rows, _ = compute_posture_coverage(
         [_finding("r1", ".claude/hooks/guard.py")],
@@ -219,7 +225,9 @@ def test_a_tagged_scenario_with_a_verdict_makes_the_finding_covered(tmp_path: Pa
 
 
 def test_a_directory_tag_covers_every_file_under_it(tmp_path: Path) -> None:
-    scenario = _scenario("AGT-CONFIG-901", ["config-surface:.claude/hooks"])
+    scenario = _scenario(
+        "AGT-CONFIG-901", ["config-surface:.claude/hooks", "threat-class:hooks"]
+    )
     catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
     rows, _ = compute_posture_coverage(
         [_finding("r1", ".claude/hooks/guard.py")],
@@ -241,7 +249,9 @@ def test_a_finding_outside_the_project_root_is_a_problem_not_n_a(tmp_path: Path)
 
 
 def test_coverage_counts_tally_all_three_states(tmp_path: Path) -> None:
-    scenario = _scenario("AGT-CONFIG-900", ["config-surface:.claude/hooks/guard.py"])
+    scenario = _scenario(
+        "AGT-CONFIG-900", ["config-surface:.claude/hooks/guard.py", "threat-class:hooks"]
+    )
     catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
     rows, _ = compute_posture_coverage(
         [_finding("r1", ".claude/hooks/guard.py"), _finding("r2", "README.md")],
@@ -249,6 +259,99 @@ def test_coverage_counts_tally_all_three_states(tmp_path: Path) -> None:
         scenarios_with_a_verdict={"AGT-CONFIG-900"},
     )
     assert coverage_counts(rows) == {"covered": 1, "not_tested": 0, "n/a": 1}
+
+
+def test_same_file_different_threat_is_not_covered(tmp_path: Path) -> None:
+    """Path alone must not decide `covered`: two findings on the same file but
+    a different threat category must not both ride the one scenario's verdict
+    — only the one whose `threat-class:` tag actually matches the finding's
+    category may. Reproduces the Stage 0 defect (issue #68)."""
+    scenario = _scenario(
+        "AGT-CONFIG-902", ["config-surface:.claude/hooks", "threat-class:injection"]
+    )
+    catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
+    rows, _ = compute_posture_coverage(
+        [
+            _finding("r-inj", ".claude/hooks/guard.py", category="injection"),
+            _finding("r-exp", ".claude/hooks/guard.py", category="exposure"),
+        ],
+        root=tmp_path, discovery=_discovery(), catalog=catalog,
+        scenarios_with_a_verdict={"AGT-CONFIG-902"},
+    )
+    by_rule = {r.finding.rule_id: r for r in rows}
+    assert by_rule["r-inj"].state == "covered"
+    assert by_rule["r-inj"].scenario_ids == ["AGT-CONFIG-902"]
+    assert by_rule["r-exp"].state == "not_tested"
+    assert by_rule["r-exp"].scenario_ids == []
+
+
+def test_a_surface_tag_without_a_threat_class_never_covers(tmp_path: Path) -> None:
+    """A scenario that names a surface but never says which threat it settles
+    must not cover a finding there, verdict or not — an unstated threat is not
+    an implicit match against anything a scanner might report."""
+    scenario = _scenario("AGT-CONFIG-903", ["config-surface:.claude/hooks/guard.py"])
+    catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
+    rows, _ = compute_posture_coverage(
+        [_finding("r1", ".claude/hooks/guard.py", category="injection")],
+        root=tmp_path, discovery=_discovery(), catalog=catalog,
+        scenarios_with_a_verdict={"AGT-CONFIG-903"},
+    )
+    assert rows[0].state == "not_tested"
+    assert rows[0].scenario_ids == []
+
+
+def test_a_threat_class_without_a_surface_match_never_covers(tmp_path: Path) -> None:
+    """The threat tag alone is not enough either — the scenario has to name
+    the finding's actual file, not merely settle the right kind of threat
+    somewhere else in the repository."""
+    scenario = _scenario(
+        "AGT-CONFIG-904", ["config-surface:.mcp.json", "threat-class:hooks"]
+    )
+    catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
+    rows, _ = compute_posture_coverage(
+        [_finding("r1", ".claude/hooks/guard.py", category="hooks")],
+        root=tmp_path, discovery=_discovery(), catalog=catalog,
+        scenarios_with_a_verdict={"AGT-CONFIG-904"},
+    )
+    assert rows[0].state == "not_tested"
+    assert rows[0].scenario_ids == []
+
+
+def test_not_tested_lists_only_scenarios_that_would_settle_the_threat(tmp_path: Path) -> None:
+    """`not_tested.scenario_ids` must not surface a scenario whose tags could
+    never have covered this finding even if it had run — only a scenario that
+    also matches the threat belongs on that list."""
+    settles_the_threat = _scenario(
+        "AGT-CONFIG-905", ["config-surface:.claude/hooks/guard.py", "threat-class:injection"]
+    )
+    surface_only = _scenario("AGT-CONFIG-906", ["config-surface:.claude/hooks/guard.py"])
+    catalog = ScenarioCatalog(
+        [
+            CatalogEntry(settles_the_threat, Path("a.yaml")),
+            CatalogEntry(surface_only, Path("b.yaml")),
+        ]
+    )
+    rows, _ = compute_posture_coverage(
+        [_finding("r1", ".claude/hooks/guard.py", category="injection")],
+        root=tmp_path, discovery=_discovery(), catalog=catalog,
+        scenarios_with_a_verdict=set(),  # neither has actually run
+    )
+    assert rows[0].state == "not_tested"
+    assert rows[0].scenario_ids == ["AGT-CONFIG-905"]
+
+
+def test_threat_class_match_ignores_case_and_whitespace(tmp_path: Path) -> None:
+    scenario = _scenario(
+        "AGT-CONFIG-907", ["config-surface:.claude/hooks/guard.py", "threat-class: Hooks "]
+    )
+    catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
+    rows, _ = compute_posture_coverage(
+        [_finding("r1", ".claude/hooks/guard.py", category=" HOOKS ")],
+        root=tmp_path, discovery=_discovery(), catalog=catalog,
+        scenarios_with_a_verdict={"AGT-CONFIG-907"},
+    )
+    assert rows[0].state == "covered"
+    assert rows[0].scenario_ids == ["AGT-CONFIG-907"]
 
 
 # -- harness end-to-end ------------------------------------------------------
