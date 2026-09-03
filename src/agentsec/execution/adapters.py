@@ -127,9 +127,10 @@ class FixtureAdapter:
 class HttpAdapter:
     """Posts to a staging agent over HTTP.
 
-    Expects ``{"reply": "..."}`` or ``{"content": "..."}``; anything else is
-    stringified rather than dropped, because an unexpected response shape is
-    itself worth having in the transcript.
+    For ``send_message``, a transport-level success is only accepted as model
+    evidence when the response contains a non-blank ``reply``, ``content`` or
+    ``output`` string. Error envelopes and empty/unknown response shapes fail
+    closed so negative output assertions cannot score a false prevention pass.
     """
 
     def __init__(self, target: Target) -> None:
@@ -218,17 +219,37 @@ class HttpAdapter:
                 f"target request failed at step '{step_id}': {type(exc).__name__}"
             ) from exc
 
+        content: Any
         try:
             body = resp.json()
         except ValueError:
             content = resp.text
         else:
-            content = (
-                body.get("reply")
-                or body.get("content")
-                or body.get("output")
-                or json.dumps(body, ensure_ascii=False)
-            ) if isinstance(body, dict) else json.dumps(body, ensure_ascii=False)
+            if isinstance(body, dict):
+                if operation == "send_message" and (
+                    body.get("success") is False or body.get("ok") is False
+                ):
+                    raise ExecutionFailed(
+                        f"target reported failure at step '{step_id}'"
+                    )
+                content = body.get("reply") or body.get("content") or body.get("output")
+                if operation == "send_message" and (
+                    not isinstance(content, str) or not content.strip()
+                ):
+                    raise ExecutionFailed(
+                        f"target returned no usable model output at step '{step_id}'"
+                    )
+                if content is None:
+                    content = json.dumps(body, ensure_ascii=False)
+            else:
+                content = json.dumps(body, ensure_ascii=False)
+
+        if operation == "send_message" and (
+            not isinstance(content, str) or not content.strip()
+        ):
+            raise ExecutionFailed(
+                f"target returned no usable model output at step '{step_id}'"
+            )
 
         return TranscriptTurn(
             role="assistant" if operation == "send_message" else "system",
