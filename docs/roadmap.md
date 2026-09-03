@@ -39,7 +39,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | Tool-grant and memory surfaces | ✅ | one entry per permission rule; `.claude/memory` declared like any other surface ([#32](https://github.com/trionnemesis/AgentSec/issues/32)) |
 | **Repository risk plane** (`agentsec scan`) | ✅ | 12 deterministic rules across agents, skills, hooks, tool grants, MCP and memory ([ADR 0009](adr/0009-repository-first-golden-path.md)) |
 | **Risk → scenario triage** | ✅ | `verified` / `verifiable` / `not_verifiable`; `scan --verify` drains the queue |
-| `config-surface:` correlation, shared | ✅ | `scenario/surface_tags.py`; the risk and posture planes cannot disagree |
+| `config-surface:` correlation, shared | ✅ | `scenario/surface_tags.py`; the risk and posture planes cannot disagree on a surface match — the posture plane also requires a `threat-class:` match the risk plane cannot yet express, since a `RepoRisk` carries no scanner-emitted category ([#68](https://github.com/trionnemesis/AgentSec/issues/68)) |
 | `AGT-CONFIG-*` agent-configuration family | ✅ | 4 scenarios ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); `gate: warning` until stable across nightlies |
 | Publication projection + fail-closed publication | ✅ | unknown output kind raises; a resource with no policy stops the gateway booting |
 | Versioned dashboard contracts | ✅ | `dashboard.schema.json`, `project-dashboard.schema.json`; validated on every read |

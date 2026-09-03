@@ -8,6 +8,25 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Posture coverage now requires a threat-class match, not just a path
+  match, before a static finding counts as `covered`.** Two AgentShield
+  findings on the same file but a different `category` — a hook's
+  command-injection risk and a separate sensitive-file-access risk in the
+  same file, say — used to both ride the verdict of any scenario that merely
+  declared a `config-surface:` tag over that path, regardless of which
+  threat the scenario's contract actually exercised. `scenario/surface_tags.py`
+  now also reads a `threat-class:<category>` tag, and `posture/coverage.py`
+  marks a finding `covered` only when one scenario matches both the surface
+  and the threat and has actually produced a verdict; everything else on a
+  known surface stays `not_tested`. The `AGT-CONFIG-*` family is tagged
+  accordingly — `001`-`003` settle `injection`, `004` settles `mcp` only,
+  deliberately not `secrets`, since proving a mid-session MCP addition is
+  auditable says nothing about a credential already committed to `.mcp.json`
+  ([#68](https://github.com/trionnemesis/AgentSec/issues/68),
+  [#32 handoff](https://github.com/trionnemesis/AgentSec/issues/32)).
+
 ## [0.4.1] — 2026-09-02
 
 ### Fixed

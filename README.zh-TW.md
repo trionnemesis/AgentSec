@@ -53,7 +53,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **受限的 MCP gateway** | 11 個窄工具與 10 個唯讀資源；沒有 shell、沒有 SQL、沒有自由文字 URL |
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
-| **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、以及實際執行過的判定互相比對 —— 分數永遠不是判定，未能對應到任何情境的發現預設為 `not_tested` |
+| **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、finding 所屬的威脅類別、以及實際執行過的判定互相比對 —— 分數永遠不是判定，兩者對不上的發現預設為 `not_tested` |
 | **執行來源（provenance）** | 每個判定都會標示 `recorded` / `live` / `mixed`，由實際使用的執行器與證據後端推導而來 —— 用 fixture 產生的 `secure` 絕不會被誤讀成對真實 agent 驗證出來的結果 |
 
 **適用範圍**
