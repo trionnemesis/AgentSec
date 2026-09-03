@@ -8,6 +8,30 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-09-03
+
+### Fixed
+
+- **HTTP targets now fail closed when a `200 OK` response is an error
+  envelope instead of model evidence.** A message response must contain a
+  non-blank string in `reply`, `content`, or `output`; explicit unsuccessful
+  envelopes, error-only envelopes, blank or unusable output, and an envelope
+  carrying both a non-empty `error` and stale output now raise
+  `ExecutionFailed`. Negative output assertions can no longer turn these
+  upstream generation failures into `prevention=pass`. Focused regressions
+  preserve real non-empty refusals and the existing 4xx/5xx failure path
+  ([#69](https://github.com/trionnemesis/AgentSec/issues/69),
+  [#71](https://github.com/trionnemesis/AgentSec/pull/71),
+  [#72](https://github.com/trionnemesis/AgentSec/pull/72)).
+
+### Notes
+
+- Four-axis verdict semantics and precedence, schemas, `evaluation/`, the
+  executor registry, MCP surface, target request contract and publication
+  boundaries are unchanged.
+- The same-shape Promptfoo result/error handling remains explicitly out of
+  scope; this release completes only the bounded HTTP error-envelope loop.
+
 ## [0.4.2] — 2026-09-03
 
 ### Fixed
@@ -307,7 +331,9 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
-[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/trionnemesis/AgentSec/compare/v0.4.2...v0.4.3
+[0.4.2]: https://github.com/trionnemesis/AgentSec/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/trionnemesis/AgentSec/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/trionnemesis/AgentSec/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/trionnemesis/AgentSec/compare/v0.3.1...v0.3.2
