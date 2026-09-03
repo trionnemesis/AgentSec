@@ -219,6 +219,7 @@ class HttpAdapter:
                 f"target request failed at step '{step_id}': {type(exc).__name__}"
             ) from exc
 
+        content: Any
         try:
             body = resp.json()
         except ValueError:
