@@ -346,7 +346,7 @@ def test_threat_class_match_ignores_case_and_whitespace(tmp_path: Path) -> None:
     )
     catalog = ScenarioCatalog([CatalogEntry(scenario, Path("x.yaml"))])
     rows, _ = compute_posture_coverage(
-        [_finding("r1", ".claude/hooks/guard.py", category="hooks")],
+        [_finding("r1", ".claude/hooks/guard.py", category=" HOOKS ")],
         root=tmp_path, discovery=_discovery(), catalog=catalog,
         scenarios_with_a_verdict={"AGT-CONFIG-907"},
     )
