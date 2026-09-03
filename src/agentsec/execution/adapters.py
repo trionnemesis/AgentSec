@@ -239,6 +239,10 @@ class HttpAdapter:
                     raise ExecutionFailed(
                         f"target returned no usable model output at step '{step_id}'"
                     )
+                if operation == "send_message" and body.get("error"):
+                    raise ExecutionFailed(
+                        f"target reported failure at step '{step_id}'"
+                    )
                 if content is None:
                     content = json.dumps(body, ensure_ascii=False)
             else:

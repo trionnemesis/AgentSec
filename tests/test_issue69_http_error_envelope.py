@@ -66,6 +66,20 @@ def test_http_200_explicit_unsuccessful_envelope_fails_closed() -> None:
         adapter.close()
 
 
+@pytest.mark.parametrize("output_key", ["reply", "content"])
+def test_http_200_error_envelope_with_stale_output_fails_closed(
+    output_key: str,
+) -> None:
+    adapter = _adapter_with_response(
+        {"error": "upstream model timeout", output_key: "cached text"}
+    )
+    try:
+        with pytest.raises(ExecutionFailed, match="reported failure"):
+            _send(adapter)
+    finally:
+        adapter.close()
+
+
 def test_http_200_real_reply_remains_valid() -> None:
     adapter = _adapter_with_response({"reply": "I cannot perform that action."})
     try:
