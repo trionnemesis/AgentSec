@@ -1,92 +1,215 @@
-"""Target adapters: execute attack steps against live or replayed agent targets."""
+"""Target adapters — the only code that talks to the system under test.
+
+Two kinds:
+
+``fixture``  Replays a recorded transcript from disk. This is what makes the
+             harness testable in CI with no agent running, and what makes a
+             finding reproducible a year later.
+``http``     Posts turns to a staging agent's chat endpoint.
+
+Credentials are read from the environment by *name*, resolved here, and never
+returned to a caller.
+"""
 
 from __future__ import annotations
 
 import json
-import time
-from abc import ABC, abstractmethod
+import os
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-import httpx
+from typing import Any, Literal, Protocol
 
 from agentsec.errors import ExecutionFailed
-from agentsec.models.evidence import Transcript, TranscriptTurn
+from agentsec.models.evidence import TranscriptTurn
+from agentsec.models.scenario import DriverOperation
 from agentsec.models.target import Target
 
 
-class AdapterResult:
-    """Result of one target operation."""
+class TargetAdapter(Protocol):
+    def supported_operations(self) -> list[DriverOperation]:
+        ...
 
-    def __init__(self, *, ok: bool, transcript: Transcript | None = None, detail: str = "") -> None:
-        self.ok = ok
-        self.transcript = transcript or Transcript()
-        self.detail = detail
+    def send(
+        self,
+        *,
+        operation: DriverOperation,
+        step_id: str,
+        principal: str | None,
+        session: str,
+        payload: str,
+    ) -> TranscriptTurn:
+        ...
 
+    def cleanup(self, *, target_id: str, session: str) -> None:
+        ...
 
-class TargetAdapter(ABC):
-    def __init__(self, target: Target, workspace: Path) -> None:
-        self.target = target
-        self.workspace = workspace
-
-    @abstractmethod
-    def send_message(self, message: str, *, run_id: str) -> AdapterResult:
-        raise NotImplementedError
-
-    def add_mcp_server(self, name: str, config: dict[str, Any], *, run_id: str) -> AdapterResult:
-        raise ExecutionFailed("target adapter does not support add_mcp_server")
-
-    def seed_memory(self, content: str, *, run_id: str) -> AdapterResult:
-        raise ExecutionFailed("target adapter does not support seed_memory")
-
-    def inject_tool_response(self, tool: str, content: str, *, run_id: str) -> AdapterResult:
-        raise ExecutionFailed("target adapter does not support inject_tool_response")
-
-    def assume_identity(self, identity: str, *, run_id: str) -> AdapterResult:
-        raise ExecutionFailed("target adapter does not support assume_identity")
-
-    def wait(self, seconds: float, *, run_id: str) -> AdapterResult:
-        time.sleep(seconds)
-        return AdapterResult(ok=True)
+    def close(self) -> None:
+        ...
 
 
-class ReplayAdapter(TargetAdapter):
-    """Deterministic adapter backed by fixture transcript files."""
+class FixtureAdapter:
+    """Replays ``<fixture_dir>/<scenario_id>.transcript.json``.
 
-    def __init__(self, target: Target, workspace: Path) -> None:
-        super().__init__(target, workspace)
-        self._step = 0
+    The file maps step ids to assistant replies, so a fixture stays valid when
+    steps are reordered but breaks loudly when a step is renamed — which is the
+    behaviour you want, because a renamed step is a changed test.
+    """
 
-    def send_message(self, message: str, *, run_id: str) -> AdapterResult:
-        self._step += 1
-        fixture = self.workspace / "fixtures" / self.target.metadata.id / f"step-{self._step}.json"
-        if not fixture.exists():
-            raise ExecutionFailed(f"replay fixture not found: {fixture}")
-        try:
-            raw = json.loads(fixture.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise ExecutionFailed(f"cannot read replay fixture: {exc}") from exc
-        transcript = Transcript.model_validate(raw.get("transcript", raw))
-        return AdapterResult(ok=True, transcript=transcript, detail="recorded replay")
-
-
-class HttpAdapter(TargetAdapter):
-    """Simple HTTP adapter for a target that accepts a message and returns model output."""
-
-    def send_message(self, message: str, *, run_id: str) -> AdapterResult:
-        endpoint = self.target.spec.endpoint
-        if not endpoint:
-            raise ExecutionFailed("HTTP target has no endpoint")
-        try:
-            resp = httpx.post(
-                endpoint,
-                json={"message": message},
-                headers={"X-AgentSec-Run-ID": run_id},
-                timeout=30,
+    def __init__(self, target: Target, scenario_id: str, workspace: Path) -> None:
+        fixture_dir = Path(target.adapter.fixture_dir or "")
+        if not fixture_dir.is_absolute():
+            fixture_dir = workspace / fixture_dir
+        self.path = fixture_dir / f"{scenario_id}.transcript.json"
+        if not self.path.is_file():
+            raise ExecutionFailed(
+                f"no fixture transcript for scenario '{scenario_id}'",
+                details={"expected": str(self.path)},
             )
+        try:
+            self._data: dict[str, Any] = json.loads(self.path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ExecutionFailed(f"malformed fixture {self.path.name}: {exc}") from exc
+
+        self._replies: dict[str, str] = {
+            str(k): str(v) for k, v in (self._data.get("replies") or {}).items()
+        }
+
+    def send(
+        self,
+        *,
+        operation: DriverOperation,
+        step_id: str,
+        principal: str | None,
+        session: str,
+        payload: str,
+    ) -> TranscriptTurn:
+        if operation == "send_message" and step_id not in self._replies:
+            raise ExecutionFailed(
+                f"fixture {self.path.name} has no reply for step '{step_id}'",
+                details={"known_steps": sorted(self._replies)},
+            )
+
+        if operation == "send_message":
+            role: Literal["assistant", "system"] = "assistant"
+            content = self._replies[step_id]
+        else:
+            role = "system"
+            content = f"{operation} completed"
+        return TranscriptTurn(
+            role=role,
+            content=content,
+            step_id=step_id,
+            principal=principal,
+            timestamp=datetime.now(UTC),
+        )
+
+    def supported_operations(self) -> list[DriverOperation]:
+        return [
+            "seed_resource",
+            "seed_memory",
+            "inject_tool_response",
+            "assume_identity",
+            "send_message",
+            "snapshot_state",
+            "cleanup",
+        ]
+
+    def cleanup(self, *, target_id: str, session: str) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class HttpAdapter:
+    """Posts to a staging agent over HTTP.
+
+    For ``send_message``, a transport-level success is only accepted as model
+    evidence when the response contains a non-blank ``reply``, ``content`` or
+    ``output`` string. Error envelopes and empty/unknown response shapes fail
+    closed so negative output assertions cannot score a false prevention pass.
+    """
+
+    def __init__(self, target: Target) -> None:
+        import httpx
+
+        adapter = target.adapter
+        headers = {"content-type": "application/json"}
+        missing: list[str] = []
+        for header, env_name in adapter.headers_from_env.items():
+            value = os.environ.get(env_name)
+            if value is None:
+                missing.append(env_name)
+            else:
+                headers[header] = value
+        if missing:
+            raise ExecutionFailed(
+                f"target '{target.id}' needs environment variables that are not set: "
+                f"{sorted(missing)}"
+            )
+
+        self._target = target
+        self._client = httpx.Client(timeout=adapter.timeout_seconds, headers=headers)
+
+    def supported_operations(self) -> list[DriverOperation]:
+        return self._target.adapter.supported_operations()
+
+    def _operation_url(self, operation: DriverOperation) -> str:
+        if not self._target.adapter.supports_operation(operation):
+            raise ExecutionFailed(
+                f"target '{self._target.id}' does not support driver operation "
+                f"'{operation}'"
+            )
+        base_url = self._target.adapter.base_url
+        if base_url is None:
+            raise ExecutionFailed(f"target '{self._target.id}' has no HTTP base URL")
+        route = self._target.adapter.operation_path(operation)
+        return base_url.rstrip("/") + "/" + route.lstrip("/")
+
+    def send(
+        self,
+        *,
+        operation: DriverOperation,
+        step_id: str,
+        principal: str | None,
+        session: str,
+        payload: str,
+    ) -> TranscriptTurn:
+        import httpx
+
+        url = self._operation_url(operation)
+        payload_doc: dict[str, Any] = (
+            {"message": payload, "session_id": session}
+            if operation == "send_message"
+            else {
+                "operation": operation,
+                "session_id": session,
+                "step_id": step_id,
+                "payload": payload,
+            }
+        )
+        if principal:
+            principal_env = self._target.principals.get(principal)
+            if principal_env is None:
+                raise ExecutionFailed(
+                    f"target '{self._target.id}' does not define principal '{principal}'",
+                    details={"known": sorted(self._target.principals)},
+                )
+            token = os.environ.get(principal_env)
+            if token is None:
+                raise ExecutionFailed(
+                    f"principal '{principal}' maps to unset environment variable "
+                    f"{principal_env}"
+                )
+            payload_doc["principal_token"] = token
+
+        try:
+            resp = self._client.post(url, json=payload_doc)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise ExecutionFailed(f"HTTP target request failed: {type(exc).__name__}") from exc
+            raise ExecutionFailed(
+                f"target request failed at step '{step_id}': {type(exc).__name__}"
+            ) from exc
 
         try:
             body = resp.json()
@@ -94,33 +217,61 @@ class HttpAdapter(TargetAdapter):
             content = resp.text
         else:
             if isinstance(body, dict):
-                # A transport-level 200 is not proof that the model produced a result.
-                # Explicit failure metadata and error-only envelopes must fail closed;
-                # serialising them into assistant text can make negative output
-                # assertions score a false prevention pass (#69).
-                if body.get("success") is False or body.get("ok") is False:
-                    raise ExecutionFailed("HTTP target reported failure without a valid model result")
-                candidates = (body.get("reply"), body.get("content"), body.get("output"))
-                content = next(
-                    (value for value in candidates if isinstance(value, str) and value.strip()),
-                    "",
-                )
-                if not content:
-                    if body.get("error") is not None or body.get("errors") is not None:
-                        raise ExecutionFailed("HTTP target returned an error envelope with no usable model output")
-                    raise ExecutionFailed("HTTP target returned no usable model output")
-            elif isinstance(body, str):
-                content = body
+                if operation == "send_message" and (
+                    body.get("success") is False or body.get("ok") is False
+                ):
+                    raise ExecutionFailed(
+                        f"target reported failure at step '{step_id}'"
+                    )
+                content = body.get("reply") or body.get("content") or body.get("output")
+                if operation == "send_message" and (
+                    not isinstance(content, str) or not content.strip()
+                ):
+                    raise ExecutionFailed(
+                        f"target returned no usable model output at step '{step_id}'"
+                    )
+                if content is None:
+                    content = json.dumps(body, ensure_ascii=False)
             else:
-                raise ExecutionFailed("HTTP target returned no usable model output")
+                content = json.dumps(body, ensure_ascii=False)
 
-        if not isinstance(content, str) or not content.strip():
-            raise ExecutionFailed("HTTP target returned no usable model output")
+        if operation == "send_message" and (
+            not isinstance(content, str) or not content.strip()
+        ):
+            raise ExecutionFailed(
+                f"target returned no usable model output at step '{step_id}'"
+            )
 
-        transcript = Transcript(
-            turns=[
-                TranscriptTurn(role="user", content=message),
-                TranscriptTurn(role="assistant", content=content),
-            ]
+        return TranscriptTurn(
+            role="assistant" if operation == "send_message" else "system",
+            content=str(content),
+            step_id=step_id,
+            principal=principal,
+            timestamp=datetime.now(UTC),
         )
-        return AdapterResult(ok=True, transcript=transcript, detail="live HTTP target")
+
+    def cleanup(self, *, target_id: str, session: str) -> None:
+        import httpx
+
+        url = self._operation_url("cleanup")
+        payload: dict[str, Any] = {
+            "operation": "cleanup",
+            "session_id": session,
+            "target_id": target_id,
+        }
+
+        try:
+            self._client.post(url, json=payload).raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ExecutionFailed(
+                f"target cleanup failed for '{self._target.id}': {type(exc).__name__}"
+            ) from exc
+
+    def close(self) -> None:
+        self._client.close()
+
+
+def build_adapter(target: Target, scenario_id: str, workspace: Path) -> TargetAdapter:
+    if target.adapter.kind == "fixture":
+        return FixtureAdapter(target, scenario_id, workspace)
+    return HttpAdapter(target)
