@@ -18,7 +18,7 @@ metadata:
   # filename and asserts on `run_shell_hook` — so naming AgentSec's own
   # `guard_agentsec.py` made the scenario correlate with a hook risk in this
   # repository and with nothing at all in anyone else's.
-  tags: [config-injection, hook-injection, command-execution, "config-surface:.claude/hooks"]
+  tags: [config-injection, hook-injection, command-execution, "config-surface:.claude/hooks", "threat-class:injection"]
   references:
     owasp_agentic: [AAI006]
 

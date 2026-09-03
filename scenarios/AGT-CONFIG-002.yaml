@@ -13,7 +13,7 @@ metadata:
     that only reads what a person can see has a gap this closes.
   owner: platform-security
   severity: high
-  tags: [config-injection, hidden-unicode, agent-definition, "config-surface:.claude/agents"]
+  tags: [config-injection, hidden-unicode, agent-definition, "config-surface:.claude/agents", "threat-class:injection"]
   references:
     owasp_agentic: [AAI008]
     mitre_atlas: [AML.T0051]
