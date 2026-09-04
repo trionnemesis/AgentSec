@@ -90,3 +90,64 @@ def test_http_200_real_reply_remains_valid() -> None:
     assert turn.role == "assistant"
     assert turn.content == "I cannot perform that action."
     assert turn.step_id == "message-1"
+
+
+@pytest.mark.parametrize(
+    ("body", "type_name", "leak"),
+    [
+        (["upstream-marker"], "list", "upstream-marker"),
+        (424242, "int", "424242"),
+        ("bare-string-marker", "str", "bare-string-marker"),
+    ],
+)
+def test_http_200_non_object_json_body_fails_closed(
+    body: object, type_name: str, leak: str
+) -> None:
+    """A bare list, number or string is not a reply; stringifying it would slip
+    past the blank-text guard and become assistant evidence."""
+    adapter = _adapter_with_response(body)
+    try:
+        with pytest.raises(ExecutionFailed, match="non-object JSON body") as exc_info:
+            _send(adapter)
+    finally:
+        adapter.close()
+    assert type_name in str(exc_info.value)
+    assert leak not in str(exc_info.value)
+
+
+def test_http_200_non_object_json_body_still_acknowledges_a_driver_operation() -> None:
+    """Non-message driver operations keep the stringified fallback: no output
+    assertion reads their reply, so a bare acknowledgement is still recorded."""
+    target = Target.model_validate(
+        {
+            "id": "http-driver-ack",
+            "environment": "staging",
+            "capabilities": ["memory"],
+            "adapter": {
+                "kind": "http",
+                "base_url": "http://127.0.0.1:9999",
+                "operations": {
+                    "send_message": {"path": "/chat"},
+                    "seed_memory": {"path": "/_agentsec/seed/memory"},
+                    "cleanup": {"path": "/_agentsec/cleanup"},
+                },
+            },
+        }
+    )
+    adapter = HttpAdapter(target)
+    response = Mock()
+    response.json.return_value = ["ack"]
+    response.raise_for_status.return_value = None
+    adapter._client.post = Mock(return_value=response)  # noqa: SLF001 - boundary regression
+    try:
+        turn = adapter.send(
+            operation="seed_memory",
+            step_id="seed-1",
+            principal=None,
+            session="session-1",
+            payload="remember",
+        )
+    finally:
+        adapter.close()
+    assert turn.role == "system"
+    assert turn.content == '["ack"]'

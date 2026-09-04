@@ -112,7 +112,30 @@ class PromptfooExecutor:
                 TranscriptSource(meta=SourceMeta(collector="promptfoo")),
             )
 
-        turns = self._parse_output(output_path)
+        turns, failed_steps = self._parse_output(output_path)
+        if failed_steps:
+            # A failed row is checked before has_assistant_output below so the
+            # error names the failed step ids instead of the vaguer "no
+            # non-empty assistant output" message.
+            succeeded_steps = [
+                step_id
+                for step_id in dict.fromkeys(t.step_id for t in turns if t.step_id)
+                if step_id not in failed_steps
+            ]
+            return (
+                make_result(
+                    self.name,
+                    started,
+                    ok=False,
+                    error=f"promptfoo reported {len(failed_steps)} failed row(s): {failed_steps}",
+                    raw_ref=str(output_path),
+                    steps_completed=succeeded_steps,
+                ),
+                TranscriptSource(
+                    turns=turns, meta=SourceMeta(collector="promptfoo", backend="cli")
+                ),
+            )
+
         has_assistant_output = any(
             turn.role == "assistant" and turn.content.strip() for turn in turns
         )
@@ -141,15 +164,16 @@ class PromptfooExecutor:
         )
 
     @staticmethod
-    def _parse_output(path: Path) -> list[TranscriptTurn]:
+    def _parse_output(path: Path) -> tuple[list[TranscriptTurn], list[str]]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return []
+            return [], []
 
         results = data.get("results", {})
         rows = results.get("results", results) if isinstance(results, dict) else results
         turns: list[TranscriptTurn] = []
+        failed_steps: list[str] = []
         for i, row in enumerate(rows if isinstance(rows, list) else []):
             if not isinstance(row, dict):
                 continue
@@ -159,10 +183,33 @@ class PromptfooExecutor:
                 prompt = prompt.get("raw") or prompt.get("display")
             if prompt:
                 turns.append(TranscriptTurn(role="user", content=str(prompt), step_id=step_id))
+
             response = row.get("response")
+            response_error = response.get("error") if isinstance(response, dict) else None
+            # `row["error"]`, `row["response"]["error"]` and `row["success"] is
+            # False` are the contract AgentSec accepts for a failed row, taken
+            # from promptfoo's documented eval-output shape -- not verified
+            # against a live promptfoo run, since no fixture or recorded
+            # output exists in this repo. An unrecognised shape is not a
+            # failure: it falls through to today's behaviour below, so a
+            # future promptfoo schema change degrades gracefully instead of
+            # failing every run.
+            #
+            # In promptfoo, `success` is *assertion* success, not provider
+            # success. Reading `success is False` as a provider/eval failure
+            # is safe here only because build_config (above) emits no
+            # `assert` blocks and attack.config can override the provider id
+            # only, so nothing can inject an assertion for it to fail against
+            # -- if that ever changes, this check must change with it.
+            # `error` / `response.error` are the primary signal; `success is
+            # False` only corroborates them.
+            if row.get("error") or response_error or row.get("success") is False:
+                failed_steps.append(step_id)
+                continue
+
             output = response.get("output") if isinstance(response, dict) else row.get("output")
             if output is not None:
                 turns.append(
                     TranscriptTurn(role="assistant", content=str(output), step_id=step_id)
                 )
-        return turns
+        return turns, failed_steps

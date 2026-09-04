@@ -245,6 +245,14 @@ class HttpAdapter:
                     )
                 if content is None:
                     content = json.dumps(body, ensure_ascii=False)
+            elif operation == "send_message":
+                # A bare JSON list, number or string is not a model reply; the
+                # stringified form would otherwise pass the blank-text guard
+                # below and become assistant evidence.
+                raise ExecutionFailed(
+                    f"target returned no usable model output at step '{step_id}' "
+                    f"(non-object JSON body: {type(body).__name__})"
+                )
             else:
                 content = json.dumps(body, ensure_ascii=False)
 
