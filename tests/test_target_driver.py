@@ -208,6 +208,276 @@ def test_http_operation_map_is_fixed_and_redacted(monkeypatch: pytest.MonkeyPatc
     assert "8080" not in str(target.redacted())
 
 
+def test_http_send_message_200_error_envelope_is_an_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+
+    class Response:
+        text = ""
+        status_code = 200
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"error": "upstream model timeout", "reply": None, "request_id": "abc"}
+
+    class Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def post(self, url: str, *, json: dict[str, object]) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            return None
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    adapter = HttpAdapter(target)
+
+    with pytest.raises(ExecutionFailed) as exc_info:
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal=None,
+            session="RUN-1",
+            payload="hello",
+        )
+
+    message = str(exc_info.value)
+    assert "message" in message
+    for key in ("error", "reply", "request_id"):
+        assert key in message
+    assert "upstream model timeout" not in message
+
+
+def _http_adapter_with_response(
+    monkeypatch: pytest.MonkeyPatch,
+    target: Target,
+    *,
+    json_result: object = None,
+    json_raises: bool = False,
+    text: str = "",
+    status_code: int = 200,
+) -> HttpAdapter:
+    """Build an HttpAdapter whose mocked client always returns one fixed body."""
+
+    class Response:
+        def __init__(self) -> None:
+            self.text = text
+            self.status_code = status_code
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> object:
+            if json_raises:
+                raise ValueError("not json")
+            return json_result
+
+    class Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def post(self, url: str, *, json: dict[str, object]) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            return None
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    return HttpAdapter(target)
+
+
+def test_http_send_message_200_empty_object_is_an_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_result={})
+
+    with pytest.raises(ExecutionFailed):
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal=None,
+            session="RUN-1",
+            payload="hello",
+        )
+
+
+def test_http_send_message_blank_reply_is_an_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_result={"reply": "   "})
+
+    with pytest.raises(ExecutionFailed):
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal=None,
+            session="RUN-1",
+            payload="hello",
+        )
+
+
+def test_http_send_message_real_reply_is_an_assistant_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(
+        monkeypatch, target, json_result={"reply": "I can't help with that."}
+    )
+
+    turn = adapter.send(
+        operation="send_message",
+        step_id="message",
+        principal=None,
+        session="RUN-1",
+        payload="hello",
+    )
+
+    assert turn.role == "assistant"
+    assert turn.content == "I can't help with that."
+
+
+def test_http_send_message_plain_text_body_is_an_assistant_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_raises=True, text="refused")
+
+    turn = adapter.send(
+        operation="send_message",
+        step_id="message",
+        principal=None,
+        session="RUN-1",
+        payload="hello",
+    )
+
+    assert turn.role == "assistant"
+    assert turn.content == "refused"
+
+
+def test_http_send_message_blank_plain_text_body_is_an_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_raises=True, text="   ")
+
+    with pytest.raises(ExecutionFailed) as exc_info:
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal=None,
+            session="RUN-1",
+            payload="hello",
+        )
+
+    assert "non-JSON body, blank" in str(exc_info.value)
+
+
+def test_http_non_message_operation_without_content_key_still_yields_a_system_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(operations={"seed_memory": {"path": "/_agentsec/seed/memory"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_result={"ok": True})
+
+    turn = adapter.send(
+        operation="seed_memory",
+        step_id="seed",
+        principal=None,
+        session="RUN-1",
+        payload="remember",
+    )
+
+    assert turn.role == "system"
+
+
+@pytest.mark.parametrize(
+    ("json_result", "type_name", "leak"),
+    [
+        (["marker-xyz"], "list", "marker-xyz"),
+        (424242, "int", "424242"),
+        ("refused-secret", "str", "refused-secret"),
+    ],
+)
+def test_http_send_message_non_object_json_body_is_an_execution_failure(
+    monkeypatch: pytest.MonkeyPatch, json_result: object, type_name: str, leak: str
+) -> None:
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_result=json_result)
+
+    with pytest.raises(ExecutionFailed) as exc_info:
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal=None,
+            session="RUN-1",
+            payload="hello",
+        )
+
+    message = str(exc_info.value)
+    assert type_name in message
+    assert leak not in message
+
+
+def test_http_error_status_does_not_echo_payload_or_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = _http_target(
+        operations={"send_message": {"path": "/v1/chat"}},
+        principals={"tenant-a": "DRIVER_TOKEN"},
+    )
+    monkeypatch.setenv("DRIVER_TOKEN", "super-secret-token")
+
+    import httpx
+
+    class Response:
+        def raise_for_status(self) -> None:
+            request = httpx.Request("POST", "http://127.0.0.1:8080/v1/chat")
+            response = httpx.Response(
+                500, request=request, text="upstream leaked payload: super-secret-token"
+            )
+            response.raise_for_status()
+
+        def json(self) -> dict[str, str]:
+            raise AssertionError("json() must not be called when raise_for_status raises")
+
+    class Client:
+        def __init__(self, **_: object) -> None:
+            pass
+
+        def post(self, url: str, *, json: dict[str, object]) -> Response:
+            return Response()
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(httpx, "Client", Client)
+    adapter = HttpAdapter(target)
+
+    with pytest.raises(ExecutionFailed) as exc_info:
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal="tenant-a",
+            session="RUN-1",
+            payload="attack payload with secret marker",
+        )
+
+    message = str(exc_info.value)
+    assert "message" in message
+    assert "HTTPStatusError" in message
+    assert "super-secret-token" not in message
+    assert "attack payload with secret marker" not in message
+
+
 @pytest.mark.parametrize(
     "path",
     [

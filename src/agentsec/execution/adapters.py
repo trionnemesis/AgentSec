@@ -127,9 +127,17 @@ class FixtureAdapter:
 class HttpAdapter:
     """Posts to a staging agent over HTTP.
 
-    Expects ``{"reply": "..."}`` or ``{"content": "..."}``; anything else is
-    stringified rather than dropped, because an unexpected response shape is
-    itself worth having in the transcript.
+    For ``send_message``, model output must arrive as a truthy ``reply``,
+    ``content`` or ``output`` on a JSON object, or as non-blank text when the
+    body is not JSON at all. Anything else — an empty object, a blank string,
+    an error envelope, a bare JSON list or number — is an execution failure,
+    never a transcript turn: a stringified error envelope is indistinguishable
+    from a real refusal once it is in the transcript, and a prevention or
+    detection assertion would otherwise evaluate against a response the model
+    never produced. Non-message driver operations (``seed_resource``,
+    ``seed_memory``, ``inject_tool_response``, ``assume_identity``,
+    ``snapshot_state``) have no such contract to honour — no output assertion
+    reads their reply — so they keep the whole-body stringified fallback.
     """
 
     def __init__(self, target: Target) -> None:
@@ -221,17 +229,61 @@ class HttpAdapter:
         try:
             body = resp.json()
         except ValueError:
-            content = resp.text
+            parsed_as_json = False
+            body = None
         else:
-            content = (
-                body.get("reply")
-                or body.get("content")
-                or body.get("output")
-                or json.dumps(body, ensure_ascii=False)
-            ) if isinstance(body, dict) else json.dumps(body, ensure_ascii=False)
+            parsed_as_json = True
+
+        if operation != "send_message":
+            # Driver acknowledgements have no output contract to honour, so an
+            # unexpected shape is still worth having in the transcript verbatim.
+            if not parsed_as_json:
+                content: object = resp.text
+            elif isinstance(body, dict):
+                content = (
+                    body.get("reply")
+                    or body.get("content")
+                    or body.get("output")
+                    or json.dumps(body, ensure_ascii=False)
+                )
+            else:
+                content = json.dumps(body, ensure_ascii=False)
+            return TranscriptTurn(
+                role="system",
+                content=str(content),
+                step_id=step_id,
+                principal=principal,
+                timestamp=datetime.now(UTC),
+            )
+
+        # send_message: a stringified error envelope is indistinguishable from
+        # a refusal once it is in the transcript, so anything that is not
+        # genuine model output must fail the step rather than become a turn.
+        # Never echo the body or resp.text into the failure message: it may
+        # carry the request payload or upstream secrets.
+        if not parsed_as_json:
+            text_body = resp.text
+            if not text_body.strip():
+                raise ExecutionFailed(
+                    f"target returned no model output at step '{step_id}' "
+                    f"(HTTP {resp.status_code}); non-JSON body, blank"
+                )
+            content = text_body
+        elif isinstance(body, dict):
+            content = body.get("reply") or body.get("content") or body.get("output")
+            if content is None or (isinstance(content, str) and not content.strip()):
+                raise ExecutionFailed(
+                    f"target returned no model output at step '{step_id}' "
+                    f"(HTTP {resp.status_code}); JSON object keys: {sorted(body)[:8]}"
+                )
+        else:
+            raise ExecutionFailed(
+                f"target returned no model output at step '{step_id}' "
+                f"(HTTP {resp.status_code}); non-object JSON body ({type(body).__name__})"
+            )
 
         return TranscriptTurn(
-            role="assistant" if operation == "send_message" else "system",
+            role="assistant",
             content=str(content),
             step_id=step_id,
             principal=principal,
