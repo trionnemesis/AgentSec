@@ -8,28 +8,7 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
-### Fixed
-
-- **A failed promptfoo row is an execution failure, not assistant evidence.**
-  The promptfoo executor read a row's `response.output` whenever present and
-  never looked at promptfoo's own `error` / `response.error` / `success`
-  fields, so a row whose provider call failed upstream but still carried
-  error text as its output became a valid assistant turn — the same shape as
-  the HTTP error envelope closed in `0.4.3`, one layer over. A failed row now
-  keeps its user turn, drops its assistant turn, and fails the whole
-  execution naming the failed step ids, checked before the existing
-  non-empty-output guard. The field names are the contract we accept,
-  documented in the code as unverified against a recorded promptfoo output
-  ([#69](https://github.com/trionnemesis/AgentSec/issues/69),
-  [#32 handoff](https://github.com/trionnemesis/AgentSec/issues/32)).
-- **A non-object JSON body on `send_message` fails closed.** A bare JSON
-  list, number or string was stringified into a non-blank assistant turn and
-  therefore passed the `0.4.3` blank-text guard; it now raises
-  `ExecutionFailed` naming only the body's type. Non-message driver
-  operations keep the stringified acknowledgement, since no output assertion
-  reads their reply ([#69](https://github.com/trionnemesis/AgentSec/issues/69)).
-
-## [0.4.3] — 2026-09-03
+## [0.4.3] — 2026-09-04
 
 ### Fixed
 
@@ -44,14 +23,35 @@ drafts even when they appear in a release.
   ([#69](https://github.com/trionnemesis/AgentSec/issues/69),
   [#71](https://github.com/trionnemesis/AgentSec/pull/71),
   [#72](https://github.com/trionnemesis/AgentSec/pull/72)).
+- **A failed promptfoo row is an execution failure, not assistant evidence.**
+  The promptfoo executor read a row's `response.output` whenever present and
+  never looked at promptfoo's own `error` / `response.error` / `success`
+  fields, so a row whose provider call failed upstream but still carried
+  error text as its output became a valid assistant turn — the same shape as
+  the HTTP error envelope closed above, one layer over. A failed row now
+  keeps its user turn, drops its assistant turn, and fails the whole
+  execution naming the failed step ids, checked before the existing
+  non-empty-output guard. The field names are the contract we accept,
+  documented in the code as unverified against a recorded promptfoo output
+  ([#69](https://github.com/trionnemesis/AgentSec/issues/69),
+  [#32 handoff](https://github.com/trionnemesis/AgentSec/issues/32)).
+- **A non-object JSON body on `send_message` fails closed.** A bare JSON
+  list, number or string was stringified into a non-blank assistant turn and
+  therefore passed the blank-text guard added above; it now raises
+  `ExecutionFailed` naming only the body's type. Non-message driver
+  operations keep the stringified acknowledgement, since no output assertion
+  reads their reply ([#69](https://github.com/trionnemesis/AgentSec/issues/69)).
 
 ### Notes
 
 - Four-axis verdict semantics and precedence, schemas, `evaluation/`, the
   executor registry, MCP surface, target request contract and publication
   boundaries are unchanged.
-- The same-shape Promptfoo result/error handling remains explicitly out of
-  scope; this release completes only the bounded HTTP error-envelope loop.
+- The promptfoo failed-row and non-object-body halves landed in
+  [#75](https://github.com/trionnemesis/AgentSec/pull/75) before this tag was
+  cut, so the release closes the whole #69 shape rather than the HTTP half
+  alone. A target-definition error-envelope contract (issue #69 option a)
+  remains out of scope until a live HTTP target needs a shim.
 
 ## [0.4.2] — 2026-09-03
 
