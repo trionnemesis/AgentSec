@@ -270,7 +270,7 @@ class HttpAdapter:
                 )
             content = text_body
         elif isinstance(body, dict):
-            content = body.get("reply") or body.get("content") or body.get("output")
+            content = body.get("reply") or body.get("content") or body.get("output") or None
             if content is None or (isinstance(content, str) and not content.strip()):
                 raise ExecutionFailed(
                     f"target returned no model output at step '{step_id}' "

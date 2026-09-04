@@ -427,6 +427,37 @@ def test_http_send_message_non_object_json_body_is_an_execution_failure(
     assert leak not in message
 
 
+@pytest.mark.parametrize(
+    "json_result",
+    [
+        {"output": []},
+        {"output": {}},
+        {"output": 0},
+        {"error": "upstream model timeout", "output": []},
+    ],
+)
+def test_http_send_message_falsy_output_value_is_an_execution_failure(
+    monkeypatch: pytest.MonkeyPatch, json_result: dict[str, object]
+) -> None:
+    """A falsy but non-None ``output`` is still no model output: the ``or``
+    chain must not hand its last operand through as an assistant turn."""
+    target = _http_target(operations={"send_message": {"path": "/v1/chat"}})
+    adapter = _http_adapter_with_response(monkeypatch, target, json_result=json_result)
+
+    with pytest.raises(ExecutionFailed) as exc_info:
+        adapter.send(
+            operation="send_message",
+            step_id="message",
+            principal=None,
+            session="RUN-1",
+            payload="hello",
+        )
+
+    message = str(exc_info.value)
+    assert "JSON object keys:" in message
+    assert "upstream model timeout" not in message
+
+
 def test_http_error_status_does_not_echo_payload_or_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
