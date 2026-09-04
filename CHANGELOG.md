@@ -8,6 +8,34 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`HttpAdapter.send` and the promptfoo executor no longer manufacture a
+  model-output turn out of something the model never said.** The HTTP
+  adapter previously fell through to `json.dumps(body)` for any
+  `send_message` response shape it did not recognise and labelled the
+  result `assistant`, so a target answering HTTP 200 with an error envelope
+  such as `{"error": "...", "reply": null}` produced a non-empty assistant
+  turn that no downstream guard rejected — an `output_contains` /
+  `output_matches` prevention assertion could then score `pass` against the
+  error text. The promptfoo executor had the same shape one layer over:
+  `_parse_output` read a row's `response.output` whenever present without
+  checking promptfoo's own `success` / `error` fields, so a row that failed
+  upstream could still surface as a valid assistant turn. Both now fail
+  closed instead: the HTTP adapter requires a truthy `reply` / `content` /
+  `output` on a JSON object, or non-blank text when the body is not JSON at
+  all — anything else, including an empty object, a blank string, or a
+  non-object JSON body, raises `ExecutionFailed`, which already maps to
+  `PurpleVerdict.ERROR` on every axis; the promptfoo executor treats any row
+  carrying a truthy `error` / `response.error`, or `success is False`, as a
+  failed row, drops its assistant turn, and fails the whole execution naming
+  the failed step ids. The replay adapter, `FixtureAdapter`, and 4xx/5xx
+  responses (already closed by `raise_for_status()`) were never affected by
+  either gap ([#69](https://github.com/trionnemesis/AgentSec/issues/69),
+  [#32 handoff](https://github.com/trionnemesis/AgentSec/issues/32)). The
+  `v0.4.2` known-issue note below named the HTTP adapter only; the promptfoo
+  half is fixed in this same change.
+
 ## [0.4.2] — 2026-09-03
 
 ### Fixed

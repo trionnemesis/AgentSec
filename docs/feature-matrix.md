@@ -127,7 +127,7 @@ Do not put these on the golden path, and do not describe them as ready.
 | Promptfoo executor | A real agent to validate against |
 | Wazuh OpenSearch collector | Any live run |
 | OTel HTTP collector | Any live run |
-| HTTP target adapter | Per-target shims; it assumes `{"reply": ...}` |
+| HTTP target adapter | Per-target shims; it assumes `{"reply": ...}`; a 200 without a truthy `reply`/`content`/`output` (or non-blank text) is an execution failure, never a turn |
 | Remote read-only gateway | Authentication — OAuth/OIDC, RBAC, TLS termination |
 
 ---

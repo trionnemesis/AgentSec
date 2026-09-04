@@ -106,7 +106,7 @@ first drafts.
 | Promptfoo executor | 🟡 | config generation and output parsing written; needs a real agent |
 | Wazuh OpenSearch collector | 🟡 | query shape written against the `wazuh-alerts-*` mapping; untested live |
 | OTel HTTP collector | 🟡 | Tempo-style search API; untested live |
-| HTTP target adapter | 🟡 | assumes `{"reply": ...}`; real agents need per-target shims |
+| HTTP target adapter | 🟡 | assumes `{"reply": ...}`; real agents need per-target shims; a 200 without a truthy `reply`/`content`/`output` (or non-blank text) is an execution failure, never a turn |
 | Static posture ingestion | ✅ | opt-in; requires a third-party report, `not_tested` when absent ([#25](https://github.com/trionnemesis/AgentSec/issues/25)) |
 
 ---
