@@ -11,21 +11,22 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from agentsec.models.run import AxisStatus, PurpleVerdict, Run
+from agentsec.errors import EvidenceUnavailable
+from agentsec.evidence.base import canonical_run_id
+from agentsec.models.evidence import (
+    Evidence,
+    OtelSource,
+    StateDiffSource,
+    ToolAuditSource,
+    WazuhSource,
+)
+from agentsec.models.run import AxisStatus, PurpleVerdict, Run, RunStatus
 from agentsec.models.scenario import Scenario
 from agentsec.models.target import Target
 from agentsec.policy.profiles import Profile
 from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
 
 EvidenceProvenance = Literal["recorded", "live", "mixed"]
-
-#: Backend kinds a collector or adapter can report. A file-backed collector or a
-#: fixture adapter *replayed* something someone recorded earlier; opensearch/http
-#: queried a live system while the run was happening. Nothing in between exists
-#: today, so a kind outside both sets cannot occur — see ``_evidence_kind``.
-_RECORDED_KINDS = frozenset({"file", "fixture"})
-_LIVE_KINDS = frozenset({"http", "opensearch"})
-
 
 @dataclass
 class Provenance:
@@ -51,41 +52,101 @@ class Provenance:
         }
 
 
-def _evidence_kind(kinds: set[str]) -> EvidenceProvenance:
-    if not kinds:
-        # Nothing here observed a live system. There is no "unknown" value in
-        # this enum, so absence of evidence defaults to the label that never
-        # overclaims — the same rule as an untested axis never rounding up.
-        return "recorded"
-    if kinds <= _RECORDED_KINDS:
-        return "recorded"
-    if kinds <= _LIVE_KINDS:
-        return "live"
-    return "mixed"
+def _aware(timestamp: datetime | None) -> bool:
+    return timestamp is not None and timestamp.utcoffset() is not None
+
+
+def _source_is_live(
+    source: OtelSource | WazuhSource | ToolAuditSource | StateDiffSource,
+    evidence: Evidence,
+) -> bool:
+    """Qualify presentation only; do not repair records or re-evaluate a verdict."""
+    if source.meta is None or source.meta.correlation != "verified":
+        return False
+    bags: list[dict[str, Any]] = []
+    if isinstance(source, OtelSource):
+        bags = [span.attributes for span in source.spans]
+    elif isinstance(source, WazuhSource):
+        bags = [alert.fields for alert in source.alerts]
+    try:
+        if any(canonical_run_id(bag) not in (None, evidence.run_id) for bag in bags):
+            return False
+    except EvidenceUnavailable:
+        return False
+    observations: list[tuple[str | None, datetime | None]]
+    if isinstance(source, OtelSource):
+        observations = [(span.run_id, span.start_time) for span in source.spans]
+    elif isinstance(source, WazuhSource):
+        observations = [(alert.run_id, alert.timestamp) for alert in source.alerts]
+    elif isinstance(source, ToolAuditSource):
+        observations = [(record.run_id, record.timestamp) for record in source.records]
+    else:
+        # State diffs have no per-record correlation/time contract today.
+        return False
+    window = evidence.window
+    if not observations or window is None or not all(
+        _aware(t) for t in (window.start, window.end, evidence.collected_at)
+    ):
+        return False
+    end = min(window.end, evidence.collected_at)
+    if window.start > end:
+        return False
+    return all(
+        run_id == evidence.run_id
+        and timestamp is not None
+        and _aware(timestamp)
+        and window.start <= timestamp <= end
+        for run_id, timestamp in observations
+    )
 
 
 def derive_provenance(
     run: Run,
     target: Target | None = None,
     evidence_backends: dict[str, str] | None = None,
+    evidence: Evidence | None = None,
 ) -> Provenance:
-    """Derived from ``Run.execution`` and the collectors that actually ran.
+    """Use persisted correlation/time evidence, with a conservative fallback.
 
-    ``evidence_backends`` maps collector name -> backend kind (``file``,
-    ``http``, ``opensearch``) for sources that actually contributed. A collector
-    that errored contributes nothing and must already be absent from this map —
-    see ``HarnessService._evidence_backends_for`` — so it is never counted
-    towards either ``recorded`` or ``live``.
+    Backend kinds remain diagnostics; a transport never promotes a source.
+    Historical reports are re-derived without rewriting stored data (ADR 0010).
     """
     backends = dict(evidence_backends or {})
-    adapter = target.adapter.kind if target is not None else "unknown"
-    kinds = set(backends.values())
-    if adapter != "unknown":
-        kinds.add(adapter)
+    adapter: str = target.adapter.kind if target is not None else "unknown"
+    origins: set[str] = set()
+    if evidence is not None and evidence.run_id == run.run_id:
+        errors = {error.source for error in evidence.collector_errors}
+        backends = {}
+        executed = (
+            run.execution is not None and not run.dry_run
+            and run.status not in {RunStatus.PENDING, RunStatus.REFUSED}
+        )
+        transcript = evidence.sources.transcript
+        if transcript is not None:
+            # The current allowlist is mutable; the stored adapter is not.
+            adapter = (transcript.meta.backend if transcript.meta else None) or "unknown"
+            if (
+                executed and run.execution is not None and run.execution.ok
+                and transcript.turns and "transcript" not in errors
+            ):
+                origins.add("live" if adapter == "http" else "recorded")
+        for name in ("otel", "wazuh", "tool_audit", "state_diff"):
+            source = getattr(evidence.sources, name)
+            if source is None or name in errors:
+                continue
+            if source.meta is not None and source.meta.backend:
+                backends[name] = source.meta.backend
+            if executed:
+                origins.add("live" if _source_is_live(source, evidence) else "recorded")
+    kind: EvidenceProvenance = "recorded"
+    if origins == {"live"}:
+        kind = "live"
+    elif origins == {"live", "recorded"}:
+        kind = "mixed"
     return Provenance(
         executor=run.execution.executor if run.execution else "none",
         adapter=adapter,
-        evidence=_evidence_kind(kinds),
+        evidence=kind,
         backends=backends,
     )
 
@@ -151,6 +212,7 @@ def normalize_run(
     collector_errors: list[dict[str, str]] | None = None,
     target: Target | None = None,
     evidence_backends: dict[str, str] | None = None,
+    evidence: Evidence | None = None,
 ) -> RunSummary:
     verdict = run.verdict
     duration = 0.0
@@ -201,7 +263,7 @@ def normalize_run(
         collector_errors=collector_errors or [],
         owasp=list(scenario.metadata.references.owasp_agentic) if scenario else [],
         tags=list(scenario.metadata.tags) if scenario else [],
-        provenance=derive_provenance(run, target, evidence_backends),
+        provenance=derive_provenance(run, target, evidence_backends, evidence),
     )
 
 

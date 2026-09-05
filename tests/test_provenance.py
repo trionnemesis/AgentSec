@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+from agentsec.models.evidence import Evidence
 from agentsec.models.run import ExecutionResult, PurpleVerdict, Run, RunStatus, Verdict
 from agentsec.models.target import Adapter, Target
 from agentsec.reporting.normalizer import (
@@ -47,6 +48,39 @@ def _target(adapter_kind: str) -> Target:
     return Target(id="test-target", environment="local", adapter=adapter)
 
 
+def _bundle(
+    run: Run, backends: dict[str, str], *, adapter: str = "http",
+    recorded: tuple[str, ...] = (),
+) -> Evidence:
+    """Actual origin metadata replaces the pre-#77 transport-only test inputs."""
+    now = run.created_at
+    sources = {
+        "transcript": {
+            "turns": [{"role": "assistant", "content": "Refused."}],
+            "meta": {"collector": "replay", "backend": adapter},
+        },
+    }
+    for name, backend in backends.items():
+        record = {"run_id": run.run_id}
+        if name == "wazuh":
+            key = "alerts"
+            record.update(rule_id="100901", timestamp=now)
+        else:
+            key = "spans"
+            record.update(name="policy.check", start_time=now)
+        sources[name] = {
+            key: [record],
+            "meta": {
+                "collector": name, "backend": backend,
+                "correlation": "trusted_fixture" if name in recorded else "verified",
+            },
+        }
+    return Evidence.model_validate({
+        "run_id": run.run_id, "collected_at": now,
+        "window": {"start": now, "end": now}, "sources": sources,
+    })
+
+
 def test_replay_against_a_fixture_adapter_is_recorded() -> None:
     prov = derive_provenance(
         _run("replay"), _target("fixture"),
@@ -59,27 +93,31 @@ def test_replay_against_a_fixture_adapter_is_recorded() -> None:
 
 
 def test_live_target_with_live_backends_is_live() -> None:
+    run = _run("promptfoo")
     prov = derive_provenance(
-        _run("promptfoo"), _target("http"),
-        {"wazuh": "opensearch", "otel": "http"},
+        run, _target("http"),
+        evidence=_bundle(run, {"wazuh": "opensearch", "otel": "http"}),
     )
     assert prov.evidence == "live"
 
 
-def test_live_target_with_a_file_backed_collector_is_mixed_and_named() -> None:
+def test_live_target_with_a_trusted_fixture_collector_is_mixed_and_named() -> None:
     """The interesting value, and it must not be hidden."""
-    prov = derive_provenance(_run("promptfoo"), _target("http"), {"wazuh": "file"})
+    run = _run("promptfoo")
+    prov = derive_provenance(
+        run, _target("http"),
+        evidence=_bundle(run, {"wazuh": "file"}, recorded=("wazuh",)),
+    )
     assert prov.evidence == "mixed"
     assert prov.backends == {"wazuh": "file"}
 
 
 def test_a_collector_that_errored_and_contributed_nothing_is_excluded() -> None:
-    """Absence from ``evidence_backends`` is how a collector error is represented
-    here — it must not be silently folded into ``live`` just because the
-    adapter is live."""
-    prov = derive_provenance(_run("promptfoo"), _target("http"), {})
+    """A real HTTP transcript contributes; a failed collector contributes nothing."""
+    run = _run("promptfoo")
+    prov = derive_provenance(run, _target("http"), evidence=_bundle(run, {}))
     assert prov.backends == {}
-    assert prov.evidence == "live"  # the adapter alone; nothing else contributed
+    assert prov.evidence == "live"  # the persisted transcript, not target settings
 
 
 def test_unresolvable_target_falls_back_to_the_conservative_label() -> None:
@@ -93,7 +131,7 @@ def test_purple_verdict_is_unchanged_by_provenance() -> None:
     run = _run("replay")
     fixture_summary = normalize_run(run, target=_target("fixture"))
     live_summary = normalize_run(
-        run, target=_target("http"), evidence_backends={"wazuh": "opensearch"}
+        run, target=_target("http"), evidence=_bundle(run, {"wazuh": "opensearch"})
     )
     assert fixture_summary.verdict == live_summary.verdict == "secure"
     assert fixture_summary.prevention == live_summary.prevention == "pass"
@@ -102,9 +140,8 @@ def test_purple_verdict_is_unchanged_by_provenance() -> None:
 
 def test_batch_rollup_counts_provenance_and_trips_the_banner() -> None:
     fixture_run = normalize_run(_run("replay"), target=_target("fixture"))
-    live_run = normalize_run(
-        _run("promptfoo"), target=_target("http"), evidence_backends={"wazuh": "opensearch"}
-    )
+    run = _run("promptfoo")
+    live_run = normalize_run(run, target=_target("http"), evidence=_bundle(run, {}))
 
     all_fixture = normalize_batch([fixture_run, fixture_run], profile="pr", target_id="t")
     assert all_fixture["provenance_counts"] == {"recorded": 2, "live": 0, "mixed": 0}

@@ -43,8 +43,9 @@ the wall-clock time it was captured; `within_seconds` compares against the curre
 run. Without rebasing, every fixture would become a false `detection_gap` as soon
 as the clock moved past its timestamps. Relative offsets are preserved, so an
 alert recorded three seconds after the first event still tests `within_seconds: 3`
-honestly. Only file-backed collection rebases — live backends already query the
-real window.
+honestly. Only explicitly `trusted_fixture` file-backed collection rebases.
+Verified live-written files retain their event times, as do network sources.
+Presentation provenance is qualified separately by [ADR 0010](0010-provenance-from-correlation.md).
 
 Two deliberate omissions from the bundle:
 
