@@ -15,3 +15,4 @@ same debate being reopened in six months without new information.
 | [0007](0007-sqlite-and-files.md) | SQLite plus JSON files, not a service database | Accepted |
 | [0008](0008-skill-assurance-bounded-context.md) | Skill Assurance is a separate bounded context | Accepted |
 | [0009](0009-repository-first-golden-path.md) | The repository scan is the entry point, and a risk is not a verdict | Accepted |
+| [0010](0010-provenance-from-correlation.md) | Live provenance requires correlated observations, not a backend kind | Accepted |
