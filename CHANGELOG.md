@@ -19,6 +19,11 @@ drafts even when they appear in a release.
   Four-axis results, evaluation, schema shape and MCP capabilities are unchanged
   ([#77](https://github.com/trionnemesis/AgentSec/issues/77),
   [ADR 0010](docs/adr/0010-provenance-from-correlation.md)).
+- Tool-audit `.ndjson` files now use the existing JSONL reader, matching the
+  AgentShield runtime output extension. Canonical run-ID rejection, event
+  timestamps and decision normalization are unchanged. This is a tested
+  [Route A ingestion prerequisite](docs/route-a-resumption.md), not completion
+  of the Claude Code live control-verification loop.
 
 ### Compatibility
 
