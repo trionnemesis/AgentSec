@@ -21,7 +21,7 @@
       <h2>Keep the control surface narrow.</h2>
       <p class="supporting-copy">Targets come from an operator-owned allowlist. Production is not expressible. Live evidence must match the current run. The MCP gateway has no generic shell, SQL, arbitrary URL, or self-approval tool.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0003-constrained-mcp-tools.md" rel="noopener noreferrer">Read the security boundary ↗</a></div>
-      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span>Run provenance stays explicit: <code>recorded</code>, <code>live</code>, or <code>mixed</code>.</p>
+      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span>Run provenance stays explicit: <code>recorded</code>, <code>live</code>, or <code>mixed</code> — and <code>live</code> is earned, not assumed: records must be nonempty, carry this run’s canonical id, and be timestamped inside the persisted collection window.</p>
       <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span>A static scanner finding is <code>covered</code> only when a scenario that declares both its surface and its threat class has actually produced a verdict; everything else stays <code>not_tested</code>.</p>
     </div>
 

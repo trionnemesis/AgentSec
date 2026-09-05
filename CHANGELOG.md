@@ -25,6 +25,22 @@ drafts even when they appear in a release.
   [Route A ingestion prerequisite](docs/route-a-resumption.md), not completion
   of the Claude Code live control-verification loop.
 
+### Documentation
+
+- **The AgentShield hook-contract gap is now verified against the published npm
+  artifact, not a source branch.** `ecc-agentshield@1.4.0` was fetched with
+  `npm pack`; its SHA-512 and SHA-1 match the registry's published `dist`
+  digests, and the shipped `HOOK_ENTRY`, `HOOK_COMMAND` and default runtime
+  policy are quoted from those bytes. Two independent defects (hook-entry schema
+  and hook-input protocol) and a missing record-identity gap are recorded with
+  their derivation. The package was read, never executed. This is artifact-level
+  evidence, not a live verdict: no scenario asserts it, no finding is raised, and
+  Route A stays open ([`docs/route-a-resumption.md`](docs/route-a-resumption.md)).
+- The five remaining Route A prerequisites are recorded with their exact
+  observed errors. The earlier "no Claude Code executable" dependency is
+  resolved; authentication, package execution, a sanctioned run entry point,
+  operator target registration and merge permission remain.
+
 ### Compatibility
 
 - Provenance is re-derived when historical reports are regenerated. Qualified

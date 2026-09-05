@@ -491,7 +491,7 @@ runner 上也測得動。
 
 ## 狀態
 
-Alpha，最新版本為 [`v0.4.3`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.3)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。
+Alpha，最新版本為 [`v0.4.3`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.3)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。端到端驗證一個**外部** agent 控制 —— 真實 Claude Code session、第三方 PreToolUse hook，以及把兩者關聯起來的證據 —— 另外追蹤於 [`docs/route-a-resumption.md`](docs/route-a-resumption.md)，目前**尚未**驗證成立。
 
 第一次執行前值得知道的一件事：情境目錄是從 `<workspace>/scenarios` 讀取的，所以在不是
 AgentSec checkout 的 repository 裡沒有東西可以比對，每一條風險都會落在 `not_verifiable`。
