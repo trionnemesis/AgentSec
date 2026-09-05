@@ -421,9 +421,11 @@ class HarnessService:
             )
             runs.append(run)
             collector_errors = self._collector_errors_for(run)
-            evidence_backends = self._evidence_backends_for(run)
             summaries.append(
-                normalize_run(run, scenario, prof, collector_errors, target, evidence_backends)
+                normalize_run(
+                    run, scenario, prof, collector_errors, target,
+                    evidence=self._provenance_evidence_for(run),
+                )
             )
 
         report = normalize_batch(summaries, profile=profile, target_id=target_id)
@@ -474,7 +476,7 @@ class HarnessService:
                     profile,
                     self._collector_errors_for(run),
                     target,
-                    self._evidence_backends_for(run),
+                    evidence=self._provenance_evidence_for(run),
                 )
             )
         return BatchResult(
@@ -900,7 +902,7 @@ class HarnessService:
                     run, scenario, prof,
                     self._collector_errors_for(run),
                     self._target_for(run),
-                    self._evidence_backends_for(run),
+                    evidence=self._provenance_evidence_for(run),
                 )
             )
 
@@ -1271,28 +1273,15 @@ class HarnessService:
             for e in bundle.get("collector_errors", [])
         ]
 
-    def _evidence_backends_for(self, run: Run) -> dict[str, str]:
-        """Collector name -> backend kind, for sources that actually contributed.
-
-        A collector that errored never reaches ``sources`` in the persisted
-        bundle (``EvidenceCollector.collect`` only sets the attribute on
-        success), so it is absent here too — never silently counted as
-        ``recorded`` or ``live``. Feeds ``reporting.normalizer.derive_provenance``.
-        """
+    def _provenance_evidence_for(self, run: Run) -> Evidence | None:
+        """Pass original source attestations to the presentation boundary."""
         if not run.evidence_ref:
-            return {}
+            return None
         try:
-            bundle = self.get_run_evidence(run.run_id)
-        except AgentSecError:
-            return {}
-        backends: dict[str, str] = {}
-        for name, source in (bundle.get("sources") or {}).items():
-            if name == "transcript" or not isinstance(source, dict):
-                continue
-            backend = (source.get("meta") or {}).get("backend")
-            if backend:
-                backends[name] = backend
-        return backends
+            return Evidence.model_validate(self.get_run_evidence(run.run_id))
+        except (AgentSecError, ValueError, OSError):
+            # Missing/legacy/unreadable provenance cannot justify a live label.
+            return None
 
     def _target_for(self, run: Run) -> Target | None:
         try:

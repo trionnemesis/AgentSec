@@ -8,6 +8,27 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Live-written files can carry live provenance.** Reporting now uses stored
+  source correlation, current-run IDs and event timestamps inside the evidence
+  window instead of treating file transport as a recording. Empty, unverified,
+  untimed, stale or foreign data is not promoted; trusted fixtures remain
+  recorded and errored sources are excluded. The original transcript adapter
+  survives later target edits. Report banners explain the conservative fallback.
+  Four-axis results, evaluation, schema shape and MCP capabilities are unchanged
+  ([#77](https://github.com/trionnemesis/AgentSec/issues/77),
+  [ADR 0010](docs/adr/0010-provenance-from-correlation.md)).
+
+### Compatibility
+
+- Provenance is re-derived when historical reports are regenerated. Qualified
+  file-backed runs can move from mixed to live; runs missing correlation/time
+  metadata can become recorded or mixed. Existing exported files, stored evidence
+  and verdicts are not rewritten. `fixture_derived` retains its all-recorded
+  rollup rule, including insufficient origin proof. This does not establish
+  completion of the separate Claude Code/AgentShield Route A live loop.
+
 ## [0.4.3] — 2026-09-04
 
 ### Fixed

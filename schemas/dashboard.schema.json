@@ -71,7 +71,7 @@
     },
     "fixture_derived": {
       "type": "boolean",
-      "description": "True when every counted run's evidence is `recorded` — the whole rollup was proven against replayed fixtures, not a live attack. Drives the banner a reader must see before trusting a `secure` count. False on an empty batch."
+      "description": "True when every counted run's evidence is `recorded`, including the conservative fallback for insufficient origin proof (ADR 0010). Drives the banner warning that a `secure` count is not live proof. False on an empty batch."
     },
     "superseded_runs": {
       "type": "integer",

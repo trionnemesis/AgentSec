@@ -54,7 +54,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 | **發布邊界** | 唯讀的報表 gateway 只提供投影過的子集 —— 對話輪次轉為摘要值、主體轉為代號，不提供證據與稽核 URI —— 讓儀表板不會把它要回報的那次外洩再洩一次 |
 | **Finding 工作流程** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`，狀態轉移由程式強制 |
 | **靜態態勢（posture）匯入** | 將靜態掃描工具的報告（AgentShield JSON 或 SARIF）與已探索到的表面、finding 所屬的威脅類別、以及實際執行過的判定互相比對 —— 分數永遠不是判定，兩者對不上的發現預設為 `not_tested` |
-| **執行來源（provenance）** | 每個判定都會標示 `recorded` / `live` / `mixed`，由實際使用的執行器與證據後端推導而來 —— 用 fixture 產生的 `secure` 絕不會被誤讀成對真實 agent 驗證出來的結果 |
+| **執行來源（provenance）** | 每個判定標示 `recorded` / `live` / `mixed`，依保存的執行來源、run correlation 與事件時間推導。本次即時寫入的檔案可符合 live；fixture 的 `secure` 不會變成 live 證明（[ADR 0010](docs/adr/0010-provenance-from-correlation.md)） |
 
 **適用範圍**
 
@@ -486,7 +486,7 @@ runner 上也測得動。
 * **拿不到的證據來源一律是 `error`，絕不會是 `pass`。** 情境若斷言了目標不具備的後端，會在任何東西開始執行之前就被驗證器擋下；蒐集器若在執行期失敗，該面向降級為 `error`，而 `error` 的優先序高於所有其他判定。報表不可能因為證據管線壞掉而變綠 —— 那正是這類工具最危險的一種 bug。
 * **缺少 assistant output 一律是 `error`，不能當成 `must_not` 已成立的證據。** Transcript 缺失、沒有 assistant turn、step 或 principal scope 為空、輸出只有空白，或 Promptfoo 沒有可用的 assistant response，都會 fail closed。要求完整 trace 卻完全沒有 span 時同樣是 `error`，不是空集合造成的假成功。
 * **靜態掃描工具的分數永遠不是判定。** 匯入 AgentShield 或任何輸出 SARIF 的掃描工具報告時，會組成一個獨立的 `static_posture` 面向；它絕不會擴大 `PurpleVerdict`、絕不會變成第五個面向，乾淨的分數也不能讓一個未測試的情境讀起來像 `secure`。
-* **判定會標示自己是怎麼被證明的。** 每次執行都帶有 `provenance`（`recorded` / `live` / `mixed`），所以用內建 fixture 語料產生的 `secure`，絕不會被呈現得像是對真實 agent 驗證出來的結果。
+* **判定會標示自己是怎麼被證明的。** 每次執行都帶有 `provenance`（`recorded` / `live` / `mixed`）。非空、run ID 已驗證且事件時間落在保存的收集視窗內，才可把 telemetry 標為 live；fixture、空資料或缺乏證明保守列為 recorded，兩種來源並用則為 mixed。重新產生歷史報表會重算標籤，不重寫原證據與 verdict。`fixture_derived` 保留「全數 recorded」的既有彙總規則，也包含缺乏來源證明的情況。沒有 detection contract 仍是 `not_tested`；必要 backend 不可用仍是 `error`。
 * **判定過程中沒有語言模型。** 見 [ADR 0002](docs/adr/0002-deterministic-verdict.md)。
 
 ## 狀態

@@ -29,7 +29,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | Approval tokens (scoped, expiring, single-use) | ✅ | CLI-only; no MCP tool grants them |
 | Replay executor + fixture/HTTP adapters | ✅ | deterministic; the one CI should rely on |
 | Evidence collectors: Wazuh, OTel, tool audit, state diff | ✅ | file backends tested; timeline rebasing for fixtures |
-| Run provenance (`recorded` / `live` / `mixed`) | ✅ | a fixture-derived `secure` is labelled as such ([#27](https://github.com/trionnemesis/AgentSec/issues/27)) |
+| Run provenance (`recorded` / `live` / `mixed`) | ✅ | persisted correlation and event time qualify live files; fixtures and insufficient origin proof remain recorded ([ADR 0010](adr/0010-provenance-from-correlation.md), [#77](https://github.com/trionnemesis/AgentSec/issues/77)); this is not Route A live acceptance |
 | SQLite store (runs, findings, audit log) | ✅ | latest-run-per-scenario aggregates |
 | Store schema migration runner | ✅ | ordered, idempotent, fails closed on an unrecognised future version ([#44](https://github.com/trionnemesis/AgentSec/issues/44)) |
 | CLI with meaningful exit codes | ✅ | `0` success, `1` command-specific blocking/invalid result, `2` could not tell |

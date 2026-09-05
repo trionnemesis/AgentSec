@@ -95,7 +95,9 @@ empty/unverified, timestamp boundaries, foreign IDs, errors, historical target
 edits, no-execution cases and the unchanged bundled verdict matrix.
 
 Four axes, precedence, `not_tested != pass`, collectors' fail-closed behavior,
-published schemas, the MCP surface and `evaluation/` are unchanged. Route A
+published schema shapes, the MCP surface and `evaluation/` are unchanged. The
+legacy `fixture_derived` field retains its all-recorded rule; its description
+and banners acknowledge conservative fallback. Route A
 must separately prove one genuine Claude Code/AgentShield gap, one minimal fix,
 the same-scenario live rerun and a reviewed replay regression. Unit-test
 evidence does not satisfy that live acceptance.
