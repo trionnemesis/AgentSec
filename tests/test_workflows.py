@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -77,3 +79,41 @@ def test_external_actions_are_allowlisted_and_pinned_to_full_commit_shas() -> No
     assert observed == set(EXPECTED_ACTIONS), (
         "the audit action or a pinned workflow action vanished"
     )
+
+
+@pytest.mark.parametrize("code,report,summary,blocking,expected", [
+    ("0", "success", "success", "true", 0),
+    ("1", "success", "success", "true", 1),
+    ("1", "success", "success", "false", 0),
+    ("2", "success", "success", "false", 1),
+    ("", "skipped", "skipped", "false", 1),
+    ("0", "failure", "skipped", "false", 1),
+    ("1", "success", "failure", "false", 1),
+    ("137", "success", "success", "false", 1),
+])
+def test_gate_report_only_mode_never_masks_infrastructure_errors(
+    code, report, summary, blocking, expected,
+):
+    gate = yaml.safe_load((ROOT / ".github/workflows/agentsec-gate.yml").read_text())
+    script = gate["jobs"]["purple"]["steps"][-1]["run"]
+    completed = subprocess.run(["bash", "-eu", "-c", script], capture_output=True, env={
+        **os.environ, "RUN_EXIT": code, "REPORT_OUTCOME": report,
+        "SUMMARY_OUTCOME": summary, "FAIL_ON_BLOCKING": blocking,
+    })
+    assert completed.returncode == expected
+
+
+@pytest.mark.parametrize("relative", ["../outside", "/tmp", "escape"])
+def test_gate_refuses_workspace_escape_before_installation(tmp_path, relative):
+    consumer = tmp_path / "consumer"
+    consumer.mkdir()
+    (consumer / "escape").symlink_to(tmp_path, target_is_directory=True)
+    gate = yaml.safe_load((ROOT / ".github/workflows/agentsec-gate.yml").read_text())
+    step = next(s for s in gate["jobs"]["purple"]["steps"] if s.get("id") == "paths")
+    completed = subprocess.run(["bash", "-eu", "-c", step["run"]], capture_output=True, env={
+        **os.environ, "GITHUB_WORKSPACE": str(tmp_path), "CALLER_WORKSPACE": relative,
+        "AGENTSEC_EXPECTED_SHA": "a" * 40,
+        "GITHUB_ENV": str(tmp_path / "env"), "GITHUB_OUTPUT": str(tmp_path / "outputs"),
+    })
+    assert completed.returncode != 0
+    assert not (tmp_path / "env").exists()

@@ -178,6 +178,19 @@
 
       <p>{{ r.rationale }}</p>
 
+      <details>
+        <summary>程式與情境來源 / Package and catalogue source</summary>
+        {% if r.source_provenance %}
+          <dl>
+          {% for key, value in r.source_provenance.items() %}
+            <dt>{{ key }}</dt><dd><code>{{ value or '未知 / unknown' }}</code></dd>
+          {% endfor %}
+          </dl>
+        {% else %}
+          <p>未記錄來源快照 / Source snapshot was not recorded.</p>
+        {% endif %}
+      </details>
+
       {% if r.collector_errors %}
         <p><strong>Evidence could not be collected:</strong></p>
         {% for e in r.collector_errors %}
