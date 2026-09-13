@@ -301,7 +301,13 @@ def test_the_verify_queue_holds_only_runnable_high_severity_work(
 
 
 def test_a_verified_risk_leaves_the_queue(project: Path, service: HarnessService) -> None:
-    already_run = {"AGT-CONFIG-001", "AGT-CONFIG-002", "AGT-CONFIG-003", "AGT-CONFIG-004"}
+    # AGT-CONFIG-005 covers the `.claude/settings.json` surface (the fixture's
+    # bypassPermissions default mode), so it must have a verdict too before the
+    # queue empties — the settings risk is now verifiable rather than a gap.
+    already_run = {
+        "AGT-CONFIG-001", "AGT-CONFIG-002", "AGT-CONFIG-003",
+        "AGT-CONFIG-004", "AGT-CONFIG-005",
+    }
     report = inspect_project(
         root=project,
         discovery=discover(project),

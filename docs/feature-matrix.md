@@ -142,7 +142,7 @@ is refusing to widen the surface while the middle of it is unproven.
 | Dynamic Skill Assurance (Phase 1/2) | Model-driven or executable skill behaviour still needs a separate runner, store and verdict workflow ([ADR 0008](adr/0008-skill-assurance-bounded-context.md)). Phase 0 validates package structure only, so the plane reports `not_tested` honestly today. |
 | PyRIT executor | Attack generation is the cheap half. Adding a third executor before one live path works buys nothing. |
 | pytest executor | Same. |
-| MITRE ATLAS coverage | A second taxonomy over the same eight scenarios. |
+| MITRE ATLAS coverage | A second taxonomy over the same nine scenarios. |
 | Multi-agent scenarios | Needs per-agent step targeting. |
 | Cost/latency as a fifth axis | Four axes are not yet proven live. |
 | Cross-organisation scenario packs | Needs users first. |
