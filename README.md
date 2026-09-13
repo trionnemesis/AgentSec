@@ -491,7 +491,7 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ```
 schemas/               JSON Schema for scenario, target, evidence, project and
                        SkillEvalSuite manifests, and published dashboards
-scenarios/             The scenario catalogue (eight worked examples)
+scenarios/             The scenario catalogue (nine worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus for the four original scenarios
 .agentsec/             Project manifest and reviewed static skill suite
@@ -566,7 +566,7 @@ All forms of participation are welcome — you don't have to write code:
 
 * 🐛 **Bug, or a verdict you believe is wrong** → [open an issue](https://github.com/trionnemesis/AgentSec/issues) with the run id and the evidence bundle
 * 🎯 **A scenario idea** — an attack shape the catalogue misses → issue, or a PR with the YAML and fixtures
-* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`, `100901`–`100904`)
+* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`, `100901`–`100905`)
 * 🔧 **Code** → fork and open a PR; run `make check` first, and read [CONTRIBUTING.md](CONTRIBUTING.md) for the four rules that get enforced in review
 
 If this project helps you, a ⭐ is the easiest way to help others find it.

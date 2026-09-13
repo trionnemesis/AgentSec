@@ -20,7 +20,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 
 | Component | Status | Notes |
 |---|---|---|
-| Scenario schema + Attack–Detection Contract | ✅ | `schemas/scenario.schema.json`, 8 worked examples |
+| Scenario schema + Attack–Detection Contract | ✅ | `schemas/scenario.schema.json`, 9 worked examples |
 | Three-layer validator | ✅ | JSON Schema → Pydantic → 15 semantic rules |
 | Purple evaluator, four axes | ✅ | pure function; ~60 tests |
 | Verdict precedence | ✅ | `error > detection_gap > prevention_gap > evidence_gap > response_gap > secure` |
@@ -48,14 +48,15 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 
 - [ ] **Run against one real staging agent end to end**, and fix what that
       reveals. Still the single most valuable open item.
-- [ ] **A scenario covering the tool-grant / settings surface.**
-      `ASI-TOOL-PERMISSION-BYPASS` fires at `critical` and reports
-      `not_verifiable`, because nothing is tagged at `.claude/settings.json`.
-      The highest-value gap the risk plane exposed.
+- [x] **A scenario covering the tool-grant / settings surface.**
+      `AGT-CONFIG-005` is tagged at `.claude/settings.json`, so
+      `ASI-TOOL-PERMISSION-BYPASS` (`critical`) is now `verifiable` rather than
+      a catalogue gap. It ships `gate: warning` until recorded against a real
+      target — see the AGT-CONFIG fixture / rule-pack item below.
 - [ ] **Tag `AGT-XPIA-001` at a memory surface**, so
       `ASI-MEMORY-UNREVIEWED-STORE` becomes verifiable.
-- [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..004`
-      (`100901`–`100904`). Until recorded, the family is scoped to
+- [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..005`
+      (`100901`–`100905`). Until recorded, the family is scoped to
       `environments: [ci, staging]` and `scan --verify` needs a real target.
 - [ ] Wazuh rule pack for the four original bundled scenarios
       (`100501`, `100610`, `100720`, `100810`)
@@ -121,7 +122,7 @@ is declining to widen the surface while the middle is unproven.
 | Dynamic Skill Assurance (Phase 1/2) | Model-driven or executable skill behaviour needs its own runner, store and verdict workflow ([ADR 0008](adr/0008-skill-assurance-bounded-context.md), [#14](https://github.com/trionnemesis/AgentSec/issues/14)). The new Phase 0 static package gate does not implement that evaluator, so the dashboard plane still reports `not_tested`. |
 | PyRIT executor | A third executor before one live path works buys nothing |
 | pytest executor | Same |
-| MITRE ATLAS coverage | A second taxonomy over the same eight scenarios |
+| MITRE ATLAS coverage | A second taxonomy over the same nine scenarios |
 | Multi-agent scenarios (`AAI005`) | Needs per-agent step targeting |
 | Cost/latency budgets as a fifth axis | Four axes are not yet proven live |
 | Scenario packs distributable between organisations | Needs users first |
