@@ -22,6 +22,7 @@ from agentsec.models.evidence import (
 )
 from agentsec.models.run import AxisStatus, PurpleVerdict, Run, RunStatus
 from agentsec.models.scenario import Scenario
+from agentsec.models.source import SourceProvenance
 from agentsec.models.target import Target
 from agentsec.policy.profiles import Profile
 from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
@@ -174,6 +175,7 @@ class RunSummary:
     collector_errors: list[dict[str, str]] = field(default_factory=list)
     owasp: list[str] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    source_provenance: SourceProvenance | None = None
     provenance: Provenance = field(
         default_factory=lambda: Provenance(executor="none", adapter="unknown", evidence="recorded")
     )
@@ -202,6 +204,9 @@ class RunSummary:
             "owasp": self.owasp,
             "tags": self.tags,
             "provenance": self.provenance.to_dict(),
+            "source_provenance": (
+                self.source_provenance.model_dump(mode="json") if self.source_provenance else None
+            ),
         }
 
 
@@ -264,6 +269,7 @@ def normalize_run(
         owasp=list(scenario.metadata.references.owasp_agentic) if scenario else [],
         tags=list(scenario.metadata.tags) if scenario else [],
         provenance=derive_provenance(run, target, evidence_backends, evidence),
+        source_provenance=run.source_provenance,
     )
 
 

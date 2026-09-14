@@ -8,6 +8,18 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+### Added
+
+- **固定來源的外部 CI / Pinned external CI adoption (#50, first slice).**
+  The reusable gate requires a full AgentSec SHA, installs its committed content
+  separately from the consumer, verifies installer metadata and loads packaged
+  scenarios. Runs retain package/catalogue source snapshots in JUnit/HTML/JSON;
+  report schema 1.5.0 adds nullable `source_provenance` without changing evidence
+  origin or verdicts. New workflow messages are Traditional Chinese / English.
+  Existing workspace mode is preserved; overlays and async lifecycle are deferred.
+  Report-only mode still fails on infrastructure/evaluation errors. See
+  [consumer setup and verification limits](docs/external-consumer.md).
+
 ### Fixed
 
 - **Live-written files can carry live provenance.** Reporting now uses stored

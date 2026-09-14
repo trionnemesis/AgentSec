@@ -1,47 +1,28 @@
-# Reusable purple-team gate.
-#
-# Call this from the repository that owns the agent under test. No AI client is
-# involved: the verdict comes from the scenario contract and the deterministic
-# evaluator, and the exit code is the gate.
-#
-# Pin to a release tag, never @main: a gate on a moving branch means a change
-# here can silently alter another repository's pass/fail semantics — the exact
-# failure mode this harness exists to catch.
-#
-#   jobs:
-#     purple:
-#       uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.3
-#       with:
-#         target: order-agent-staging
-#         profile: pr
-#       secrets:
-#         wazuh_user: ${{ secrets.WAZUH_INDEXER_USER }}
-#         wazuh_password: ${{ secrets.WAZUH_INDEXER_PASSWORD }}
-
-name: agentsec-gate
+# Caller pins this reusable workflow to a reviewed full commit SHA and supplies
+# agentsec-sha separately. github.sha/workflow_sha identify the CALLER, not AgentSec.
+name: AgentSec 安全閘門 / Purple gate
 
 on:
   workflow_call:
     inputs:
+      agentsec-sha:
+        description: 已審核的完整 SHA / Reviewed AgentSec commit (40 lowercase hex characters).
+        required: true
+        type: string
       target:
-        description: Allowlisted target id.
+        description: 允許清單目標 / Allowlisted target id.
         required: true
         type: string
       profile:
-        description: pr | nightly | release
-        required: false
+        description: 執行設定 / pr | nightly | release
         default: pr
         type: string
       workspace:
-        description: Path to the AgentSec workspace inside the caller's checkout.
-        required: false
+        description: Caller 內的工作目錄 / Relative workspace inside the caller checkout.
         default: .
         type: string
       fail-on-blocking:
-        description: >
-          Set false to report without gating. Useful for the first week of
-          adoption, while a team catches up on detection coverage.
-        required: false
+        description: 阻擋安全缺口 / Fail on blocking findings (infrastructure errors always fail).
         default: true
         type: boolean
     secrets:
@@ -56,101 +37,169 @@ permissions:
 jobs:
   purple:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ inputs.workspace }}
-    # Caller inputs reach the shell as environment variables, never spliced
-    # into the script text. A reusable workflow runs on the caller's runner
-    # with the caller's secrets, so an input landing inside `run:` is a
-    # command-injection sink even when today's caller is trusted.
     env:
       AGENTSEC_TARGET: ${{ inputs.target }}
       AGENTSEC_PROFILE: ${{ inputs.profile }}
+      AGENTSEC_EXPECTED_SHA: ${{ inputs.agentsec-sha }}
+      AGENTSEC_CATALOGUE: builtin
+      PYTHONPATH: ''
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: 取得受測專案 / Checkout consumer
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          python-version: "3.11"
+          path: consumer
+          persist-credentials: false
+
+      - name: 驗證版本與工作目錄 / Validate commit and workspace
+        id: paths
+        env:
+          CALLER_WORKSPACE: ${{ inputs.workspace }}
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re
+          sha = os.environ['AGENTSEC_EXPECTED_SHA']
+          if not re.fullmatch(r'[0-9a-f]{40}', sha):
+              raise SystemExit('版本格式錯誤 / Expected a full lowercase AgentSec SHA')
+          base = (pathlib.Path(os.environ['GITHUB_WORKSPACE']) / 'consumer').resolve()
+          relative = pathlib.Path(os.environ['CALLER_WORKSPACE'])
+          if relative.is_absolute() or '..' in relative.parts or any(c in str(relative) for c in '\n\r'):
+              raise SystemExit('工作目錄不合法 / Invalid relative workspace')
+          root = (base / relative).resolve(strict=True)
+          if not root.is_dir() or not root.is_relative_to(base):
+              raise SystemExit('工作目錄超出專案 / Workspace escapes consumer checkout')
+          results = root / 'results'
+          if results.is_symlink() or (results.exists() and (not results.is_dir() or any(results.iterdir()))):
+              raise SystemExit('結果目錄必須為空 / Gate requires a fresh results directory')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'AGENTSEC_WORKSPACE={root}\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'workspace={root}\n')
+          print('工作目錄與版本格式已驗證 / Workspace and commit format verified')
+          PY
+
+      - name: 取得固定版本的 AgentSec / Checkout pinned AgentSec
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: trionnemesis/AgentSec
+          ref: ${{ inputs.agentsec-sha }}
+          path: agentsec-tool
+          persist-credentials: false
+
+      - name: 準備 Python / Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
           cache: pip
+          cache-dependency-path: agentsec-tool/pyproject.toml
 
-      - run: pip install -e .
+      - name: 安裝並核對實際來源 / Install and verify source
+        id: install
+        run: |
+          test "$(git -C agentsec-tool rev-parse HEAD)" = "$AGENTSEC_EXPECTED_SHA"
+          python -m venv "$RUNNER_TEMP/agentsec-venv"
+          # A local VCS install records the resolved commit in PEP 610 metadata.
+          # It builds from committed content, not from the consumer or an editable tree.
+          "$RUNNER_TEMP/agentsec-venv/bin/python" -m pip install \
+            "git+file://$GITHUB_WORKSPACE/agentsec-tool@$AGENTSEC_EXPECTED_SHA"
+          "$RUNNER_TEMP/agentsec-venv/bin/python" -I - <<'PY'
+          import os
+          from agentsec.installation import package_identity
+          from agentsec.service.harness import HarnessService
+          version, commit = package_identity(os.environ['AGENTSEC_EXPECTED_SHA'])
+          service = HarnessService()
+          if not service.catalog.ids():
+              raise SystemExit('內建目錄為空 / Bundled catalogue is empty')
+          print(f'安裝來源已驗證 / Installed AgentSec {version} @ {commit}')
+          PY
+          printf '%s\n' "$RUNNER_TEMP/agentsec-venv/bin" >> "$GITHUB_PATH"
 
-      # Fail here rather than mid-run: a scenario asserting on a backend the
-      # target does not have produces a detection gap that is really a config
-      # mistake, and that wastes an engineer's afternoon.
-      - name: validate the catalogue against the target
-        run: agentsec validate --target "$AGENTSEC_TARGET"
+      - name: 驗證內建情境 / Validate bundled catalogue
+        working-directory: ${{ steps.paths.outputs.workspace }}
+        run: agentsec validate --strict
 
-      - name: preview
+      - name: 預覽執行範圍 / Preview run
+        working-directory: ${{ steps.paths.outputs.workspace }}
         run: agentsec preview --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE"
 
-      - name: run
+      - name: 執行同步閘門 / Run synchronous gate
         id: run
-        continue-on-error: ${{ !inputs.fail-on-blocking }}
+        continue-on-error: true
+        working-directory: ${{ steps.paths.outputs.workspace }}
         env:
           AGENTSEC_ACTOR: ci:${{ github.actor }}
           WAZUH_INDEXER_USER: ${{ secrets.wazuh_user }}
           WAZUH_INDEXER_PASSWORD: ${{ secrets.wazuh_password }}
         run: |
-          agentsec run \
-            --target "$AGENTSEC_TARGET" \
-            --profile "$AGENTSEC_PROFILE" \
-            --output junit \
-            --output-file results/agentsec.xml
+          set +e
+          agentsec run --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE" \
+            --output junit --output-file results/agentsec.xml
+          code=$?
+          set -e
+          printf 'exit_code=%s\n' "$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
 
-      - name: html + json report
-        if: always()
+      - name: 產生報表 / Generate HTML and JSON reports
+        id: report
+        if: ${{ !cancelled() && steps.run.outputs.exit_code != '' }}
+        working-directory: ${{ steps.paths.outputs.workspace }}
         run: |
-          agentsec report --target "$AGENTSEC_TARGET" \
-            --profile "$AGENTSEC_PROFILE" --format html --format json
+          agentsec report --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE" \
+            --format html --format json
 
-      - name: summary
-        if: always()
+      - name: 顯示摘要與來源 / Show summary and provenance
+        id: summary
+        if: ${{ !cancelled() && steps.report.outcome == 'success' }}
+        working-directory: ${{ steps.paths.outputs.workspace }}
+        env:
+          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          CALLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json, pathlib
-          reports = sorted(pathlib.Path("results/reports").glob("report-*.json"))
+          import json, os, pathlib
+          reports = sorted(pathlib.Path('results/reports').glob('report-*.json'))
           if not reports:
-              print("No report produced.")
-              raise SystemExit(0)
+              raise SystemExit('未產生報表 / No report produced')
           data = json.loads(reports[-1].read_text())
-
-          print("## AgentSec purple gate\n")
-          print(f"Target `{data['target_id']}` · profile `{data['profile']}` · "
-                f"{data['total_runs']} run(s)\n")
-          print("| Scenario | Prevention | Detection | Evidence | Response | Verdict |")
-          print("|---|---|---|---|---|---|")
-          for r in data["runs"]:
-              flag = " **blocking**" if r["blocking"] else ""
-              print(f"| `{r['scenario_id']}` | {r['prevention']} | {r['detection']} "
-                    f"| {r['evidence']} | {r['response']} | {r['purple_verdict']}{flag} |")
-
-          if data["blocking_count"]:
-              print(f"\n{data['blocking_count']} blocking finding(s): "
-                    f"{', '.join(data['blocking_scenarios'])}")
-              for r in data["runs"]:
-                  if not r["blocking"]:
-                      continue
-                  print(f"\n### `{r['scenario_id']}` — {r['purple_verdict']}\n")
-                  print(f"{r['rationale']}\n")
-                  for c in r["failed_checks"][:5]:
-                      print(f"- **[{c['axis']}]** {c['assertion']}")
-                      print(f"  - observed: {c['observed']}")
-                      if c["reason"]:
-                          print(f"  - why it matters: {c['reason']}")
-          else:
-              print("\nNo blocking findings.")
+          if not data['runs']:
+              raise SystemExit('沒有可驗證的執行 / No runs to verify')
+          print('## AgentSec 安全閘門 / Purple gate\n')
+          print(f"Caller workflow: `{os.environ['CALLER_WORKFLOW_REF']}` @ `{os.environ['CALLER_WORKFLOW_SHA']}`\n")
+          print('| 情境 Scenario | 預防 Prevention | 偵測 Detection | 蒐證 Evidence | 回應 Response | 判定 Verdict |')
+          print('|---|---|---|---|---|---|')
+          for r in data['runs']:
+              print(f"| {r['scenario_id']} | {r['prevention']} | {r['detection']} | {r['evidence']} | {r['response']} | {r['purple_verdict']} |")
+              source = r['source_provenance']
+              if not source or source['package_commit'] != os.environ['AGENTSEC_EXPECTED_SHA']:
+                  raise SystemExit('報表來源不符 / Report source does not match the installed commit')
+          print('\n### 程式與情境來源 / Package and catalogue source\n')
+          for r in data['runs']:
+              print(f"- `{r['run_id']}` / `{r['scenario_id']}`: `{json.dumps(r['source_provenance'], sort_keys=True)}`")
+          print(f"\n阻擋項目 / Blocking findings: {data['blocking_count']}")
+          if any(r['purple_verdict'] == 'error' or r['status'] != 'completed' for r in data['runs']):
+              raise SystemExit('執行未完成或無法判定 / Execution incomplete or evaluation error')
           PY
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
+      - name: 保存結果 / Upload results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ !cancelled() && steps.run.outputs.exit_code != '' }}
         with:
           name: agentsec-${{ inputs.target }}-${{ inputs.profile }}
-          path: ${{ inputs.workspace }}/results/
+          path: ${{ steps.paths.outputs.workspace }}/results/
           retention-days: 30
 
-      - name: propagate the gate
-        if: always() && inputs.fail-on-blocking
+      - name: 回傳閘門結果 / Propagate gate result
+        if: always()
+        env:
+          RUN_EXIT: ${{ steps.run.outputs.exit_code }}
+          REPORT_OUTCOME: ${{ steps.report.outcome }}
+          SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
+          FAIL_ON_BLOCKING: ${{ inputs.fail-on-blocking }}
         run: |
-          [ "${{ steps.run.outcome }}" = "success" ] || exit 1
+          test "$REPORT_OUTCOME" = success || { echo '報表未完成 / Report did not complete'; exit 1; }
+          test "$SUMMARY_OUTCOME" = success || { echo '來源或執行驗證失敗 / Source or run verification failed'; exit 1; }
+          case "$RUN_EXIT" in
+            0) echo '執行完成 / Gate completed' ;;
+            1) if [ "$FAIL_ON_BLOCKING" = true ]; then exit 1; fi
+               echo '僅回報安全缺口 / Reporting blocking findings without gating' ;;
+            *) echo '執行失敗 / Configuration or execution failed'; exit 1 ;;
+          esac
