@@ -290,6 +290,10 @@
   .chip.verifiable{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border:1px solid color-mix(in srgb,var(--warn) 32%,transparent)}
   .chip.nverif{color:var(--error);background:color-mix(in srgb,var(--error) 12%,transparent);border:1px solid color-mix(in srgb,var(--error) 30%,transparent)}
   .chip.parked{color:var(--parked);background:color-mix(in srgb,var(--parked) 12%,transparent);border:1px solid color-mix(in srgb,var(--parked) 30%,transparent)}
+  .chip.shipped{color:var(--secure);background:color-mix(in srgb,var(--secure) 13%,transparent);border:1px solid color-mix(in srgb,var(--secure) 32%,transparent)}
+  .track.done{border-color:color-mix(in srgb,var(--secure) 34%,var(--line))}
+  .track .th .shiptag{margin-left:auto;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--secure);background:color-mix(in srgb,var(--secure) 12%,transparent);border:1px solid color-mix(in srgb,var(--secure) 30%,transparent);border-radius:100px;padding:3px 9px;white-space:nowrap}
+  .track .th .shiptag.wip{color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
 
   /* ---- guardrails ---- */
   .guard{
@@ -359,7 +363,7 @@
   <div class="rail"></div>
   <div class="wrap masthead">
     <div class="kicker">
-      <span class="badge purple">Plan · for follow-up agents</span>
+      <span class="badge purple">Plan v2 · tracks A &amp; C shipped</span>
       <span class="badge">trionnemesis / AgentSec</span>
       <span class="badge">purple-team harness</span>
     </div>
@@ -368,15 +372,18 @@
       A direction for updating the AI-agent red-team and blue-team operating guidance in
       <code>.claude/skills/agentsec</code>. It sharpens each lane in place and makes the skill's
       non-negotiables executable — while honouring the already-accepted decision <em>not</em> to fork the
-      purple workbench into two independent skills.
+      purple workbench into two independent skills. <b>This revision reflects what has since landed on
+      <code>main</code>:</b> the deepened lane references (Track&nbsp;A) and the credential-free
+      <code>skill_eval</code> static profile (Track&nbsp;C) are merged, and the first Track&nbsp;B gap —
+      the tool-grant / <code>settings.json</code> scenario — is closed by <code>AGT-CONFIG-005</code>.
     </p>
 
     <div class="readout" role="group" aria-label="Plan status readout">
-      <div class="cell"><div class="k">Baseline</div><div class="v">v0.3.2 · main</div></div>
-      <div class="cell"><div class="k">Skill surface</div><div class="v">1 purple workbench</div></div>
-      <div class="cell"><div class="k">Red lane</div><div class="v red">attack + prevention</div></div>
-      <div class="cell"><div class="k">Blue lane</div><div class="v blue">evidence + detection</div></div>
-      <div class="cell"><div class="k">Prior decision</div><div class="v">#60 → PR #61 (merged)</div></div>
+      <div class="cell"><div class="k">Baseline</div><div class="v">v0.4.3 · main</div></div>
+      <div class="cell"><div class="k">Track A · lanes</div><div class="v">shipped · PR #65</div></div>
+      <div class="cell"><div class="k">Track C · skill_eval</div><div class="v">shipped · PR #65</div></div>
+      <div class="cell"><div class="k">Track B · settings</div><div class="v">AGT-CONFIG-005 · PR #84</div></div>
+      <div class="cell"><div class="k">Remaining</div><div class="v">memory tag · rule packs</div></div>
     </div>
   </div>
 </header>
@@ -471,7 +478,7 @@
         </ul>
         <div class="cov">
           <div class="lbl">Coverage direction (roadmap-named)</div>
-          <p>Make <code>ASI-TOOL-PERMISSION-BYPASS</code> verifiable by tagging a scenario at <code>.claude/settings.json</code>; tag <code>AGT-XPIA-001</code> at a memory surface so <code>ASI-MEMORY-UNREVIEWED-STORE</code> stops reading <code>not_verifiable</code>.</p>
+          <p><b>Done:</b> <code>AGT-CONFIG-005</code> is tagged at <code>.claude/settings.json</code>, so <code>ASI-TOOL-PERMISSION-BYPASS</code> (critical) is now <code>verifiable</code>. <b>Remaining:</b> tag <code>AGT-XPIA-001</code> at a memory surface so <code>ASI-MEMORY-UNREVIEWED-STORE</code> stops reading <code>not_verifiable</code>.</p>
         </div>
       </div>
 
@@ -504,7 +511,7 @@
         </ul>
         <div class="cov">
           <div class="lbl">Coverage direction (roadmap-named)</div>
-          <p>Ship Wazuh rule packs for the bundled rules (<code>100501 / 100610 / 100720 / 100810</code>) and the <code>AGT-CONFIG-001..004</code> family (<code>100901–100904</code>), plus fixture recordings so <code>scan --verify</code> runs offline.</p>
+          <p>Ship Wazuh rule packs for the bundled rules (<code>100501 / 100610 / 100720 / 100810</code>) and the now five-strong <code>AGT-CONFIG-001..005</code> family (<code>100901–100905</code>), plus fixture recordings so <code>scan --verify</code> runs offline. <code>AGT-CONFIG-005</code> ships <code>gate: warning</code> until recorded.</p>
         </div>
       </div>
     </div>
@@ -514,34 +521,38 @@
 <section id="tracks">
   <div class="wrap">
     <div class="sec-head">
-      <div class="eyebrow">How to land it</div>
-      <h2>Three tracks — the deepest one needs no model and can start today</h2>
-      <p>A single small, reviewable docs-plus-static-eval change. Track&nbsp;C is the real upgrade: it turns
-        the skill's invariants from prose a poisoned document can argue with into checks that fail the build.</p>
+      <div class="eyebrow">How it landed</div>
+      <h2>Three tracks — two shipped, one in progress</h2>
+      <p>The plan landed as small, reviewable changes. Tracks&nbsp;A and&nbsp;C are merged; Track&nbsp;C is the
+        real upgrade — it turned the skill's invariants from prose a poisoned document can argue with into
+        checks that fail the build. Track&nbsp;B is being wired gap-by-gap: the settings scenario is in, the
+        memory tag and rule packs are next.</p>
     </div>
     <div class="tracks">
-      <div class="track">
-        <div class="th"><span class="tk">A</span><h3>Deepen the lanes as progressive-disclosure references</h3></div>
-        <p>Keep <code>SKILL.md</code> as the router carrying the six non-negotiables and the four-phase
-          playbook. Add <code>references/red-execution.md</code> and <code>references/blue-evidence.md</code>
-          as the deep operating guides each lane loads on demand.</p>
+      <div class="track done">
+        <div class="th"><span class="tk">A</span><h3>Deepen the lanes as progressive-disclosure references</h3><span class="shiptag">✓ shipped · PR&nbsp;#65</span></div>
+        <p><code>SKILL.md</code> stays the router carrying the six non-negotiables and the four-phase
+          playbook. <code>references/red-execution.md</code> and <code>references/blue-evidence.md</code> now
+          exist as the deep operating guides each lane loads on demand.</p>
         <p>Two lanes, one skill — the split lives in the file tree, not in the product surface.</p>
-        <div class="foot">touches: <span class="mono">.claude/skills/agentsec/</span></div>
+        <div class="foot"><span class="now">● merged</span> — <span class="mono">.claude/skills/agentsec/references/</span></div>
       </div>
       <div class="track">
-        <div class="th"><span class="tk">B</span><h3>Point the guidance at gaps the roadmap already named</h3></div>
-        <p>Red: the tool-grant / <code>settings.json</code> scenario and the memory-surface tag. Blue: the
-          Wazuh rule packs and fixture recordings. Guidance with nothing concrete to point at is theatre.</p>
+        <div class="th"><span class="tk">B</span><h3>Point the guidance at gaps the roadmap already named</h3><span class="shiptag wip">◐ in progress</span></div>
+        <p>Red: the tool-grant / <code>settings.json</code> scenario — <b>done</b> as <code>AGT-CONFIG-005</code> —
+          and the memory-surface tag, still open. Blue: the Wazuh rule packs and fixture recordings, still open.
+          Guidance with nothing concrete to point at is theatre.</p>
         <p>No new attack techniques invented here — only wiring already-listed Core-open items to a lane.</p>
-        <div class="foot">touches: <span class="mono">scenarios/ · fixtures/ · docs/roadmap.md</span></div>
+        <div class="foot">next: <span class="mono">AGT-XPIA-001 memory tag · 100901–100905 rule packs</span></div>
       </div>
-      <div class="track">
-        <div class="th"><span class="tk">C</span><h3>Make the non-negotiables executable</h3></div>
-        <p>Start the <code>skill_eval</code> <b>static</b> profile (ADR&nbsp;0008 / #14, Phase&nbsp;0):
-          frontmatter, reference-path and script existence, digests, dangerous-reference checks.</p>
-        <p>It needs no model and no credentials, so it lands now and stops "never mint approvals" from being
-          a sentence a document can talk the agent out of.</p>
-        <div class="foot"><span class="now">● runnable now</span> — model-free, credential-free</div>
+      <div class="track done">
+        <div class="th"><span class="tk">C</span><h3>Make the non-negotiables executable</h3><span class="shiptag">✓ shipped · PR&nbsp;#65</span></div>
+        <p>The <code>skill_eval</code> <b>static</b> profile (ADR&nbsp;0008 / #64, Phase&nbsp;0) is live:
+          strict frontmatter, declared lane assets and scripts, full SHA-256 pins, parsed Markdown
+          destinations — run via <code>agentsec skill validate --profile static</code>.</p>
+        <p>Model-free and credential-free, it lands in the separate <code>skill-eval-static.yml</code> gate and
+          stops "never mint approvals" from being a sentence a document can talk the agent out of.</p>
+        <div class="foot"><span class="now">● merged</span> — model-free, credential-free CI gate</div>
       </div>
     </div>
   </div>
@@ -563,10 +574,10 @@
         <tbody>
           <tr>
             <td><span class="lanepill red">RED</span></td>
-            <td><div class="item">Tool-grant / settings scenario</div><div class="sub">Tag a scenario at <code>.claude/settings.json</code></div></td>
+            <td><div class="item">Tool-grant / settings scenario</div><div class="sub"><code>AGT-CONFIG-005</code> tagged at <code>.claude/settings.json</code></div></td>
             <td class="mono">ASI-TOOL-PERMISSION-BYPASS</td>
-            <td><span class="chip nverif">not_verifiable</span><div class="sub">fires at critical</div></td>
-            <td class="mono">verifiable</td>
+            <td><span class="chip shipped">verifiable</span><div class="sub">shipped · PR #84</div></td>
+            <td class="mono">✓ done</td>
           </tr>
           <tr>
             <td><span class="lanepill red">RED</span></td>
@@ -584,8 +595,8 @@
           </tr>
           <tr>
             <td><span class="lanepill blue">BLUE</span></td>
-            <td><div class="item">Fixtures + rules — AGT-CONFIG family</div><div class="sub"><code>100901–100904</code>; scoped to <code>ci, staging</code> until recorded</div></td>
-            <td class="mono">AGT-CONFIG-001..004</td>
+            <td><div class="item">Fixtures + rules — AGT-CONFIG family</div><div class="sub"><code>100901–100905</code>; scoped to <code>ci, staging</code> until recorded</div></td>
+            <td class="mono">AGT-CONFIG-001..005</td>
             <td><span class="chip verifiable">needs fixtures</span></td>
             <td class="mono">offline scan --verify</td>
           </tr>
@@ -627,18 +638,19 @@
     </div>
     <div class="close-grid">
       <div class="panel">
-        <h3>A follow-up agent is done when…</h3>
+        <h3>Shipped against this brief</h3>
         <ul class="accept">
-          <li>The red and blue lanes each have a deepened, self-contained reference, and <code>SKILL.md</code> routes to them.</li>
-          <li>The guidance points at real, roadmap-named coverage gaps — not invented prompts, URLs or paths.</li>
-          <li>The <code>skill_eval</code> static profile runs in CI and checks the skill's frontmatter, references and digests.</li>
-          <li><code>make check</code>, <code>agentsec validate --strict</code> and the MCP contract tests stay green.</li>
-          <li>No product surface widened; the guardrails above all hold.</li>
+          <li>The red and blue lanes each have a deepened, self-contained reference, and <code>SKILL.md</code> routes to them <span class="mono">(PR #65)</span>.</li>
+          <li>The <code>skill_eval</code> static profile runs in its own CI gate and checks the skill's frontmatter, references and digests <span class="mono">(PR #65)</span>.</li>
+          <li><code>AGT-CONFIG-005</code> ties <code>ASI-TOOL-PERMISSION-BYPASS</code> to <code>.claude/settings.json</code>, making it <code>verifiable</code> <span class="mono">(PR #84)</span>.</li>
+          <li><code>make check</code>, <code>agentsec validate --strict</code> and the MCP contract tests stayed green; no product surface widened.</li>
         </ul>
       </div>
       <div class="panel stop">
-        <h3>Stop condition</h3>
-        <p>One small docs-plus-static-eval PR, reviewed and merged. Then stop.</p>
+        <h3>What remains — and the stop condition</h3>
+        <p>Two roadmap-named Track&nbsp;B gaps, each a small reviewable PR: tag <code>AGT-XPIA-001</code> at a
+          memory surface, and record fixtures + Wazuh rule packs for <code>100901–100905</code> and the four
+          bundled rules. Then stop.</p>
         <div class="line">
           Do <b>not</b> drift into: live Wazuh/OTel end-to-end · the async run worker ·
           external catalogue packaging · the full Skill Assurance runner. Those have their own backlog.
@@ -655,8 +667,9 @@
     <div class="links">
       <a href="https://github.com/trionnemesis/AgentSec" target="_blank" rel="noopener">repo <span class="arw">↗</span></a>
       <a href="https://github.com/trionnemesis/AgentSec/issues/60" target="_blank" rel="noopener">#60 red/blue decision <span class="arw">↗</span></a>
-      <a href="https://github.com/trionnemesis/AgentSec/pull/61" target="_blank" rel="noopener">PR #61 (merged) <span class="arw">↗</span></a>
-      <a href="https://github.com/trionnemesis/AgentSec/issues/14" target="_blank" rel="noopener">#14 skill_eval <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/pull/65" target="_blank" rel="noopener">PR #65 lanes + skill_eval <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/pull/84" target="_blank" rel="noopener">PR #84 AGT-CONFIG-005 <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/blob/main/scenarios/AGT-CONFIG-005.yaml" target="_blank" rel="noopener">AGT-CONFIG-005.yaml <span class="arw">↗</span></a>
       <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0008-skill-assurance-bounded-context.md" target="_blank" rel="noopener">ADR 0008 <span class="arw">↗</span></a>
     </div>
     <p class="fine">
