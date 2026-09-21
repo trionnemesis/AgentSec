@@ -13,6 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from agentsec.models.source import SourceProvenance
+
 
 class AxisStatus(StrEnum):
     PASS = "pass"
@@ -140,3 +142,5 @@ class Run(_Base):
     scenario_digest: str | None = None
     """SHA-256 of the canonicalised scenario, so a result can be tied to the exact
     contract that produced it even after the YAML is edited."""
+    source_provenance: SourceProvenance | None = None
+    """Captured at execution time; None means legacy/unknown, never inferred later."""
