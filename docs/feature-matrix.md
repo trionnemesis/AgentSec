@@ -173,27 +173,25 @@ only lists what works is marketing.
    is plainly an agent reports `not_detected`, which is why that word means
    "no evidence" and never "no agent" — and why an unparsed file is reported as
    `unsupported` rather than counted as absence.
-2. **No scenario covers the tool-grant or settings surface.** `ASI-TOOL-BROAD-GRANT`
-   and `ASI-TOOL-PERMISSION-BYPASS` fire — the second at `critical` — and both
-   report `not_verifiable`, because no `AGT-CONFIG-*` scenario is tagged at
-   `.claude/settings.json`. The plane is honest about it; the catalogue gap is
-   real. This is the next scenario to write.
-3. **No scenario covers the memory surface as a repository surface.**
-   `AGT-XPIA-001` is the right shape but is tagged at no config surface, so
-   `ASI-MEMORY-UNREVIEWED-STORE` reports `not_verifiable`.
-4. **`AGT-CONFIG-*` has no recorded fixtures.** The family validates clean and is
+2. **No scenario covers the skills surface.** Nothing in the catalogue is
+   tagged at `.claude/skills`, so an instruction risk raised on a skill reports
+   `not_verifiable`. The settings and memory surfaces were in this position
+   until `AGT-CONFIG-005` and a memory-surface tag on `AGT-XPIA-001` closed
+   them. A memory store declared outside `.claude/memory` through the
+   manifest's `surfaces.memory` is still outside that tag.
+3. **`AGT-CONFIG-*` has no recorded fixtures.** The family validates clean and is
    scoped to `environments: [ci, staging]`, so `--verify` against the bundled
    `demo-agent-fixture` (environment `local`) correctly refuses with exit 2
    rather than selecting nothing and reporting success. Until fixtures exist,
    `--verify` needs a real staging target.
-5. **The catalogue does not travel with the CLI.** `Settings.scenarios_dir` is
+4. **The catalogue does not travel with the CLI.** `Settings.scenarios_dir` is
    `<workspace>/scenarios`, so in a repository that is not a checkout of
    AgentSec there are no scenarios to triage against and *every* risk resolves
    to `not_verifiable` — correct, and misleading at a glance now that the screen
    above it can say `confirmed langgraph`. Bundling the reviewed catalogue as
    package data is the fix; which catalogue version an installed CLI should
    trust is the question that makes it more than a one-line change.
-6. **No end-to-end run against a live agent has happened.** This remains the
+5. **No end-to-end run against a live agent has happened.** This remains the
    single most valuable open item, exactly as #32 says.
 
 ---

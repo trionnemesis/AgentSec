@@ -53,8 +53,12 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
       `ASI-TOOL-PERMISSION-BYPASS` (`critical`) is now `verifiable` rather than
       a catalogue gap. It ships `gate: warning` until recorded against a real
       target — see the AGT-CONFIG fixture / rule-pack item below.
-- [ ] **Tag `AGT-XPIA-001` at a memory surface**, so
-      `ASI-MEMORY-UNREVIEWED-STORE` becomes verifiable.
+- [x] **Tag `AGT-XPIA-001` at a memory surface.** It carries
+      `config-surface:.claude/memory`, so `ASI-MEMORY-UNREVIEWED-STORE` is now
+      `verifiable` rather than a catalogue gap. The risk is `medium`, so
+      `scan --verify` reports it without queueing a run. A store declared
+      elsewhere through the manifest's `surfaces.memory` is not under the
+      tag and still reads `not_verifiable` ([#86](https://github.com/trionnemesis/AgentSec/issues/86)).
 - [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..005`
       (`100901`–`100905`). Until recorded, the family is scoped to
       `environments: [ci, staging]` and `scan --verify` needs a real target.
