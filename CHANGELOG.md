@@ -8,6 +8,31 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-09-24
+
+### Added
+
+- **`AGT-CONFIG-005` makes the committed-settings bypass verifiable.** The risk
+  plane raises `ASI-TOOL-PERMISSION-BYPASS` at `critical` when a committed
+  `.claude/settings.json` sets a bypass default mode, but no scenario was
+  tagged at that surface, so the risk read `not_verifiable`. The new contract
+  plants a cloned-repository settings file that removes the confirmation step
+  and pre-approves a destructive file tool, then asserts all four axes: the
+  policy engine still escalates the auto-approved call, the pivot alerts
+  (Wazuh `100905`), it is recorded, and state is unchanged. Like the rest of
+  the `AGT-CONFIG-*` family it targets `ci`/`staging`, ships `gate: warning`,
+  and has no recorded fixtures yet. It reuses `AAI002`, so the catalogue grows
+  to nine scenarios while OWASP Agentic coverage stays 8/10
+  ([#84](https://github.com/trionnemesis/AgentSec/pull/84)).
+- **`AGT-XPIA-001` is tagged at the memory surface.** It now carries
+  `config-surface:.claude/memory`, so `ASI-MEMORY-UNREVIEWED-STORE` triages
+  `verifiable` instead of `not_verifiable`. The risk is `medium`, so
+  `scan --verify` reports it without queueing a run. The tag is path-only: it
+  settles no static-scanner posture finding, and a store declared outside
+  `.claude/memory` through the manifest still reads `not_verifiable`
+  ([#86](https://github.com/trionnemesis/AgentSec/issues/86),
+  [#87](https://github.com/trionnemesis/AgentSec/pull/87)).
+
 ### Fixed
 
 - **Live-written files can carry live provenance.** Reporting now uses stored
@@ -40,6 +65,13 @@ drafts even when they appear in a release.
   observed errors. The earlier "no Claude Code executable" dependency is
   resolved; authentication, package execution, a sanctioned run entry point,
   operator target registration and merge permission remain.
+- The red/blue lane deepening plan
+  ([`docs/plans/red-blue-lane-deepening.html`](docs/plans/red-blue-lane-deepening.html))
+  is published for follow-up agents, and refreshed as Tracks A and C landed
+  ([#82](https://github.com/trionnemesis/AgentSec/pull/82),
+  [#85](https://github.com/trionnemesis/AgentSec/pull/85)). The last open
+  Track B gap, Wazuh rule packs and fixture recordings, is tracked in
+  [#86](https://github.com/trionnemesis/AgentSec/issues/86).
 
 ### Compatibility
 
@@ -49,6 +81,12 @@ drafts even when they appear in a release.
   and verdicts are not rewritten. `fixture_derived` retains its all-recorded
   rollup rule, including insufficient origin proof. This does not establish
   completion of the separate Claude Code/AgentShield Route A live loop.
+- Repository triage moves for two surfaces. Risks raised on a committed
+  `.claude/settings.json` (`ASI-TOOL-PERMISSION-BYPASS`,
+  `ASI-TOOL-BROAD-GRANT`) now triage `verifiable` via `AGT-CONFIG-005`, and a
+  `.claude/memory` store's `ASI-MEMORY-UNREVIEWED-STORE` triages `verifiable`
+  via `AGT-XPIA-001`. A dashboard that counted these as coverage gaps will
+  show fewer. Verdicts, schemas and the MCP surface are unchanged.
 
 ## [0.4.3] — 2026-09-04
 
@@ -394,7 +432,8 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
-[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/trionnemesis/AgentSec/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/trionnemesis/AgentSec/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/trionnemesis/AgentSec/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/trionnemesis/AgentSec/compare/v0.4.0...v0.4.1

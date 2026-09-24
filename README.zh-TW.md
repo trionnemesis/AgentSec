@@ -61,7 +61,7 @@ AgentSec 同時填補這兩個缺口。每個情境都帶有一份涵蓋四個�
 * **環境**：`local`、`ci`、`staging` —— `production` 不在列舉值中，因此沒有任何開關可以打開它
 * **涵蓋的 Agent 能力**：RAG、工具呼叫、持久記憶、多租戶、寄送郵件
 * **對應框架**：OWASP Agentic Top 10（內建情境覆蓋 8/10 個類別：`AAI001`–`AAI004`、`AAI006`–`AAI009`）與 OWASP LLM Top 10
-* **內建情境**：八個 —— 跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴，以及針對 agent「設定」下手的攻擊家族（被下毒的專案指令外洩密鑰、agent 定義檔中隱藏的零寬 Unicode 指令、把不可信內容插進 shell 指令的 hook、工作階段中途新增且帶有憑證形狀 env 區塊的 MCP server）
+* **內建情境**：九個 —— 跨域提示注入、跨租戶資料存取、跨工作階段的記憶投毒、無界限的工具遞迴，以及針對 agent「設定」下手的攻擊家族（被下毒的專案指令外洩密鑰、agent 定義檔中隱藏的零寬 Unicode 指令、把不可信內容插進 shell 指令的 hook、工作階段中途新增且帶有憑證形狀 env 區塊的 MCP server、會自動核准破壞性工具的已提交 settings 檔）
 * **目前各自跑在哪裡**：前四個已有錄製 fixture，可離線對 `demo-agent-fixture` 執行；四個 `AGT-CONFIG-*` 情境只涵蓋 `ci`／`staging`，而且還沒有錄製 fixture
 
 | 判定 | 意義 | 優先序 |
@@ -106,7 +106,7 @@ flowchart TD
 
 ```bash
 # 已發佈的 wheel（版本固定，也是 CI 安裝的那一個）
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.3/agentsec-0.4.3-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.4/agentsec-0.4.4-py3-none-any.whl
 
 # 或安裝目前的 main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -205,7 +205,7 @@ agentsec run --target demo-agent-fixture --profile nightly --html
 
 這份輸出要這樣讀：租戶邊界壞了，**但有被監控到** —— 修程式即可。記憶投毒則是壞了**而且看不見** —— 程式要修，Wazuh 規則也要補。這次執行會以 `1` 結束，這是設計如此。
 
-這次離線執行會選出四個情境，不是全部八個。`demo-agent-fixture` 是
+這次離線執行會選出四個情境，不是全部九個。`demo-agent-fixture` 是
 `local` 目標；`AGT-CONFIG-*` 家族在 fixture 錄好之前只涵蓋 `ci` 與
 `staging`。`agentsec preview` 會在任何東西執行前印出實際選取的集合。
 
@@ -267,7 +267,7 @@ Phase 1/2 runner 也仍維持 parked。已探索到的 skill 若沒有靜態 sui
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.3
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.4
     with:
       target: order-agent-staging
       profile: pr
@@ -427,7 +427,7 @@ pipeline 上的工作變成大家學會忽略的雜訊的方式。
 ```
 schemas/               scenario / target / evidence、project / SkillEvalSuite
                        宣告檔與發布用儀表板的 JSON Schema
-scenarios/             情境目錄（八個完整範例）
+scenarios/             情境目錄（九個完整範例）
 policy/                目標允許清單、執行 profile、核准紀錄
 fixtures/              最初四個情境的錄製語料
 .agentsec/             專案宣告檔與經審查的靜態 skill suite
@@ -491,7 +491,7 @@ runner 上也測得動。
 
 ## 狀態
 
-Alpha，最新版本為 [`v0.4.3`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.3)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。端到端驗證一個**外部** agent 控制 —— 真實 Claude Code session、第三方 PreToolUse hook，以及把兩者關聯起來的證據 —— 另外追蹤於 [`docs/route-a-resumption.md`](docs/route-a-resumption.md)，目前**尚未**驗證成立。
+Alpha，最新版本為 [`v0.4.4`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.4)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。端到端驗證一個**外部** agent 控制 —— 真實 Claude Code session、第三方 PreToolUse hook，以及把兩者關聯起來的證據 —— 另外追蹤於 [`docs/route-a-resumption.md`](docs/route-a-resumption.md)，目前**尚未**驗證成立。
 
 第一次執行前值得知道的一件事：情境目錄是從 `<workspace>/scenarios` 讀取的，所以在不是
 AgentSec checkout 的 repository 裡沒有東西可以比對，每一條風險都會落在 `not_verifiable`。

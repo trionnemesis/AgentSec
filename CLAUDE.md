@@ -59,7 +59,7 @@ thin layer over `HarnessService`.
 
 ```
 schemas/               JSON Schema for scenario, target, evidence, project manifest, skill suite, dashboards
-scenarios/              The scenario catalogue (eight worked examples)
+scenarios/              The scenario catalogue (nine worked examples)
 policy/                 Target allowlist, run profiles, approval ledger — reviewed like a firewall change
 fixtures/               Recorded OTel/Wazuh/audit/state corpus so the whole pipeline runs offline
 .agentsec/project.yaml  This repo's own project manifest (see "What this repository is")
