@@ -70,7 +70,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 * **Environments**: `local`, `ci`, `staging` — `production` is absent from the enum, so there is no flag to set
 * **Agent capabilities exercised**: RAG, tool calling, persistent memory, multi-tenancy, email
 * **Frameworks mapped**: OWASP Agentic Top 10 (8/10 categories covered by the bundled scenarios: `AAI001`–`AAI004`, `AAI006`–`AAI009`) and OWASP LLM Top 10
-* **Bundled scenarios**: eight — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block)
+* **Bundled scenarios**: nine — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block, a committed settings file that auto-approves a destructive tool)
 * **Where each runs today**: the first four have recorded fixtures and run offline against `demo-agent-fixture`; the four `AGT-CONFIG-*` scenarios are scoped to `ci` / `staging` and do not yet have recorded fixtures
 
 | Verdict | Meaning | Precedence |
@@ -223,7 +223,7 @@ Expected output — deliberately not all green:
 
 Read that as: the tenant boundary is broken **but instrumented** — fix the code. Memory poisoning is broken **and invisible** — fix the code *and* ship a Wazuh rule. The run exits `1`, by design.
 
-That offline run selects four scenarios, not all eight. `demo-agent-fixture` is
+That offline run selects four scenarios, not all nine. `demo-agent-fixture` is
 a `local` target; the `AGT-CONFIG-*` family is scoped to `ci` and `staging`
 until its fixtures are recorded. `agentsec preview` prints the selected set
 before anything runs.
