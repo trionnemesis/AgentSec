@@ -40,7 +40,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 | **Repository risk plane** (`agentsec scan`) | ✅ | 12 deterministic rules across agents, skills, hooks, tool grants, MCP and memory ([ADR 0009](adr/0009-repository-first-golden-path.md)) |
 | **Risk → scenario triage** | ✅ | `verified` / `verifiable` / `not_verifiable`; `scan --verify` drains the queue |
 | `config-surface:` correlation, shared | ✅ | `scenario/surface_tags.py`; the risk and posture planes cannot disagree on a surface match — the posture plane also requires a `threat-class:` match the risk plane cannot yet express, since a `RepoRisk` carries no scanner-emitted category ([#68](https://github.com/trionnemesis/AgentSec/issues/68)) |
-| `AGT-CONFIG-*` agent-configuration family | ✅ | 4 scenarios ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); `gate: warning` until stable across nightlies |
+| `AGT-CONFIG-*` agent-configuration family | ✅ | 5 scenarios ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); `gate: warning` until stable across nightlies |
 | Publication projection + fail-closed publication | ✅ | unknown output kind raises; a resource with no policy stops the gateway booting |
 | Versioned dashboard contracts | ✅ | `dashboard.schema.json`, `project-dashboard.schema.json`; validated on every read |
 
@@ -59,11 +59,16 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
       `scan --verify` reports it without queueing a run. A store declared
       elsewhere through the manifest's `surfaces.memory` is not under the
       tag and still reads `not_verifiable` ([#86](https://github.com/trionnemesis/AgentSec/issues/86)).
-- [ ] Fixture recordings and a Wazuh rule pack for `AGT-CONFIG-001..005`
-      (`100901`–`100905`). Until recorded, the family is scoped to
+- [x] Wazuh rule pack for `AGT-CONFIG-001..005`
+      (`100901`–`100905`). The deployable XML lives at
+      `packaging/wazuh/agentsec_rules.xml`; a static contract test fails if a
+      scenario names a missing rule or a rule below its `min_level`.
+- [ ] Fixture recordings for `AGT-CONFIG-001..005`. These remain
+      operator-owned; until recorded, the family is scoped to
       `environments: [ci, staging]` and `scan --verify` needs a real target.
-- [ ] Wazuh rule pack for the four original bundled scenarios
-      (`100501`, `100610`, `100720`, `100810`)
+- [x] Wazuh rule pack for the four original bundled scenarios
+      (`100501`, `100610`, `100720`, `100810`) in the same deployable
+      pack. This check is static and does not claim a live Wazuh E2E run.
 
 ---
 

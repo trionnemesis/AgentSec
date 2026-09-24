@@ -76,12 +76,15 @@ These are existing roadmap items, not implementation scope for this slice:
 
 - Add the Wazuh rule pack for the original bundled rules `100501`, `100610`,
   `100720` and `100810`.
-- Add rules `100901`–`100904` for `AGT-CONFIG-001..004`.
-- Record the corresponding fixtures so the relevant verification path can run
-  offline.
+- The Wazuh rule pack for `100501`, `100610`, `100720`, `100810`
+  and `100901`–`100905` lives at
+  `packaging/wazuh/agentsec_rules.xml`; the static contract test keeps its
+  IDs and levels aligned with the shipped scenario catalogue.
+- Record fixtures for `AGT-CONFIG-001..005` so the relevant verification path
+  can run offline. Fixture recording remains operator-owned.
 
-Do not implement the rule packs or fixture corpus in this docs-and-static
-evaluation slice.
+Do not manufacture fixture evidence from an agent session, promote gates, or
+treat the static rule-pack check as a live Wazuh E2E result.
 
 ## Return to the shared workflow
 
