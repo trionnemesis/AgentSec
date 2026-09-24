@@ -8,7 +8,7 @@ from agentsec.scenario.catalog import ScenarioCatalog
 from tests.conftest import REPO_ROOT
 
 SCENARIO_DIR = REPO_ROOT / "scenarios"
-RULE_PACK = REPO_ROOT / "packaging" / "wazuh" / "agentsec_rules.xml"
+RULE_PACK = REPO_ROOT / "packaging" / "wazuh" / "agentsec-wazuh-rules.xml"
 
 
 def _pack_levels() -> dict[str, int]:

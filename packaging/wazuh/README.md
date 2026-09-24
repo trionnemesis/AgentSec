@@ -1,8 +1,8 @@
 # Wazuh rule pack
 
-`agentsec_rules.xml` is the repository-owned Wazuh custom rule pack for the
+`agentsec-wazuh-rules.xml` is the repository-owned Wazuh custom rule pack for the
 `rule_id` values referenced by the shipped Scenario Contracts. Copy it to the
-Wazuh manager under `/var/ossec/etc/rules/agentsec_rules.xml` (or merge the
+Wazuh manager under `/var/ossec/etc/rules/agentsec-wazuh-rules.xml` (or merge the
 rules into an operator-managed custom rule file).
 
 The pack deliberately uses Wazuh's built-in JSON decoder rather than shipping a

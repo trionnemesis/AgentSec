@@ -10,5 +10,5 @@ references:
   - path: .claude/skills/agentsec/references/red-execution.md
     digest: sha256:f0233808af09a99d8d31d72e2b668c7030a3a10006893deced2eda84f2194a9f
   - path: .claude/skills/agentsec/references/blue-evidence.md
-    digest: sha256:6bfddeea478a533eec71207653e1873e0e54728236cea9602321c2201172ab72
+    digest: sha256:064c3a5aa90daffaf77e4c52fbb2c6a060505a68dd1f0489bfd18a5e8d896bd3
 scripts: []

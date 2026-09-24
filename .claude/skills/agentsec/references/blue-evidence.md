@@ -78,7 +78,7 @@ These are existing roadmap items, not implementation scope for this slice:
   `100720` and `100810`.
 - The Wazuh rule pack for `100501`, `100610`, `100720`, `100810`
   and `100901`–`100905` lives at
-  `packaging/wazuh/agentsec_rules.xml`; the static contract test keeps its
+  `packaging/wazuh/agentsec-wazuh-rules.xml`; the static contract test keeps its
   IDs and levels aligned with the shipped scenario catalogue.
 - Record fixtures for `AGT-CONFIG-001..005` so the relevant verification path
   can run offline. Fixture recording remains operator-owned.
