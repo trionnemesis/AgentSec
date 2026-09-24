@@ -116,7 +116,7 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 
 ```bash
 # the released wheel (pinned, and what CI installs)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.3/agentsec-0.4.3-py3-none-any.whl
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.4/agentsec-0.4.4-py3-none-any.whl
 
 # or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -302,7 +302,7 @@ Call the reusable workflow from the repository that owns the agent, pinned to a 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.3
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.4
     with:
       target: order-agent-staging
       profile: pr
@@ -556,7 +556,7 @@ runner.
 
 ## Status
 
-Alpha; latest release [`v0.4.3`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.3). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly. Verifying an *external* agent control end to end — a real Claude Code session, a third-party PreToolUse hook, and the evidence that correlates them — is tracked separately in [`docs/route-a-resumption.md`](docs/route-a-resumption.md) and is **not** yet proven.
+Alpha; latest release [`v0.4.4`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.4). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly. Verifying an *external* agent control end to end — a real Claude Code session, a third-party PreToolUse hook, and the evidence that correlates them — is tracked separately in [`docs/route-a-resumption.md`](docs/route-a-resumption.md) and is **not** yet proven.
 
 One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
 
