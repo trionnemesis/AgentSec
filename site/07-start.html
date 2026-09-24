@@ -15,24 +15,31 @@
     <nav class="site-nav" aria-label="Site navigation"><span class="page-index">08 / 08</span><a href="https://github.com/trionnemesis/AgentSec" rel="noopener noreferrer">GitHub ↗</a></nav>
   </header>
 
-  <main id="main-content" class="page page--split">
-    <div class="page-intro">
-      <p class="eyebrow">Get started</p>
-      <h2>Triage the repository first.</h2>
-      <p class="supporting-copy"><code>agentsec init</code> and <code>agentsec scan</code> need nothing configured, and rank a repository's real attack surface before anything runs. A <code>verifiable</code> risk then becomes a reviewed scenario against a real target—try the offline fixture corpus first if you don't have one yet.</p>
-      <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/README.md#quick-start" rel="noopener noreferrer">Read the quick start ↗</a><a class="button" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md" rel="noopener noreferrer">See the roadmap ↗</a></div>
-      <span class="status-line">Alpha · offline path verified; live Wazuh/OTel staging and external-control verification remain validation gaps</span>
-      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>One purple-team skill routes all four phases, linking to red or blue guidance only when that lane begins. Static Phase 0 checks package integrity in CI; it does not execute the guidance or issue a <code>PurpleVerdict</code>.</span></p>
+  <main id="main-content" class="page page--single">
+    <div class="start-intro">
+      <div class="page-intro">
+        <p class="eyebrow">Get started</p>
+        <h2>Triage the repository first.</h2>
+        <p class="supporting-copy"><code>agentsec init</code> and <code>agentsec scan</code> need nothing configured, and rank a repository's real attack surface before anything runs. A <code>verifiable</code> risk then becomes a reviewed scenario against a real target—try the offline fixture corpus first if you don't have one yet.</p>
+      </div>
+      <div class="stacked-actions">
+        <a class="button button--primary button--block" href="https://github.com/trionnemesis/AgentSec/blob/main/README.md#quick-start" rel="noopener noreferrer"><span>Read the quick start</span><span aria-hidden="true">↗</span></a>
+        <a class="button button--block" href="https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.4" rel="noopener noreferrer"><span>Download the v0.4.4 release</span><span aria-hidden="true">↗</span></a>
+        <a class="button button--block" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md" rel="noopener noreferrer"><span>See the roadmap</span><span aria-hidden="true">↗</span></a>
+      </div>
     </div>
 
     <div class="terminal" aria-label="AgentSec quick start commands">
       <div class="terminal-bar"><i aria-hidden="true"></i><span>agentsec / terminal</span></div>
-      <pre><code><span class="prompt">$</span> pip install git+https://github.com/trionnemesis/AgentSec.git
+      <pre><code><span class="prompt">$</span> pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.4/agentsec-0.4.4-py3-none-any.whl
+<span class="comment">  # or track main: pip install git+https://github.com/trionnemesis/AgentSec.git</span>
 <span class="prompt">$</span> agentsec init
 <span class="prompt">$</span> agentsec scan
 <span class="prompt">$</span> agentsec scan --verify --target order-agent-staging
 <span class="prompt">$</span> agentsec dashboard</code></pre>
     </div>
+    <span class="status-line">Alpha · v0.4.4 · offline path verified; live Wazuh/OTel staging and external-control verification remain validation gaps</span>
+    <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>One purple-team skill routes all four phases, linking to red or blue guidance only when that lane begins. Static Phase 0 checks package integrity in CI; it does not execute the guidance or issue a <code>PurpleVerdict</code>.</span></p>
   </main>
 
   <footer class="page-footer">

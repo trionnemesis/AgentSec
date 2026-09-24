@@ -15,21 +15,30 @@
     <nav class="site-nav" aria-label="Site navigation"><span class="page-index">03 / 08</span><a href="https://github.com/trionnemesis/AgentSec" rel="noopener noreferrer">GitHub ↗</a></nav>
   </header>
 
-  <main id="main-content" class="page page--split">
+  <main id="main-content" class="page page--split page--split-wide">
     <div class="page-intro">
       <p class="eyebrow">Repository-first security</p>
       <h2>See what your repository exposes.</h2>
-      <p class="supporting-copy">AgentSec maps agents, instructions, skills, hooks, MCP servers, tool grants, and memory stores to risks and scenarios. A static grade is context; it is never the verdict.</p>
+      <p class="supporting-copy">AgentSec maps instructions, agents, skills, hooks, MCP servers, tool grants, and memory stores to ranked risks, then says which ones a scenario can actually settle. A static grade is context; it is never the verdict.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0009-repository-first-golden-path.md" rel="noopener noreferrer">Explore the golden path ↗</a></div>
+      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>New in v0.4.4: the settings and memory surfaces moved from <code>not_verifiable</code> to <code>verifiable</code>. Skills is the one surface no scenario covers yet.</span></p>
     </div>
 
-    <div class="visual-panel" aria-label="Repository surfaces mapped by AgentSec">
-      <p class="visual-label">agentsec scan</p>
+    <div class="visual-panel" aria-label="Repository surfaces and the scenarios that settle them">
+      <p class="visual-label">agentsec scan · triage</p>
       <div class="repo-map">
         <div class="repo-core"><strong>AI agent repository</strong><code>discover → rank → verify</code></div>
-        <div class="surface-grid"><div class="surface-card">instructions</div><div class="surface-card">agents</div><div class="surface-card">skills</div><div class="surface-card">hooks</div><div class="surface-card">MCP servers</div><div class="surface-card">memory stores</div></div>
+        <ul class="triage-list" role="list">
+          <li class="triage-row"><span class="triage-surface">instructions<code>CLAUDE.md</code></span><code class="triage-scenario">AGT-CONFIG-001</code><span class="state-chip">verifiable</span></li>
+          <li class="triage-row"><span class="triage-surface">agents<code>.claude/agents</code></span><code class="triage-scenario">AGT-CONFIG-002</code><span class="state-chip">verifiable</span></li>
+          <li class="triage-row"><span class="triage-surface">hooks<code>.claude/hooks</code></span><code class="triage-scenario">AGT-CONFIG-003</code><span class="state-chip">verifiable</span></li>
+          <li class="triage-row"><span class="triage-surface">MCP servers<code>.mcp.json</code></span><code class="triage-scenario">AGT-CONFIG-004</code><span class="state-chip">verifiable</span></li>
+          <li class="triage-row triage-row--new"><span class="triage-surface">tool grants<code>.claude/settings.json</code></span><code class="triage-scenario">AGT-CONFIG-005<span class="new-tag">new</span></code><span class="state-chip">verifiable</span></li>
+          <li class="triage-row triage-row--new"><span class="triage-surface">memory stores<code>.claude/memory</code></span><code class="triage-scenario">AGT-XPIA-001<span class="new-tag">new</span></code><span class="state-chip">verifiable</span></li>
+          <li class="triage-row triage-row--gap"><span class="triage-surface">skills<code>.claude/skills</code></span><span class="triage-scenario triage-scenario--none">no scenario yet</span><span class="state-chip state-chip--gap">not_verifiable</span></li>
+        </ul>
       </div>
-      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span>Risk is useful when a scenario can actually settle it.</p>
+      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span><code>verifiable</code> means a scenario exists and has not run here yet; only a passing run makes a risk <code>verified</code>. <code>not_verifiable</code> is a catalogue gap, never a pass.</span></p>
     </div>
   </main>
 
