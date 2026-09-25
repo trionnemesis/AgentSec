@@ -61,7 +61,7 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
       tag and still reads `not_verifiable` ([#86](https://github.com/trionnemesis/AgentSec/issues/86)).
 - [x] Wazuh rule pack for `AGT-CONFIG-001..005`
       (`100901`–`100905`). The deployable XML lives at
-      `packaging/wazuh/agentsec_rules.xml`; a static contract test fails if a
+      `packaging/wazuh/agentsec-wazuh-rules.xml`; a static contract test fails if a
       scenario names a missing rule or a rule below its `min_level`.
 - [ ] Fixture recordings for `AGT-CONFIG-001..005`. These remain
       operator-owned; until recorded, the family is scoped to
