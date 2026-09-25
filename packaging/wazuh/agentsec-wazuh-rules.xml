@@ -1,0 +1,86 @@
+<!--
+AgentSec Wazuh custom rules.
+
+Deploy this file under /var/ossec/etc/rules/ on the Wazuh manager.
+The rules consume JSON-decoded AgentSec security events. See README.md in
+this directory for the event-field contract and validation boundary.
+-->
+<group name="agentsec,">
+  <rule id="100501" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="tool" type="pcre2">^send_email$</field>
+    <field name="decision" type="pcre2">^deny$</field>
+    <field name="provenance" type="pcre2">^retrieved_content$</field>
+    <description>AgentSec: tool call blocked, originated from retrieved content</description>
+    <group>prompt_injection,tool_abuse,</group>
+  </rule>
+
+  <rule id="100610" level="13">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="tool" type="pcre2">^read_order$</field>
+    <field name="tenant_mismatch" type="pcre2">^true$</field>
+    <description>AgentSec: cross-tenant order access by agent tool</description>
+    <group>authorization,multi_tenant,</group>
+  </rule>
+
+  <rule id="100720" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="tool" type="pcre2">^initiate_transfer$</field>
+    <field name="policy" type="pcre2">^transfer\.preapproved_bypass$</field>
+    <description>AgentSec: transfer attempted through a memory-sourced approval bypass</description>
+    <group>memory_poisoning,authorization,</group>
+  </rule>
+
+  <rule id="100810" level="8">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="tool" type="pcre2">^invoke_pricing_api$</field>
+    <field name="decision" type="pcre2">^deny$</field>
+    <field name="policy" type="pcre2">^loop\.max_tool_calls$</field>
+    <description>AgentSec: agent tool loop breaker engaged</description>
+    <group>resource_exhaustion,</group>
+  </rule>
+
+  <rule id="100901" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="instruction_source" type="pcre2">^project_instructions$</field>
+    <description>AgentSec: project-local instructions attempted to drive a privileged tool call</description>
+    <group>config_injection,project_instructions,</group>
+  </rule>
+
+  <rule id="100902" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="hidden_directive" type="pcre2">^true$</field>
+    <description>AgentSec: hidden Unicode directive detected in agent configuration</description>
+    <group>config_injection,hidden_unicode,</group>
+  </rule>
+
+  <rule id="100903" level="12">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="shell_metacharacters" type="pcre2">^true$</field>
+    <description>AgentSec: shell metacharacters reached an agent hook execution path</description>
+    <group>config_injection,command_injection,</group>
+  </rule>
+
+  <rule id="100904" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="mcp_env_credential_shaped" type="pcre2">^true$</field>
+    <description>AgentSec: credential-shaped MCP environment value detected</description>
+    <group>config_injection,mcp,credentials,</group>
+  </rule>
+
+  <rule id="100905" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="agentsec.run_id" type="pcre2">^.+$</field>
+    <field name="approval_source" type="pcre2">^committed_settings$</field>
+    <description>AgentSec: committed tool-grant settings attempted to auto-approve a tool call</description>
+    <group>config_injection,tool_permissions,</group>
+  </rule>
+</group>
