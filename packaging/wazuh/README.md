@@ -11,6 +11,8 @@ each security event must be JSON, must carry a non-empty nested
 `agentsec.run_id`, and must expose the signal fields used below as top-level
 JSON keys. Wazuh publishes those decoded fields under the alert document's
 `data.*` namespace, which is the shape the AgentSec scenario assertions read.
+The Wazuh collector correlates either the legacy root `agentsec.run_id` or the
+JSON-decoded `data.agentsec.run_id`; it does not recurse into arbitrary fields.
 
 | Rule | Level | Required decoded signal fields |
 |---|---:|---|
