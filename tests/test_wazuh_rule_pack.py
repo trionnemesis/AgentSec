@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from xml.etree import ElementTree
 
+import pytest
+
+from agentsec.errors import EvidenceUnavailable
+from agentsec.evidence.wazuh import _run_id_filter, _wazuh_run_id
 from agentsec.scenario.catalog import ScenarioCatalog
 from tests.conftest import REPO_ROOT
 
@@ -56,3 +60,32 @@ def test_every_shipped_must_fire_rule_exists_at_or_above_its_min_level() -> None
         if pack_levels[rule_id] < min_level
     }
     assert not too_low, f"Wazuh rule levels are below scenario min_level: {too_low}"
+
+
+def test_wazuh_correlation_filter_accepts_root_and_json_decoded_paths() -> None:
+    assert _run_id_filter("run-123") == {
+        "bool": {
+            "should": [
+                {"term": {"agentsec.run_id": "run-123"}},
+                {"term": {"data.agentsec.run_id": "run-123"}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def test_wazuh_run_id_reads_json_decoded_data_namespace() -> None:
+    assert (
+        _wazuh_run_id({"data": {"agentsec": {"run_id": "run-123"}}})
+        == "run-123"
+    )
+
+
+def test_wazuh_run_id_rejects_conflicting_root_and_decoded_values() -> None:
+    with pytest.raises(EvidenceUnavailable, match="conflicting canonical"):
+        _wazuh_run_id(
+            {
+                "agentsec": {"run_id": "run-root"},
+                "data": {"agentsec": {"run_id": "run-decoded"}},
+            }
+        )
