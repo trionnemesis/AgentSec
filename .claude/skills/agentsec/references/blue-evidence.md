@@ -74,8 +74,6 @@ passing response assertion solely to fill coverage.
 
 These are existing roadmap items, not implementation scope for this slice:
 
-- Add the Wazuh rule pack for the original bundled rules `100501`, `100610`,
-  `100720` and `100810`.
 - The Wazuh rule pack for `100501`, `100610`, `100720`, `100810`
   and `100901`–`100905` lives at
   `packaging/wazuh/agentsec-wazuh-rules.xml`; the static contract test keeps its
