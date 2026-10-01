@@ -108,7 +108,7 @@ def _collect_opensearch(ctx: CollectContext) -> WazuhSource:
                             }
                         }
                     },
-                    {"term": {"agentsec.run_id": ctx.run_id}},
+                    _run_id_filter(ctx.run_id),
                 ]
             }
         },
@@ -213,6 +213,35 @@ def _page_hits(body: Any) -> list[dict[str, Any]]:
     return raw_hits
 
 
+def _run_id_filter(run_id: str) -> dict[str, Any]:
+    """Match both legacy root correlation and Wazuh JSON-decoded correlation."""
+
+    return {
+        "bool": {
+            "should": [
+                {"term": {"agentsec.run_id": run_id}},
+                {"term": {"data.agentsec.run_id": run_id}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+
+def _wazuh_run_id(doc: dict[str, Any]) -> str | None:
+    """Read correlation only from the two Wazuh alert locations we trust."""
+
+    root_run_id = canonical_run_id(doc)
+    data = doc.get("data")
+    decoded_run_id = canonical_run_id(data) if isinstance(data, dict) else None
+    if (
+        root_run_id is not None
+        and decoded_run_id is not None
+        and root_run_id != decoded_run_id
+    ):
+        raise EvidenceUnavailable("conflicting canonical agentsec.run_id values")
+    return root_run_id or decoded_run_id
+
+
 def _normalise(
     doc: dict[str, Any],
     doc_id: str | None = None,
@@ -223,7 +252,7 @@ def _normalise(
     rule = doc.get("rule") or {}
     agent = doc.get("agent") or {}
     ts = doc.get("timestamp") or doc.get("@timestamp")
-    run_id = canonical_run_id(doc)
+    run_id = _wazuh_run_id(doc)
     if ctx is not None:
         run_id = require_run_id_value(
             run_id,
