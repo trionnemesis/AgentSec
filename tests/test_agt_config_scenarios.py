@@ -89,7 +89,7 @@ def test_the_family_does_not_intrude_on_the_bundled_corpus_selection(
     service: HarnessService,
 ) -> None:
     """The catalogue grows; demo-agent-fixture's nightly selection does not."""
-    assert len(service.catalog) == 8
+    assert len(service.catalog) == 9
     result = service.start_run(target_id="demo-agent-fixture", profile="nightly")
     assert {r.scenario_id for r in result.runs} == {
         "AGT-XPIA-001", "AGT-TOOLLOOP-001", "AGT-TENANT-001", "AGT-MEMPOIS-001",

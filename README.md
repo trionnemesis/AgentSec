@@ -60,7 +60,7 @@ Once the MCP gateway is wired into Claude Code, just ask:
 | **Evidence collection** | OpenTelemetry spans, Wazuh alerts, tool-call audit and database state diff, normalised into one schema |
 | **Evidence truthfulness** | Polls required sources through contract deadlines, rejects missing or foreign-run correlation, consumes one audit record per traced call, and evaluates response SLA against event time |
 | **Offline fixture corpus** | The full pipeline runs on a laptop with no agent, no SIEM and no network for the four original scenarios; the `AGT-CONFIG-*` family still needs a `ci` or `staging` target |
-| **CI gate** | JUnit output plus meaningful exit codes, and a reusable GitHub workflow you call from the agent's own repo |
+| **CI gate** | Installs a reviewed AgentSec commit separately from the consumer, loads all nine packaged scenarios, and preserves package/catalogue provenance in JUnit/HTML/JSON; report-only mode still fails on infrastructure errors |
 | **Constrained MCP gateway** | 11 narrow tools and 10 read-only resources; no shell, no SQL, no free-text URL |
 | **Publication boundary** | A read-only report gateway serves a projected subset — turn digests, pseudonymous principals, no evidence or audit URIs — so a dashboard cannot re-commit the breach it reports |
 | **Finding workflow** | `new → reproduced → fixing → regression_added → detection_added → verified → closed`, with transitions enforced |
@@ -70,8 +70,8 @@ Once the MCP gateway is wired into Claude Code, just ask:
 * **Environments**: `local`, `ci`, `staging` — `production` is absent from the enum, so there is no flag to set
 * **Agent capabilities exercised**: RAG, tool calling, persistent memory, multi-tenancy, email
 * **Frameworks mapped**: OWASP Agentic Top 10 (8/10 categories covered by the bundled scenarios: `AAI001`–`AAI004`, `AAI006`–`AAI009`) and OWASP LLM Top 10
-* **Bundled scenarios**: eight — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block)
-* **Where each runs today**: the first four have recorded fixtures and run offline against `demo-agent-fixture`; the four `AGT-CONFIG-*` scenarios are scoped to `ci` / `staging` and do not yet have recorded fixtures
+* **Bundled scenarios**: nine — cross-domain prompt injection, cross-tenant data access, persistent memory poisoning, unbounded tool recursion, and the agent-configuration family (poisoned project instructions, a zero-width Unicode directive in an agent definition, a hook interpolating untrusted content into a shell command, an MCP server added mid-session with a credential-shaped env block, a committed settings file that auto-approves a destructive tool)
+* **Where each runs today**: the first four have recorded fixtures and run offline against `demo-agent-fixture`; the five `AGT-CONFIG-*` scenarios are scoped to `ci` / `staging` and do not yet have recorded fixtures
 
 | Verdict | Meaning | Precedence |
 |---|---|---|
@@ -115,8 +115,8 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 > Not yet published to PyPI — install from a release or from source.
 
 ```bash
-# the released wheel (pinned, and what CI installs)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.3/agentsec-0.4.3-py3-none-any.whl
+# the released wheel for local use (version pinned)
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.5.0/agentsec-0.5.0-py3-none-any.whl
 
 # or the current main
 pip install git+https://github.com/trionnemesis/AgentSec.git
@@ -127,7 +127,9 @@ cd AgentSec
 pip install -e '.[dev]'
 ```
 
-Pin the release rather than `main` for anything whose pass/fail you care about — the CI gate especially, since a change here would otherwise alter another repository's merge decisions.
+Pin a release for local use. The reusable CI gate requires a full reviewed
+commit SHA and verifies a separate non-editable VCS installation; see
+[external consumer setup](docs/external-consumer.md).
 
 ### 2. Scan your own repository
 
@@ -223,7 +225,7 @@ Expected output — deliberately not all green:
 
 Read that as: the tenant boundary is broken **but instrumented** — fix the code. Memory poisoning is broken **and invisible** — fix the code *and* ship a Wazuh rule. The run exits `1`, by design.
 
-That offline run selects four scenarios, not all eight. `demo-agent-fixture` is
+That offline run selects four scenarios, not all nine. `demo-agent-fixture` is
 a `local` target; the `AGT-CONFIG-*` family is scoped to `ci` and `staging`
 until its fixtures are recorded. `agentsec preview` prints the selected set
 before anything runs.
@@ -297,16 +299,33 @@ bare URLs.
 
 ### 5. Gate a real agent in CI
 
-Call the reusable workflow from the repository that owns the agent, pinned to a release tag:
+Call the reusable workflow from the repository that owns the agent. In v0.5.0,
+pin `uses:` to a reviewed full commit SHA and provide the required
+`agentsec-sha` input. Replace both placeholders; they may name the same reviewed
+release commit.
 
 ```yaml
 jobs:
   purple:
-    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@v0.4.3
+    uses: trionnemesis/AgentSec/.github/workflows/agentsec-gate.yml@<REVIEWED_WORKFLOW_SHA>
     with:
+      agentsec-sha: <REVIEWED_AGENTSEC_SHA>
       target: order-agent-staging
       profile: pr
 ```
+
+The consumer supplies its reviewed target/policy and evidence, with an empty
+`results/` directory. AgentSec installs into a separate virtualenv, verifies its
+PEP 610 `direct_url.json` commit identity, and loads the nine packaged scenarios.
+Nonempty consumer `scenarios/` directories are rejected until overlays are
+supported. `fail-on-blocking: false` permits completed security findings only;
+installation, configuration, incomplete execution and `error` verdicts still
+fail the job. See [migration and provenance details](docs/external-consumer.md).
+
+The automated two-Git-repository test verifies installation and the four recorded
+replay cases. Hosted cross-repository `workflow_call` acceptance remains pending
+in [#50](https://github.com/trionnemesis/AgentSec/issues/50); it is separate from
+live target/Wazuh validation.
 
 ## The scenario contract
 
@@ -478,6 +497,8 @@ noise people learn to skip.
 | Variable | Description | Default |
 |---|---|---|
 | `AGENTSEC_WORKSPACE` | Workspace root holding `scenarios/`, `policy/`, `results/` | cwd |
+| `AGENTSEC_CATALOGUE` | `workspace` loads local scenarios; `builtin` loads the packaged catalogue and rejects project overlays | `workspace` |
+| `AGENTSEC_EXPECTED_SHA` | Require the imported non-editable VCS installation to match this full lowercase commit SHA | unset |
 | `AGENTSEC_DB` | SQLite results path | `<workspace>/results/agentsec.db` |
 | `AGENTSEC_ACTOR` | Recorded on every audit row; CI should set `ci:<actor>` | `cli` from the CLI; `mcp` from the gateway |
 | `AGENTSEC_MCP_READ_ONLY` | `1` runs the report gateway: non-read-only tools are refused at the dispatcher, and only the allowlisted resources are served | unset |
@@ -491,7 +512,7 @@ Per-target credentials are referenced **by variable name** from `policy/targets.
 ```
 schemas/               JSON Schema for scenario, target, evidence, project and
                        SkillEvalSuite manifests, and published dashboards
-scenarios/             The scenario catalogue (eight worked examples)
+scenarios/             The scenario catalogue (nine worked examples)
 policy/                Target allowlist, run profiles, approval ledger
 fixtures/              Recorded corpus for the four original scenarios
 .agentsec/             Project manifest and reviewed static skill suite
@@ -556,9 +577,15 @@ runner.
 
 ## Status
 
-Alpha; latest release [`v0.4.3`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.3). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly. Verifying an *external* agent control end to end — a real Claude Code session, a third-party PreToolUse hook, and the evidence that correlates them — is tracked separately in [`docs/route-a-resumption.md`](docs/route-a-resumption.md) and is **not** yet proven.
+Alpha; latest release [`v0.5.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.5.0). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly. Verifying an *external* agent control end to end — a real Claude Code session, a third-party PreToolUse hook, and the evidence that correlates them — is tracked separately in [`docs/route-a-resumption.md`](docs/route-a-resumption.md) and is **not** yet proven.
 
-One caveat worth knowing before the first run: the scenario catalogue is read from `<workspace>/scenarios`, so outside a checkout of AgentSec there is nothing to triage against and every risk resolves to `not_verifiable`. Bundling the reviewed catalogue as package data is on the roadmap.
+Workspace mode still reads `<workspace>/scenarios` by default. Installed wheels
+now include all nine reviewed scenarios; set `AGENTSEC_CATALOGUE=builtin` to use
+them from a consumer with no local scenarios. A wheel version alone does not
+prove a Git commit: the reusable gate additionally requires installer-verified
+VCS identity. The Wazuh rule pack has static contract coverage; operator fixture
+recordings and live E2E acceptance remain open in
+[#86](https://github.com/trionnemesis/AgentSec/issues/86).
 
 ## Contributing
 
@@ -566,7 +593,7 @@ All forms of participation are welcome — you don't have to write code:
 
 * 🐛 **Bug, or a verdict you believe is wrong** → [open an issue](https://github.com/trionnemesis/AgentSec/issues) with the run id and the evidence bundle
 * 🎯 **A scenario idea** — an attack shape the catalogue misses → issue, or a PR with the YAML and fixtures
-* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`, `100901`–`100904`)
+* 🔍 **A detection rule** for one of the bundled scenarios (`100501`, `100610`, `100720`, `100810`, `100901`–`100905`)
 * 🔧 **Code** → fork and open a PR; run `make check` first, and read [CONTRIBUTING.md](CONTRIBUTING.md) for the four rules that get enforced in review
 
 If this project helps you, a ⭐ is the easiest way to help others find it.

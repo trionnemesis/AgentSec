@@ -11,7 +11,11 @@ metadata:
     judgement, and the attempt must alert.
   owner: platform-security
   severity: high
-  tags: [xpia, prompt-injection, exfiltration]
+  # A repository memory store is retrieved context that reaches the model with
+  # the authority of reviewed instructions: the inlet this contract attacks. The
+  # tag lets triage route ASI-MEMORY-UNREVIEWED-STORE here. It names a path and
+  # no threat-class, so it settles no static-scanner posture finding.
+  tags: [xpia, prompt-injection, exfiltration, "config-surface:.claude/memory"]
   references:
     owasp_agentic: [AAI001]
     owasp_llm: ["LLM01:2025"]

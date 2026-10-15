@@ -1,0 +1,709 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Red/Blue Lane Deepening</title>
+<meta name="description" content="A plan to deepen the red and blue lanes inside AgentSec's single purple-team skill — without forking it into two.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#f5f4f9;
+    --surface:#ffffff;
+    --surface-2:#faf9fd;
+    --ink:#191722;
+    --muted:#5d596c;
+    --faint:#8b8799;
+    --line:#e5e2ef;
+    --line-strong:#d3cfe2;
+
+    --red:#c0374f;        /* attack / red lane */
+    --red-ink:#8f2135;
+    --red-wash:#fbedf0;
+    --blue:#2c6cae;       /* defense / blue lane */
+    --blue-ink:#1d4e82;
+    --blue-wash:#eaf1f9;
+    --violet:#6a44cf;     /* the contract that binds them */
+    --violet-ink:#4f2ca8;
+    --violet-wash:#efeafb;
+
+    --error:#b23127;
+    --warn:#9a6a12;
+    --secure:#2c8259;
+    --parked:#6b6577;
+
+    --shadow:0 1px 2px rgba(25,23,34,.05), 0 8px 26px -14px rgba(25,23,34,.22);
+    --radius:14px;
+
+    --maxw:1120px;
+    --font-display:'Archivo',system-ui,sans-serif;
+    --font-body:'IBM Plex Sans',system-ui,sans-serif;
+    --font-mono:'IBM Plex Mono',ui-monospace,'SF Mono',monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#0e0d14;
+      --surface:#17151f;
+      --surface-2:#1c1a26;
+      --ink:#eceaf3;
+      --muted:#a49fb5;
+      --faint:#7a7589;
+      --line:#2a2735;
+      --line-strong:#38344a;
+
+      --red:#e7677d;
+      --red-ink:#f2a3b1;
+      --red-wash:#2a1820;
+      --blue:#6ba7e6;
+      --blue-ink:#a6cbf1;
+      --blue-wash:#141f2c;
+      --violet:#a98bef;
+      --violet-ink:#c4aef6;
+      --violet-wash:#1e1830;
+
+      --error:#e8776c;
+      --warn:#d7a34a;
+      --secure:#5cbd8c;
+      --parked:#928ca3;
+
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -16px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#0e0d14;
+    --surface:#17151f;
+    --surface-2:#1c1a26;
+    --ink:#eceaf3;
+    --muted:#a49fb5;
+    --faint:#7a7589;
+    --line:#2a2735;
+    --line-strong:#38344a;
+
+    --red:#e7677d;
+    --red-ink:#f2a3b1;
+    --red-wash:#2a1820;
+    --blue:#6ba7e6;
+    --blue-ink:#a6cbf1;
+    --blue-wash:#141f2c;
+    --violet:#a98bef;
+    --violet-ink:#c4aef6;
+    --violet-wash:#1e1830;
+
+    --error:#e8776c;
+    --warn:#d7a34a;
+    --secure:#5cbd8c;
+    --parked:#928ca3;
+
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -16px rgba(0,0,0,.7);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--ground);
+    color:var(--ink);
+    font-family:var(--font-body);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 clamp(18px,4vw,40px)}
+  a{color:var(--violet-ink);text-underline-offset:3px;text-decoration-thickness:1px}
+
+  /* ---- eyebrow / labels ---- */
+  .eyebrow{
+    font-family:var(--font-mono);
+    font-size:11.5px;font-weight:600;
+    letter-spacing:.16em;text-transform:uppercase;
+    color:var(--faint);
+  }
+  code,.mono{font-family:var(--font-mono);font-size:.9em}
+  code{
+    background:var(--surface-2);
+    border:1px solid var(--line);
+    border-radius:5px;padding:.06em .38em;
+    color:var(--ink);
+    white-space:nowrap;
+  }
+
+  /* ---- masthead ---- */
+  header.top{
+    border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,var(--surface),var(--surface-2));
+  }
+  .rail{
+    height:4px;
+    background:linear-gradient(90deg,var(--red) 0 40%,var(--violet) 40% 60%,var(--blue) 60% 100%);
+  }
+  .masthead{padding:clamp(30px,5vw,56px) 0 clamp(24px,4vw,40px)}
+  .kicker{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .badge{
+    font-family:var(--font-mono);font-size:11px;font-weight:600;
+    letter-spacing:.08em;text-transform:uppercase;
+    padding:4px 9px;border-radius:100px;border:1px solid var(--line-strong);
+    color:var(--muted);background:var(--surface);
+  }
+  .badge.purple{color:var(--violet-ink);border-color:color-mix(in srgb,var(--violet) 40%,var(--line));background:var(--violet-wash)}
+  h1{
+    font-family:var(--font-display);font-weight:800;
+    font-size:clamp(30px,5.6vw,52px);line-height:1.04;
+    letter-spacing:-.02em;text-wrap:balance;
+    margin:0 0 16px;max-width:20ch;
+  }
+  h1 .a{color:var(--red)}
+  h1 .b{color:var(--blue)}
+  .standfirst{font-size:clamp(15px,1.9vw,18.5px);color:var(--muted);max-width:64ch;margin:0}
+
+  .readout{
+    margin-top:30px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+    gap:1px;background:var(--line);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;
+  }
+  .cell{background:var(--surface);padding:13px 16px}
+  .cell .k{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint)}
+  .cell .v{font-family:var(--font-mono);font-size:14px;font-weight:500;margin-top:5px;color:var(--ink);word-break:break-word}
+  .cell .v.red{color:var(--red)}
+  .cell .v.blue{color:var(--blue)}
+
+  /* ---- section scaffolding ---- */
+  section{padding:clamp(38px,6vw,64px) 0;border-bottom:1px solid var(--line)}
+  .sec-head{margin-bottom:26px}
+  .sec-head h2{
+    font-family:var(--font-display);font-weight:700;
+    font-size:clamp(21px,3vw,29px);letter-spacing:-.01em;
+    margin:8px 0 8px;text-wrap:balance;
+  }
+  .sec-head p{margin:0;color:var(--muted);max-width:70ch}
+  .num{color:var(--violet-ink)}
+
+  /* ---- thesis panel ---- */
+  .thesis{
+    background:var(--surface);border:1px solid var(--line-strong);
+    border-radius:var(--radius);box-shadow:var(--shadow);
+    padding:clamp(22px,3.4vw,34px);
+    position:relative;overflow:hidden;
+  }
+  .thesis::before{content:"";position:absolute;inset:0 auto 0 0;width:5px;
+    background:linear-gradient(180deg,var(--red),var(--violet),var(--blue))}
+  .thesis h3{
+    font-family:var(--font-display);font-weight:700;
+    font-size:clamp(19px,2.6vw,26px);letter-spacing:-.01em;margin:0 0 12px;
+    padding-left:14px;
+  }
+  .thesis .body{padding-left:14px;max-width:74ch}
+  .thesis .body p{margin:0 0 12px}
+  .thesis .body p:last-child{margin-bottom:0}
+
+  /* ---- pipeline ---- */
+  .pipe{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:12px;
+  }
+  .stage{
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:16px 16px 18px;position:relative;
+  }
+  .stage .idx{font-family:var(--font-mono);font-size:11px;color:var(--faint);letter-spacing:.1em}
+  .stage h4{font-family:var(--font-display);font-weight:700;font-size:15.5px;margin:8px 0 6px;letter-spacing:-.01em}
+  .stage p{margin:0;font-size:13px;color:var(--muted)}
+  .stage.s1{border-top:3px solid var(--faint)}
+  .stage.s2{border-top:3px solid var(--red)}
+  .stage.s3{border-top:3px solid var(--blue)}
+  .stage.s4{border-top:3px solid var(--violet)}
+  .stage .arrow{position:absolute;right:-11px;top:50%;transform:translateY(-50%);
+    width:22px;height:22px;color:var(--faint);z-index:2;display:grid;place-items:center}
+  .stage:last-child .arrow{display:none}
+
+  /* ---- lanes ---- */
+  .lanes{display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:stretch}
+  .lane{
+    background:var(--surface);border:1px solid var(--line);
+    padding:clamp(20px,2.6vw,28px);
+  }
+  .lane.red{border-top:4px solid var(--red);border-radius:var(--radius) 0 0 var(--radius)}
+  .lane.blue{border-top:4px solid var(--blue);border-radius:0 var(--radius) var(--radius) 0}
+  .lane .tag{display:inline-flex;align-items:center;gap:8px;font-family:var(--font-mono);
+    font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+  .lane.red .tag{color:var(--red)}
+  .lane.blue .tag{color:var(--blue)}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .lane.red .dot{background:var(--red)}
+  .lane.blue .dot{background:var(--blue)}
+  .lane h3{font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:-.01em;margin:10px 0 4px}
+  .lane .role{color:var(--muted);font-size:13.5px;margin:0 0 16px}
+  ul.checks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:11px}
+  ul.checks li{position:relative;padding-left:22px;font-size:13.7px;color:var(--ink)}
+  ul.checks li::before{content:"";position:absolute;left:0;top:.55em;width:8px;height:8px;border-radius:2px;transform:rotate(45deg)}
+  .lane.red ul.checks li::before{background:var(--red)}
+  .lane.blue ul.checks li::before{background:var(--blue)}
+  ul.checks li b{font-weight:600}
+  .lane .cov{margin-top:18px;padding-top:15px;border-top:1px dashed var(--line-strong)}
+  .lane .cov .lbl{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+  .lane .cov p{margin:0;font-size:12.8px;color:var(--muted)}
+
+  .bind{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:var(--violet-wash);border:1px solid color-mix(in srgb,var(--violet) 35%,var(--line));
+    border-left:none;border-right:none;
+    padding:16px 20px;min-width:190px;text-align:center;position:relative;
+  }
+  .bind .seam{position:absolute;top:14px;bottom:14px;width:1px;background:color-mix(in srgb,var(--violet) 35%,var(--line))}
+  .bind .seam.l{left:-1px}.bind .seam.r{right:-1px}
+  .bind .cap{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--violet-ink)}
+  .bind h4{font-family:var(--font-display);font-weight:800;font-size:17px;line-height:1.15;margin:9px 0;color:var(--violet-ink);letter-spacing:-.01em;text-wrap:balance}
+  .bind .axes{display:flex;flex-direction:column;gap:5px;margin-top:4px;font-family:var(--font-mono);font-size:11px;color:var(--muted)}
+  .bind .axes span b{color:var(--ink);font-weight:600}
+  .precedence{margin-top:16px;font-family:var(--font-mono);font-size:11.5px;color:var(--muted);text-align:center;line-height:1.9}
+  .precedence .e{color:var(--error);font-weight:600}
+  .precedence .s{color:var(--secure);font-weight:600}
+
+  /* ---- tracks ---- */
+  .tracks{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .track{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:24px;box-shadow:var(--shadow);display:flex;flex-direction:column;
+  }
+  .track .th{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+  .track .tk{font-family:var(--font-display);font-weight:800;font-size:30px;line-height:1;color:var(--violet)}
+  .track h3{font-family:var(--font-display);font-weight:700;font-size:17px;letter-spacing:-.01em;margin:0;text-wrap:balance}
+  .track p{margin:0 0 12px;font-size:13.7px;color:var(--muted)}
+  .track p:last-child{margin-bottom:0}
+  .track .foot{margin-top:auto;padding-top:14px;border-top:1px solid var(--line);
+    font-family:var(--font-mono);font-size:11.5px;color:var(--faint)}
+  .track .foot .now{color:var(--secure);font-weight:600}
+
+  /* ---- coverage table ---- */
+  .table-scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+  thead th{
+    font-family:var(--font-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);text-align:left;font-weight:600;
+    padding:13px 16px;border-bottom:1px solid var(--line-strong);white-space:nowrap;
+  }
+  tbody td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  td .item{font-weight:600}
+  td .sub{color:var(--muted);font-size:12.5px;margin-top:2px}
+  .lanepill{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.06em;
+    padding:3px 8px;border-radius:6px;white-space:nowrap}
+  .lanepill.red{color:var(--red);background:var(--red-wash)}
+  .lanepill.blue{color:var(--blue);background:var(--blue-wash)}
+  .chip{font-family:var(--font-mono);font-size:11px;font-weight:600;padding:3px 9px;border-radius:100px;white-space:nowrap;display:inline-block}
+  .chip.verifiable{color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent);border:1px solid color-mix(in srgb,var(--warn) 32%,transparent)}
+  .chip.nverif{color:var(--error);background:color-mix(in srgb,var(--error) 12%,transparent);border:1px solid color-mix(in srgb,var(--error) 30%,transparent)}
+  .chip.parked{color:var(--parked);background:color-mix(in srgb,var(--parked) 12%,transparent);border:1px solid color-mix(in srgb,var(--parked) 30%,transparent)}
+  .chip.shipped{color:var(--secure);background:color-mix(in srgb,var(--secure) 13%,transparent);border:1px solid color-mix(in srgb,var(--secure) 32%,transparent)}
+  .track.done{border-color:color-mix(in srgb,var(--secure) 34%,var(--line))}
+  .track .th .shiptag{margin-left:auto;font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--secure);background:color-mix(in srgb,var(--secure) 12%,transparent);border:1px solid color-mix(in srgb,var(--secure) 30%,transparent);border-radius:100px;padding:3px 9px;white-space:nowrap}
+  .track .th .shiptag.wip{color:var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}
+
+  /* ---- guardrails ---- */
+  .guard{
+    background:var(--red-wash);
+    border:1px solid color-mix(in srgb,var(--red) 30%,var(--line));
+    border-radius:var(--radius);padding:clamp(22px,3vw,30px);
+  }
+  .guard h2{font-family:var(--font-display);font-weight:700;font-size:clamp(19px,2.6vw,24px);margin:0 0 6px;color:var(--red-ink);letter-spacing:-.01em}
+  .guard .lead{color:var(--muted);margin:0 0 20px;max-width:66ch}
+  .guard ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .guard li{position:relative;padding-left:26px;font-size:13.6px}
+  .guard li::before{content:"✕";position:absolute;left:0;top:0;font-family:var(--font-mono);color:var(--red);font-weight:700}
+  .guard li b{font-weight:600}
+
+  /* ---- close: acceptance + stop ---- */
+  .close-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:16px}
+  .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:24px;box-shadow:var(--shadow)}
+  .panel h3{font-family:var(--font-display);font-weight:700;font-size:16px;margin:0 0 14px;letter-spacing:-.01em}
+  ul.accept{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  ul.accept li{position:relative;padding-left:24px;font-size:13.5px;color:var(--ink)}
+  ul.accept li::before{content:"✓";position:absolute;left:0;top:0;color:var(--secure);font-weight:700;font-family:var(--font-mono)}
+  .stop{background:var(--surface-2)}
+  .stop p{margin:0 0 12px;font-size:13.6px;color:var(--muted)}
+  .stop .line{font-family:var(--font-mono);font-size:12px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 13px;line-height:1.7}
+
+  /* ---- footer ---- */
+  footer{padding:38px 0 60px}
+  .links{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}
+  .links a{
+    font-family:var(--font-mono);font-size:12.5px;text-decoration:none;color:var(--ink);
+    border:1px solid var(--line-strong);border-radius:9px;padding:9px 14px;background:var(--surface);
+    transition:border-color .15s ease,transform .15s ease;
+  }
+  .links a:hover{border-color:var(--violet);transform:translateY(-1px)}
+  .links a .arw{color:var(--faint)}
+  .fine{font-size:12.5px;color:var(--faint);max-width:70ch;line-height:1.7}
+
+  /* ---- theme toggle ---- */
+  .toggle{
+    position:fixed;top:14px;right:14px;z-index:20;
+    font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;
+    background:var(--surface);color:var(--muted);border:1px solid var(--line-strong);
+    border-radius:100px;padding:7px 13px;cursor:pointer;box-shadow:var(--shadow);
+  }
+  .toggle:hover{color:var(--ink);border-color:var(--violet)}
+  :focus-visible{outline:2px solid var(--violet);outline-offset:2px;border-radius:4px}
+
+  @media (max-width:860px){
+    .pipe{grid-template-columns:1fr 1fr}
+    .stage .arrow{display:none}
+    .lanes{grid-template-columns:1fr}
+    .lane.red{border-radius:var(--radius) var(--radius) 0 0}
+    .lane.blue{border-radius:0 0 var(--radius) var(--radius);border-top:none}
+    .bind{border-left:1px solid color-mix(in srgb,var(--violet) 35%,var(--line));border-right:1px solid color-mix(in srgb,var(--violet) 35%,var(--line))}
+    .bind .seam{display:none}
+    .close-grid{grid-template-columns:1fr}
+  }
+  @media (max-width:520px){
+    .pipe{grid-template-columns:1fr}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<button class="toggle" id="themeToggle" type="button" aria-label="Toggle colour theme">◐ theme</button>
+
+<header class="top">
+  <div class="rail"></div>
+  <div class="wrap masthead">
+    <div class="kicker">
+      <span class="badge purple">Plan v3 · Track B partially shipped</span>
+      <span class="badge">trionnemesis / AgentSec</span>
+      <span class="badge">purple-team harness</span>
+    </div>
+    <h1>Deepen the <span class="a">red</span> &amp; <span class="b">blue</span> lanes — inside one skill, not two</h1>
+    <p class="standfirst">
+      A direction for updating the AI-agent red-team and blue-team operating guidance in
+      <code>.claude/skills/agentsec</code>. It sharpens each lane in place and makes the skill's
+      non-negotiables executable — while honouring the already-accepted decision <em>not</em> to fork the
+      purple workbench into two independent skills. <b>This revision reflects what has since landed on
+      <code>main</code>:</b> the deepened lane references (Track&nbsp;A) and the credential-free
+      <code>skill_eval</code> static profile (Track&nbsp;C) are merged. Track&nbsp;B has shipped
+      <code>AGT-CONFIG-005</code>, the default memory-surface tag (PR&nbsp;#87), and the statically
+      checked Wazuh rule pack (PR&nbsp;#90). Operator-owned <code>AGT-CONFIG-001..005</code>
+      fixture recordings remain outstanding; Track&nbsp;B is still in progress.
+    </p>
+
+    <div class="readout" role="group" aria-label="Plan status readout">
+      <div class="cell"><div class="k">Baseline</div><div class="v">v0.4.4 · main</div></div>
+      <div class="cell"><div class="k">Track A · lanes</div><div class="v">shipped · PR #65</div></div>
+      <div class="cell"><div class="k">Track C · skill_eval</div><div class="v">shipped · PR #65</div></div>
+      <div class="cell"><div class="k">Track B · shipped slices</div><div class="v">settings · memory · rule pack</div></div>
+      <div class="cell"><div class="k">Remaining</div><div class="v">AGT-CONFIG fixtures</div></div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section id="thesis">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">The constraint that shapes everything below</div>
+      <h2>One contract binds the two lanes. Splitting the skill would break the binding.</h2>
+    </div>
+    <div class="thesis">
+      <h3>Two lanes, one skill — never two skills.</h3>
+      <div class="body">
+        <p>
+          Issue&nbsp;#60 (merged as PR&nbsp;#61) already settled the product question: do <b>not</b> split the
+          purple workbench into independent red-team and blue-team skills. The asset that makes AgentSec
+          different is a single <b>Attack–Detection Contract</b> that binds, in one reviewed YAML file, all
+          four axes at once — (1)&nbsp;what reproducible stimulus the red side sends, (2)&nbsp;how prevention
+          must block it, (3)&nbsp;what signal the blue side must see and by when, and (4)&nbsp;whether the
+          event can be reconstructed and answered afterwards.
+        </p>
+        <p>
+          Fork the skill and each half degrades into "generate attacks only" or "check the SIEM only" —
+          precisely the <code>red_only</code> shape the validator already treats as an error, because a
+          prevention-only scenario cannot tell a real fix from a silent bypass. So this plan
+          <b>deepens each lane where it already lives</b>. It never separates them.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">The playbook the skill already walks</div>
+      <h2>Four phases, in order — the red and blue lanes are phases&nbsp;2 and&nbsp;3</h2>
+      <p>Skipping phase&nbsp;1 is the classic failure: drafting scenario YAML before knowing whether this
+        repository has an agent worth testing produces coverage that is green and meaningless.</p>
+    </div>
+    <div class="pipe">
+      <div class="stage s1">
+        <div class="idx">PHASE 1</div>
+        <h4>Repository risk triage</h4>
+        <p>Start at <code>agentsec scan</code> / <code>agentsec://project/risks</code>. Only a <code>verifiable</code> risk becomes a contract.</p>
+        <div class="arrow" aria-hidden="true">→</div>
+      </div>
+      <div class="stage s2">
+        <div class="idx">PHASE 2 · RED</div>
+        <h4>Red execution plan</h4>
+        <p>Author the reproducible stimulus + the prevention half. Human-authored, replay-first.</p>
+        <div class="arrow" aria-hidden="true">→</div>
+      </div>
+      <div class="stage s3">
+        <div class="idx">PHASE 3 · BLUE</div>
+        <h4>Blue evidence plan</h4>
+        <p>Prove the defence would have seen it — the right signal, correlated, within the SLA.</p>
+        <div class="arrow" aria-hidden="true">→</div>
+      </div>
+      <div class="stage s4">
+        <div class="idx">PHASE 4</div>
+        <h4>Purple remediation</h4>
+        <p>Turn a non-secure verdict into the right fix, then a blocking regression gate.</p>
+        <div class="arrow" aria-hidden="true">→</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="lanes">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">What "update" means for each lane</div>
+      <h2>Sharpen both halves — held together by the contract in the middle</h2>
+      <p>The list under each lane is the operating guidance to deepen (a progressive-disclosure reference
+        the skill loads on demand). Neither lane can produce a runnable scenario or a verdict on its own.</p>
+    </div>
+
+    <div class="lanes">
+      <div class="lane red">
+        <span class="tag"><span class="dot"></span>Red lane · phase 2</span>
+        <h3>Reproducible attack + prevention</h3>
+        <p class="role">Send a fixed, reviewed stimulus and pin the control that must hold the line.</p>
+        <ul class="checks">
+          <li>Read the target schema, including <code>supported_operations</code>. Batch preflight stops on any <b><code>unsupported_driver_operation</code></b> before any approval is consumed or the target is contacted.</li>
+          <li>Prefer <b><code>executor: replay</code></b> for PR gates: fixed text means a changed verdict is a changed system. Never enable the parked PyRIT/pytest executors — they resolve to <code>NotImplementedExecutor</code> by design.</li>
+          <li>Pair prevention <code>must_not: tool_call</code> with <code>must: policy_decision … deny</code>. A lone <code>must_not</code> passes for an agent that merely happened not to call the tool.</li>
+          <li>Need pre-cleanup state? Schedule <b><code>snapshot_state</code></b> during the attack — replay cleans up in a <code>finally</code> block, and a cleanup failure fails closed.</li>
+          <li>Approvals are minted by a human out-of-band. <b>No tool mints one</b>, and there is no autonomous red-team planning.</li>
+        </ul>
+        <div class="cov">
+          <div class="lbl">Coverage direction (roadmap-named)</div>
+          <p><b>Done:</b> <code>AGT-CONFIG-005</code> is tagged at <code>.claude/settings.json</code>, so <code>ASI-TOOL-PERMISSION-BYPASS</code> (critical) is now <code>verifiable</code>. <code>AGT-XPIA-001</code> now tags default <code>.claude/memory</code> (PR&nbsp;#87), making <code>ASI-MEMORY-UNREVIEWED-STORE</code> <code>verifiable</code> there. Custom manifest memory locations remain <code>not_verifiable</code>; this medium risk stays outside the critical/high <code>scan --verify</code> queue.</p>
+        </div>
+      </div>
+
+      <div class="bind" aria-label="The Attack-Detection Contract that binds both lanes">
+        <span class="seam l" aria-hidden="true"></span>
+        <span class="seam r" aria-hidden="true"></span>
+        <div class="cap">Binds both</div>
+        <h4>Attack–Detection Contract</h4>
+        <div class="axes">
+          <span><b>prevention</b></span>
+          <span><b>detection</b></span>
+          <span><b>evidence</b></span>
+          <span><b>response</b></span>
+        </div>
+        <div class="precedence">
+          <span class="e">error</span> › detection_gap ›<br>prevention_gap › evidence_gap ›<br>response_gap › <span class="s">secure</span>
+        </div>
+      </div>
+
+      <div class="lane blue">
+        <span class="tag"><span class="dot"></span>Blue lane · phase 3</span>
+        <h3>Evidence + detection timing</h3>
+        <p class="role">Prove whether the defence would have noticed — and noticed in time.</p>
+        <ul class="checks">
+          <li>Four distinct boundaries: attack timeout, telemetry settle, <b>detection SLA</b> (<code>within_seconds</code> on <code>must_fire</code>) and <b>response SLA</b>. Polling makes a late signal visible; it does not make it timely.</li>
+          <li>Live Wazuh / OTel / tool-audit must correlate to the canonical <b><code>agentsec.run_id</code></b>. Missing, conflicting or foreign-run correlation is <code>error</code> — never a gap, never <code>secure</code>.</li>
+          <li><code>every_tool_call_audited</code> is <b>per invocation</b>: prefer <code>tool_call_id</code>/<code>span_id</code>; each audit record is consumed once, so two same-named calls can't be satisfied by one record.</li>
+          <li>Backend outage, a pagination failure, a missing required source, or undecidable correlation are all pipeline <code>error</code> — never downgraded to a detection or evidence gap.</li>
+          <li>Keep <code>response: not_tested</code> honest until a real runbook or automation exists. Do not fill it in for coverage.</li>
+        </ul>
+        <div class="cov">
+          <div class="lbl">Coverage direction (roadmap-named)</div>
+          <p>The Wazuh XML pack ships both the bundled rules (<code>100501 / 100610 / 100720 / 100810</code>) and <code>100901–100905</code> for <code>AGT-CONFIG-001..005</code> (PR&nbsp;#90). Static tests check IDs and minimum levels; they do not prove live detection. Operator-owned CONFIG fixture recordings remain outstanding, so the family stays scoped to <code>ci, staging</code> at <code>gate: warning</code>, without full offline <code>scan --verify</code> coverage.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tracks">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">How it landed</div>
+      <h2>Three tracks — two shipped, one in progress</h2>
+      <p>The plan landed as small, reviewable changes. Tracks&nbsp;A and&nbsp;C are merged; Track&nbsp;C is the
+        real upgrade — it turned the skill's invariants from prose a poisoned document can argue with into
+        checks that fail the build. Track&nbsp;B has shipped the settings scenario, default memory tag
+        and static rule pack; operator-owned CONFIG fixture recordings are next.</p>
+    </div>
+    <div class="tracks">
+      <div class="track done">
+        <div class="th"><span class="tk">A</span><h3>Deepen the lanes as progressive-disclosure references</h3><span class="shiptag">✓ shipped · PR&nbsp;#65</span></div>
+        <p><code>SKILL.md</code> stays the router carrying the six non-negotiables and the four-phase
+          playbook. <code>references/red-execution.md</code> and <code>references/blue-evidence.md</code> now
+          exist as the deep operating guides each lane loads on demand.</p>
+        <p>Two lanes, one skill — the split lives in the file tree, not in the product surface.</p>
+        <div class="foot"><span class="now">● merged</span> — <span class="mono">.claude/skills/agentsec/references/</span></div>
+      </div>
+      <div class="track">
+        <div class="th"><span class="tk">B</span><h3>Point the guidance at gaps the roadmap already named</h3><span class="shiptag wip">◐ in progress</span></div>
+        <p>Red: the tool-grant / <code>settings.json</code> scenario — <b>done</b> as <code>AGT-CONFIG-005</code> —
+          and the default <code>.claude/memory</code> tag — <b>done</b> in PR&nbsp;#87.
+          Blue: both Wazuh rule groups — <b>shipped and statically checked</b> in PR&nbsp;#90;
+          operator-owned CONFIG fixture recordings remain open.</p>
+        <p>No new attack techniques invented here — only wiring already-listed Core-open items to a lane.</p>
+        <div class="foot">next: <span class="mono">operator-owned AGT-CONFIG-001..005 fixture recordings</span></div>
+      </div>
+      <div class="track done">
+        <div class="th"><span class="tk">C</span><h3>Make the non-negotiables executable</h3><span class="shiptag">✓ shipped · PR&nbsp;#65</span></div>
+        <p>The <code>skill_eval</code> <b>static</b> profile (ADR&nbsp;0008 / #64, Phase&nbsp;0) is live:
+          strict frontmatter, declared lane assets and scripts, full SHA-256 pins, parsed Markdown
+          destinations — run via <code>agentsec skill validate --profile static</code>.</p>
+        <p>Model-free and credential-free, it lands in the separate <code>skill-eval-static.yml</code> gate and
+          stops "never mint approvals" from being a sentence a document can talk the agent out of.</p>
+        <div class="foot"><span class="now">● merged</span> — model-free, credential-free CI gate</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="coverage">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Where each lane points — status today</div>
+      <h2>Coverage gap map</h2>
+      <p>Every row is an item the roadmap already names. <code>not_verifiable</code> is a catalogue / adapter /
+        evidence gap — deliberately not a pass. <span class="mono">Parked</span> means declined on purpose, not forgotten.</p>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Lane</th><th>Item</th><th>Maps to</th><th>State today</th><th>Target</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="lanepill red">RED</span></td>
+            <td><div class="item">Tool-grant / settings scenario</div><div class="sub"><code>AGT-CONFIG-005</code> tagged at <code>.claude/settings.json</code></div></td>
+            <td class="mono">ASI-TOOL-PERMISSION-BYPASS</td>
+            <td><span class="chip shipped">verifiable</span><div class="sub">shipped · PR #84</div></td>
+            <td class="mono">✓ done</td>
+          </tr>
+          <tr>
+            <td><span class="lanepill red">RED</span></td>
+            <td><div class="item">Memory-surface tag</div><div class="sub"><code>AGT-XPIA-001</code> tags default <code>.claude/memory</code></div></td>
+            <td class="mono">ASI-MEMORY-UNREVIEWED-STORE</td>
+            <td><span class="chip shipped">verifiable at default</span><div class="sub">PR #87 · custom manifest paths remain <code>not_verifiable</code>; medium risk outside verify queue</div></td>
+            <td class="mono">✓ default done</td>
+          </tr>
+          <tr>
+            <td><span class="lanepill blue">BLUE</span></td>
+            <td><div class="item">Wazuh rule pack — bundled</div><div class="sub">Rules <code>100501 / 100610 / 100720 / 100810</code></div></td>
+            <td class="mono">detection axis</td>
+            <td><span class="chip shipped">static pack shipped</span><div class="sub">PR #90 · IDs / levels checked; live detection unverified</div></td>
+            <td class="mono">static contract checked</td>
+          </tr>
+          <tr>
+            <td><span class="lanepill blue">BLUE</span></td>
+            <td><div class="item">Fixture recordings — AGT-CONFIG family</div><div class="sub"><code>100901–100905</code>; scoped to <code>ci, staging</code> until recorded</div></td>
+            <td class="mono">AGT-CONFIG-001..005</td>
+            <td><span class="chip verifiable">needs fixtures</span><div class="sub">rule pack shipped · PR #90; operator-owned recordings outstanding, <code>gate: warning</code></div></td>
+            <td class="mono">offline scan --verify</td>
+          </tr>
+          <tr>
+            <td><span class="lanepill red">RED</span></td>
+            <td><div class="item">OWASP Agentic Top 10 — the last two</div><div class="sub">8/10 covered (AAI001–004, 006–009)</div></td>
+            <td class="mono">AAI005 · AAI010</td>
+            <td><span class="chip parked">AAI005 parked</span></td>
+            <td class="mono">note, don't force</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section id="guardrails">
+  <div class="wrap">
+    <div class="guard">
+      <h2>Guardrails — what this plan must not become</h2>
+      <p class="lead">These carry over verbatim from issue&nbsp;#60 and the roadmap's "deliberately not planned"
+        row. A follow-up agent that crosses one of these has left the plan.</p>
+      <ul>
+        <li><b>No independent red / blue skills.</b> The lanes stay bound by one contract.</li>
+        <li><b>No autonomous attack generation</b>, no LLM judge, no PyRIT/pytest executor, no fifth axis, no multi-agent scenarios yet.</li>
+        <li><b>Do not widen</b> <code>PurpleVerdict</code>, the four-axis precedence, the schemas, the executor registry, or the MCP capability surface.</li>
+        <li><b>The skill is guidance, not a boundary.</b> A new safety invariant belongs in the service, schema, permissions, hooks or tests — named in the PR — or it is advisory only.</li>
+        <li><b>Do not start #14 beyond the credential-free static profile.</b> Skill Assurance stays deferred.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="close">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="eyebrow">Done means done</div>
+      <h2>Acceptance &amp; stop condition</h2>
+    </div>
+    <div class="close-grid">
+      <div class="panel">
+        <h3>Shipped against this brief</h3>
+        <ul class="accept">
+          <li>The red and blue lanes each have a deepened, self-contained reference, and <code>SKILL.md</code> routes to them <span class="mono">(PR #65)</span>.</li>
+          <li>The <code>skill_eval</code> static profile runs in its own CI gate and checks the skill's frontmatter, references and digests <span class="mono">(PR #65)</span>.</li>
+          <li><code>AGT-CONFIG-005</code> ties <code>ASI-TOOL-PERMISSION-BYPASS</code> to <code>.claude/settings.json</code>, making it <code>verifiable</code> <span class="mono">(PR #84)</span>.</li>
+          <li>The default <code>.claude/memory</code> surface maps to <code>AGT-XPIA-001</code> <span class="mono">(PR #87)</span>; custom paths remain uncovered.</li>
+          <li>The Wazuh XML pack includes both rule groups, with static rule-ID and minimum-level checks <span class="mono">(PR #90)</span>. Live detection and CONFIG recordings are not established by those checks.</li>
+          <li><code>make check</code>, <code>agentsec validate --strict</code> and the MCP contract tests stayed green; no product surface widened.</li>
+        </ul>
+      </div>
+      <div class="panel stop">
+        <h3>What remains — and the stop condition</h3>
+        <p>Track&nbsp;B remains in progress: record operator-owned fixtures for
+          <code>AGT-CONFIG-001..005</code> against a real <code>ci</code> or <code>staging</code> target.
+          Until those recordings exist, keep the warning gate and do not claim full offline
+          CONFIG verification. Issue&nbsp;#86 stays open. Then stop at this brief's scope.</p>
+        <div class="line">
+          Do <b>not</b> drift into: live Wazuh/OTel end-to-end · the async run worker ·
+          external catalogue packaging · the full Skill Assurance runner. Those have their own backlog.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/trionnemesis/AgentSec" target="_blank" rel="noopener">repo <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/issues/60" target="_blank" rel="noopener">#60 red/blue decision <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/pull/65" target="_blank" rel="noopener">PR #65 lanes + skill_eval <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/pull/87" target="_blank" rel="noopener">PR #87 default memory tag <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/pull/90" target="_blank" rel="noopener">PR #90 static Wazuh pack <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/blob/main/packaging/wazuh/README.md" target="_blank" rel="noopener">Wazuh pack input contract <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/blob/main/packaging/wazuh/agentsec-wazuh-rules.xml" target="_blank" rel="noopener">Wazuh rule XML <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/pull/84" target="_blank" rel="noopener">PR #84 AGT-CONFIG-005 <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/blob/main/scenarios/AGT-CONFIG-005.yaml" target="_blank" rel="noopener">AGT-CONFIG-005.yaml <span class="arw">↗</span></a>
+      <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0008-skill-assurance-bounded-context.md" target="_blank" rel="noopener">ADR 0008 <span class="arw">↗</span></a>
+    </div>
+    <p class="fine">
+      This page is a planning brief for follow-up AI agents, not an enforcement boundary. The real
+      boundaries are <code>PolicyGuard.check</code>, the closed MCP schemas, <code>.claude/settings.json</code>,
+      the <code>guard_agentsec.py</code> hook, and the tests that pin them. Everything here is a direction to be
+      reviewed by a person before it ships.
+    </p>
+  </div>
+</footer>
+
+<script>
+  (function(){
+    var root=document.documentElement, btn=document.getElementById('themeToggle');
+    var order=['system','light','dark'], i=0;
+    try{var s=localStorage.getItem('agentsec-plan-theme'); if(s){i=order.indexOf(s); if(i<0)i=0;}}catch(e){}
+    function apply(){
+      var m=order[i];
+      if(m==='system'){root.removeAttribute('data-theme');}
+      else{root.setAttribute('data-theme',m);}
+      btn.textContent = (m==='system'?'◐':(m==='light'?'☀':'☾'))+' '+m;
+      try{localStorage.setItem('agentsec-plan-theme',m);}catch(e){}
+    }
+    btn.addEventListener('click',function(){i=(i+1)%order.length;apply();});
+    apply();
+  })();
+</script>

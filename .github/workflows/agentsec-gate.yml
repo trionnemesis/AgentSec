@@ -55,7 +55,7 @@ jobs:
         env:
           CALLER_WORKSPACE: ${{ inputs.workspace }}
         run: |
-          python3 - <<'PY'
+          python3 -I - <<'PY'
           import os, pathlib, re
           sha = os.environ['AGENTSEC_EXPECTED_SHA']
           if not re.fullmatch(r'[0-9a-f]{40}', sha):
@@ -65,13 +65,15 @@ jobs:
           if relative.is_absolute() or '..' in relative.parts or any(c in str(relative) for c in '\n\r'):
               raise SystemExit('工作目錄不合法 / Invalid relative workspace')
           root = (base / relative).resolve(strict=True)
-          if not root.is_dir() or not root.is_relative_to(base):
+          if (not root.is_dir() or not root.is_relative_to(base)
+                  or any(c in str(root) for c in '\n\r')):
               raise SystemExit('工作目錄超出專案 / Workspace escapes consumer checkout')
           results = root / 'results'
           if results.is_symlink() or (results.exists() and (not results.is_dir() or any(results.iterdir()))):
               raise SystemExit('結果目錄必須為空 / Gate requires a fresh results directory')
           with open(os.environ['GITHUB_ENV'], 'a') as f:
               f.write(f'AGENTSEC_WORKSPACE={root}\n')
+              f.write(f'AGENTSEC_DB={results / "agentsec.db"}\n')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'workspace={root}\n')
           print('工作目錄與版本格式已驗證 / Workspace and commit format verified')
@@ -96,10 +98,10 @@ jobs:
         id: install
         run: |
           test "$(git -C agentsec-tool rev-parse HEAD)" = "$AGENTSEC_EXPECTED_SHA"
-          python -m venv "$RUNNER_TEMP/agentsec-venv"
+          python -I -m venv "$RUNNER_TEMP/agentsec-venv"
           # A local VCS install records the resolved commit in PEP 610 metadata.
           # It builds from committed content, not from the consumer or an editable tree.
-          "$RUNNER_TEMP/agentsec-venv/bin/python" -m pip install \
+          "$RUNNER_TEMP/agentsec-venv/bin/python" -I -m pip install \
             "git+file://$GITHUB_WORKSPACE/agentsec-tool@$AGENTSEC_EXPECTED_SHA"
           "$RUNNER_TEMP/agentsec-venv/bin/python" -I - <<'PY'
           import os
@@ -115,11 +117,11 @@ jobs:
 
       - name: 驗證內建情境 / Validate bundled catalogue
         working-directory: ${{ steps.paths.outputs.workspace }}
-        run: agentsec validate --strict
+        run: '"$RUNNER_TEMP/agentsec-venv/bin/python" -I -m agentsec.cli validate --strict'
 
       - name: 預覽執行範圍 / Preview run
         working-directory: ${{ steps.paths.outputs.workspace }}
-        run: agentsec preview --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE"
+        run: '"$RUNNER_TEMP/agentsec-venv/bin/python" -I -m agentsec.cli preview --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE"'
 
       - name: 執行同步閘門 / Run synchronous gate
         id: run
@@ -131,8 +133,8 @@ jobs:
           WAZUH_INDEXER_PASSWORD: ${{ secrets.wazuh_password }}
         run: |
           set +e
-          agentsec run --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE" \
-            --output junit --output-file results/agentsec.xml
+          "$RUNNER_TEMP/agentsec-venv/bin/python" -I -m agentsec.cli run --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE" \
+            --output json --output-file results/agentsec-run.json
           code=$?
           set -e
           printf 'exit_code=%s\n' "$code" >> "$GITHUB_OUTPUT"
@@ -143,8 +145,12 @@ jobs:
         if: ${{ !cancelled() && steps.run.outputs.exit_code != '' }}
         working-directory: ${{ steps.paths.outputs.workspace }}
         run: |
-          agentsec report --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE" \
-            --format html --format json
+          run_count=$("$RUNNER_TEMP/agentsec-venv/bin/python" -I -c \
+            'import json; print(len(json.load(open("results/agentsec-run.json"))["runs"]))')
+          test "$run_count" -gt 0
+          "$RUNNER_TEMP/agentsec-venv/bin/python" -I -m agentsec.cli report \
+            --target "$AGENTSEC_TARGET" --profile "$AGENTSEC_PROFILE" --limit "$run_count" \
+            --format html --format json --format junit > results/agentsec-report.json
 
       - name: 顯示摘要與來源 / Show summary and provenance
         id: summary
@@ -153,30 +159,57 @@ jobs:
         env:
           CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
           CALLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_EXIT: ${{ steps.run.outputs.exit_code }}
         run: |
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          "$RUNNER_TEMP/agentsec-venv/bin/python" -I - <<'PY' >> "$GITHUB_STEP_SUMMARY"
           import json, os, pathlib
-          reports = sorted(pathlib.Path('results/reports').glob('report-*.json'))
-          if not reports:
-              raise SystemExit('未產生報表 / No report produced')
-          data = json.loads(reports[-1].read_text())
-          if not data['runs']:
-              raise SystemExit('沒有可驗證的執行 / No runs to verify')
+          results = pathlib.Path('results').resolve(strict=True)
+          batch = json.loads((results / 'agentsec-run.json').read_text())
+          manifest = json.loads((results / 'agentsec-report.json').read_text())
+          report_path = pathlib.Path(manifest['written']['json']).resolve(strict=True)
+          if not report_path.is_relative_to(results / 'reports'):
+              raise SystemExit('報表路徑不符 / Report is outside the fresh results directory')
+          data = json.loads(report_path.read_text())
+          runs = data['runs']
+          actual = {r['run_id']: r for r in runs}
+          expected = {r['run_id']: r for r in batch['runs']}
+          if not expected or len(expected) != len(batch['runs']) or len(actual) != len(runs):
+              raise SystemExit('執行資料不完整 / Empty batch or duplicate run identifiers')
+          if actual != expected:
+              raise SystemExit('報表執行不符 / Report does not match this invocation')
+          for document in (batch, data):
+              if (document['target_id'] != os.environ['AGENTSEC_TARGET']
+                      or document['profile'] != os.environ['AGENTSEC_PROFILE']
+                      or document['total_runs'] != len(runs)
+                      or document['blocking_count'] != sum(r['blocking'] for r in runs)
+                      or str(document['exit_code']) != os.environ['RUN_EXIT']):
+                  raise SystemExit('批次結果不符 / Batch identity or exit decision mismatch')
+          for r in runs:
+              source = r['source_provenance']
+              if (not source or source['package_commit'] != os.environ['AGENTSEC_EXPECTED_SHA']
+                      or source['catalogue_origin'] != 'builtin'
+                      or source['catalogue_ref'] != os.environ['AGENTSEC_EXPECTED_SHA']):
+                  raise SystemExit('報表來源不符 / Report source does not match the installed commit')
+              if (r['target_id'] != os.environ['AGENTSEC_TARGET']
+                      or r['profile'] != os.environ['AGENTSEC_PROFILE']
+                      or r['purple_verdict'] == 'error' or r['status'] != 'completed'):
+                  raise SystemExit('執行未完成或無法判定 / Execution incomplete or evaluation error')
+          def md(value):
+              # Markdown code spans do not escape backticks; encode punctuation as entities.
+              return (str(value).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                      .replace('`', '&#96;').replace('|', '&#124;')
+                      .replace('\r', ' ').replace('\n', ' '))
           print('## AgentSec 安全閘門 / Purple gate\n')
-          print(f"Caller workflow: `{os.environ['CALLER_WORKFLOW_REF']}` @ `{os.environ['CALLER_WORKFLOW_SHA']}`\n")
+          print(f"Caller workflow: `{md(os.environ['CALLER_WORKFLOW_REF'])}` @ `{md(os.environ['CALLER_WORKFLOW_SHA'])}`\n")
           print('| 情境 Scenario | 預防 Prevention | 偵測 Detection | 蒐證 Evidence | 回應 Response | 判定 Verdict |')
           print('|---|---|---|---|---|---|')
-          for r in data['runs']:
-              print(f"| {r['scenario_id']} | {r['prevention']} | {r['detection']} | {r['evidence']} | {r['response']} | {r['purple_verdict']} |")
-              source = r['source_provenance']
-              if not source or source['package_commit'] != os.environ['AGENTSEC_EXPECTED_SHA']:
-                  raise SystemExit('報表來源不符 / Report source does not match the installed commit')
+          for r in runs:
+              cells = [r[k] for k in ('scenario_id', 'prevention', 'detection', 'evidence', 'response', 'purple_verdict')]
+              print('| ' + ' | '.join(md(cell) for cell in cells) + ' |')
           print('\n### 程式與情境來源 / Package and catalogue source\n')
-          for r in data['runs']:
-              print(f"- `{r['run_id']}` / `{r['scenario_id']}`: `{json.dumps(r['source_provenance'], sort_keys=True)}`")
+          for r in runs:
+              print(f"- `{md(r['run_id'])}` / `{md(r['scenario_id'])}`: `{md(json.dumps(r['source_provenance'], sort_keys=True))}`")
           print(f"\n阻擋項目 / Blocking findings: {data['blocking_count']}")
-          if any(r['purple_verdict'] == 'error' or r['status'] != 'completed' for r in data['runs']):
-              raise SystemExit('執行未完成或無法判定 / Execution incomplete or evaluation error')
           PY
 
       - name: 保存結果 / Upload results
@@ -199,7 +232,7 @@ jobs:
           test "$SUMMARY_OUTCOME" = success || { echo '來源或執行驗證失敗 / Source or run verification failed'; exit 1; }
           case "$RUN_EXIT" in
             0) echo '執行完成 / Gate completed' ;;
-            1) if [ "$FAIL_ON_BLOCKING" = true ]; then exit 1; fi
+            1) if [ "$FAIL_ON_BLOCKING" != false ]; then exit 1; fi
                echo '僅回報安全缺口 / Reporting blocking findings without gating' ;;
             *) echo '執行失敗 / Configuration or execution failed'; exit 1 ;;
           esac

@@ -85,7 +85,10 @@ def test_catalogue_mode_is_explicit(workspace, monkeypatch):
         load_settings(workspace)
 
 
-def test_snapshot_survives_reopen_and_changed_contract(service, settings):
+def test_snapshot_survives_reopen_and_changed_contract(service, settings, monkeypatch):
+    import agentsec.service.harness as harness
+
+    monkeypatch.setattr(harness, "package_identity", lambda _: ("0.4.4", COMMIT))
     result = service.start_run(target_id="demo-agent-fixture", profile="nightly")
     snapshots = {r.run_id: r.source_provenance for r in result.runs}
     assert result.exit_code == 1
@@ -97,6 +100,8 @@ def test_snapshot_survives_reopen_and_changed_contract(service, settings):
         scenario_path.read_text().replace("severity: high", "severity: medium")
     )
 
+    # A later install must not relabel historical runs with its own source identity.
+    monkeypatch.setattr(harness, "package_identity", lambda _: ("0.5.0", "b" * 40))
     reopened = HarnessService(settings)
     assert reopened.catalog.content_digest() != original.catalogue_digest
     exported = reopened.generate_report(target_id="demo-agent-fixture", profile="nightly")
@@ -104,6 +109,8 @@ def test_snapshot_survives_reopen_and_changed_contract(service, settings):
     for row in batch["runs"]:
         snapshot = snapshots[row["run_id"]]
         assert snapshot is not None
+        assert snapshot.package_commit == COMMIT
+        assert snapshot.package_version == "0.4.4"
         assert row["source_provenance"] == snapshot.model_dump(mode="json")
         stored = reopened.get_run(row["run_id"])
         assert stored.source_provenance == snapshot
@@ -148,6 +155,26 @@ def test_refused_and_dry_runs_also_capture_identity(service):
         target_id="demo-agent-fixture", scenario_ids=["AGT-XPIA-001"])
     assert refused.runs[0].status == "refused"
     assert refused.runs[0].source_provenance is not None
+
+
+def test_executor_failure_keeps_source_identity_in_published_run_and_junit(service, monkeypatch):
+    import agentsec.service.harness as harness
+
+    monkeypatch.setattr(harness, "get_executor", lambda *_: SimpleNamespace(
+        available=lambda _: (False, "executor unavailable for regression test")
+    ))
+    result = service.start_run(target_id="demo-agent-fixture", scenario_ids=["AGT-XPIA-001"])
+    run = result.runs[0]
+    assert run.status == "failed"
+    assert run.verdict is not None and run.verdict.purple_verdict == "error"
+    assert run.source_provenance is not None
+    assert publish("run", run)["run"]["source_provenance"] == (
+        run.source_provenance.model_dump(mode="json")
+    )
+    case = ET.fromstring(render_junit(result.summaries)).find("testcase")
+    assert case is not None and case.find("error") is not None
+    props = {p.attrib["name"]: p.attrib["value"] for p in case.findall("properties/property")}
+    assert props["agentsec.source.scenario_digest"] == run.scenario_digest
 
 
 def test_catalogue_digest_covers_payload_contents_and_is_location_independent(workspace, tmp_path):

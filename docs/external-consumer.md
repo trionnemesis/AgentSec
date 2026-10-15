@@ -7,6 +7,29 @@ Project scenario overlays and the asynchronous lifecycle remain follow-ups.
 本階段處理 #50 的固定版本安裝、內建情境目錄、來源快照與同步閘門。
 專案情境疊加／覆寫及非同步生命週期留在後續工作；本 PR 不關閉整張 #50。
 
+## v0.5.0 升級 / Upgrade from v0.4.x
+
+The reusable workflow now requires `agentsec-sha`: a reviewed full lowercase
+40-character commit SHA. Pin the caller's `uses:` to a reviewed workflow SHA as
+well. The two SHAs may identify the same release commit, but they are separate
+inputs with separate meanings. Existing callers must add this input before
+upgrading the called workflow.
+
+Reusable workflow 新增必要輸入 `agentsec-sha`，只接受已審查的完整 40 字元
+小寫 commit SHA；caller 的 `uses:` 也要固定到已審查的 workflow SHA。
+既有 caller 升級時必須一併加入此輸入，兩個 SHA 可指向同一個 release commit。
+
+The release wheel includes all nine reviewed scenarios. A direct wheel install
+does not carry a resolved VCS commit in PEP 610 metadata, so it cannot satisfy
+`AGENTSEC_EXPECTED_SHA` by its version alone. The gate deliberately performs a
+non-editable VCS install to verify that identity. Ordinary workspace mode remains
+the default; local wheel users may opt into the packaged catalogue with
+`AGENTSEC_CATALOGUE=builtin` without claiming a verified commit.
+
+Release wheel 包含九個情境，但直接安裝 wheel 不能單憑版本滿足 commit 驗證。
+Gate 使用非 editable VCS 安裝取得安裝器記錄的來源；一般使用者仍預設使用
+workspace 模式，也可設定 `AGENTSEC_CATALOGUE=builtin` 讀取套件目錄。
+
 ## 原則 / Principles
 
 - The consumer owns targets, policy and evidence. AgentSec's reviewed commit
@@ -59,7 +82,8 @@ jobs:
 The workflow checks out the consumer at `consumer/` and AgentSec at
 `agentsec-tool/`. It checks the latter's actual HEAD, installs its committed
 content non-editably through a local Git URL into an isolated virtualenv, and
-checks the installer's PEP 610 `vcs_info.commit_id` against the requested SHA.
+checks the installer's PEP 610 `direct_url.json` `vcs_info.commit_id` against
+the requested SHA.
 Metadata must describe the module actually imported; a source checkout
 shadowing the installed package fails validation. The local Git URL is never
 published because it contains runner paths.
@@ -119,7 +143,8 @@ to the separate follow-up. Actions concurrency is not a cross-entrypoint quota.
 `tests/test_consumer_install.py` creates two independent Git repositories,
 installs an actual producer commit, deletes that producer checkout, then runs
 the installed CLI against the consumer's unchanged recorded fixture corpus.
-It checks all four original scenarios, the known two blocking results,
+It checks that all nine reviewed scenarios are packaged, runs the four original
+recorded scenarios, and checks the known two blocking results,
 JUnit/HTML/JSON source identity and refusal of a mismatched installation SHA.
 The consumer contains no AgentSec source, packaging metadata or scenarios.
 

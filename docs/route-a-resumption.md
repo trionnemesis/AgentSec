@@ -191,16 +191,15 @@ an AgentSec policy engine.
    `agentshield runtime status --path <staging-repo> --json --check` interfaces.
    Record the settings/hook artifacts actually generated, and diff them against
    the `HOOK_ENTRY` quoted above — a newer patch release may have changed them.
-3. Check the catalogue again. At this baseline, none of the eight scenarios
-   covers `.claude/settings.json` tool-grant bypass: `AGT-CONFIG-003` covers
-   shell interpolation in `.claude/hooks`, a different threat. Only introduce
-   one reviewed settings/tool-grant scenario if this gap still exists.
-   Budget for the catalogue size being asserted in more places than the
-   catalogue: `tests/test_scenario.py:51`, `:83`,
-   `tests/test_agt_config_scenarios.py:92` and `:103` each assert `== 8`, and
-   eleven documents spell the count in prose. Two of those four assertions
-   count *categories*, not scenarios, and stay at 8 if the new scenario reuses
-   an `owasp_agentic` id the catalogue already covers.
+3. Check the catalogue again. This gap is now closed: `AGT-CONFIG-005` covers
+   `.claude/settings.json` tool-grant / default-mode bypass
+   (`ASI-TOOL-PERMISSION-BYPASS`); `AGT-CONFIG-003` still covers a different
+   threat (shell interpolation in `.claude/hooks`). It reuses `owasp_agentic`
+   AAI002, so the covered-category count stays 8 while the scenario count moved
+   to 9 — the catalogue-total assertions in `tests/test_scenario.py` and
+   `tests/test_agt_config_scenarios.py` were updated, and the category-count
+   assertions were left at 8. The scenario ships `gate: warning` until recorded
+   against a real target, which is what the rest of this loop supplies.
 4. Run one bounded, synthetic tool-call attempt through **Claude Code** and the
    existing HTTP target-driver boundary. Observe the hook invocation and actual
    control outcome. Directly invoking a hook or hand-building a transcript does

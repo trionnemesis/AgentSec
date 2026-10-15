@@ -44,11 +44,12 @@ def _minimal(**spec_overrides) -> dict:  # noqa: ANN003
 
 
 def test_every_shipped_scenario_parses_and_validates() -> None:
-    """4 original + 4 AGT-CONFIG-* (issue #26): the agent-configuration attack
-    channel, none of which touch the demo-agent-fixture selection — see
-    test_pipeline.py's verdict matrix, which is pinned unchanged."""
+    """4 original + 5 AGT-CONFIG-* (issue #26 + the AGT-CONFIG-005 settings
+    tool-grant bypass): the agent-configuration attack channel, none of which
+    touch the demo-agent-fixture selection — see test_pipeline.py's verdict
+    matrix, which is pinned unchanged."""
     catalog = ScenarioCatalog.from_dir(SCENARIO_DIR, strict=True)
-    assert len(catalog) == 8
+    assert len(catalog) == 9
     assert not catalog.load_errors
     for entry in catalog:
         report = validate_scenario(entry.scenario)

@@ -8,17 +8,78 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-15
+
 ### Added
 
 - **固定來源的外部 CI / Pinned external CI adoption (#50, first slice).**
   The reusable gate requires a full AgentSec SHA, installs its committed content
   separately from the consumer, verifies installer metadata and loads packaged
-  scenarios. Runs retain package/catalogue source snapshots in JUnit/HTML/JSON;
+  all nine reviewed scenarios as package data. Runs retain package/catalogue
+  source snapshots in JUnit/HTML/JSON;
   report schema 1.5.0 adds nullable `source_provenance` without changing evidence
   origin or verdicts. New workflow messages are Traditional Chinese / English.
   Existing workspace mode is preserved; overlays and async lifecycle are deferred.
   Report-only mode still fails on infrastructure/evaluation errors. See
   [consumer setup and verification limits](docs/external-consumer.md).
+- **Deployable Wazuh rule pack with static contract checks.**
+  `packaging/wazuh/agentsec-wazuh-rules.xml` defines `100501`, `100610`,
+  `100720`, `100810` and `100901`–`100905`. Tests check each scenario's
+  `rule_id` and `min_level` against the pack
+  ([#90](https://github.com/trionnemesis/AgentSec/pull/90)).
+
+### Fixed
+
+- Wazuh correlation accepts the JSON decoder's `data.agentsec.run_id` as
+  well as the legacy root field; missing or conflicting run identity still
+  fails closed ([#90](https://github.com/trionnemesis/AgentSec/pull/90)).
+
+### Compatibility and verification limits
+
+- **Upgrade required for reusable-workflow callers.** Pin the workflow to a
+  reviewed full commit SHA and provide the new required `agentsec-sha` input
+  as a full lowercase 40-character SHA. The workflow installs AgentSec
+  separately from the consumer and verifies `direct_url.json` PEP 610 metadata
+  against the imported package. A plain wheel or editable install does not
+  establish a VCS commit identity; the gate uses a non-editable VCS install.
+- Existing workspace mode remains the default. Builtin mode rejects nonempty
+  project `scenarios/` directories; overlays remain a separate #50 follow-up.
+  Legacy run source snapshots stay null/unknown. Evidence provenance
+  (`recorded/live/mixed`), verdict precedence and the four axes are unchanged.
+- The isolated two-Git-repository test proves the package/CLI boundary and
+  recorded replay output. It does **not** prove a hosted cross-repository
+  `workflow_call`; that acceptance and #50's asynchronous lifecycle remain open.
+- Track B's documentation now distinguishes the shipped rule pack from the
+  remaining operator recordings ([#91](https://github.com/trionnemesis/AgentSec/pull/91)).
+  `AGT-CONFIG-001..005` fixtures, live Wazuh E2E acceptance and gate promotion
+  remain uncompleted under [#86](https://github.com/trionnemesis/AgentSec/issues/86).
+  Rule-pack consistency tests are static; the four original fixtures remain
+  recorded evidence. This release does not claim live detection acceptance.
+
+## [0.4.4] — 2026-09-24
+
+### Added
+
+- **`AGT-CONFIG-005` makes the committed-settings bypass verifiable.** The risk
+  plane raises `ASI-TOOL-PERMISSION-BYPASS` at `critical` when a committed
+  `.claude/settings.json` sets a bypass default mode, but no scenario was
+  tagged at that surface, so the risk read `not_verifiable`. The new contract
+  plants a cloned-repository settings file that removes the confirmation step
+  and pre-approves a destructive file tool, then asserts all four axes: the
+  policy engine still escalates the auto-approved call, the pivot alerts
+  (Wazuh `100905`), it is recorded, and state is unchanged. Like the rest of
+  the `AGT-CONFIG-*` family it targets `ci`/`staging`, ships `gate: warning`,
+  and has no recorded fixtures yet. It reuses `AAI002`, so the catalogue grows
+  to nine scenarios while OWASP Agentic coverage stays 8/10
+  ([#84](https://github.com/trionnemesis/AgentSec/pull/84)).
+- **`AGT-XPIA-001` is tagged at the memory surface.** It now carries
+  `config-surface:.claude/memory`, so `ASI-MEMORY-UNREVIEWED-STORE` triages
+  `verifiable` instead of `not_verifiable`. The risk is `medium`, so
+  `scan --verify` reports it without queueing a run. The tag is path-only: it
+  settles no static-scanner posture finding, and a store declared outside
+  `.claude/memory` through the manifest still reads `not_verifiable`
+  ([#86](https://github.com/trionnemesis/AgentSec/issues/86),
+  [#87](https://github.com/trionnemesis/AgentSec/pull/87)).
 
 ### Fixed
 
@@ -52,6 +113,13 @@ drafts even when they appear in a release.
   observed errors. The earlier "no Claude Code executable" dependency is
   resolved; authentication, package execution, a sanctioned run entry point,
   operator target registration and merge permission remain.
+- The red/blue lane deepening plan
+  ([`docs/plans/red-blue-lane-deepening.html`](docs/plans/red-blue-lane-deepening.html))
+  is published for follow-up agents, and refreshed as Tracks A and C landed
+  ([#82](https://github.com/trionnemesis/AgentSec/pull/82),
+  [#85](https://github.com/trionnemesis/AgentSec/pull/85)). The last open
+  Track B gap, Wazuh rule packs and fixture recordings, is tracked in
+  [#86](https://github.com/trionnemesis/AgentSec/issues/86).
 
 ### Compatibility
 
@@ -61,6 +129,12 @@ drafts even when they appear in a release.
   and verdicts are not rewritten. `fixture_derived` retains its all-recorded
   rollup rule, including insufficient origin proof. This does not establish
   completion of the separate Claude Code/AgentShield Route A live loop.
+- Repository triage moves for two surfaces. Risks raised on a committed
+  `.claude/settings.json` (`ASI-TOOL-PERMISSION-BYPASS`,
+  `ASI-TOOL-BROAD-GRANT`) now triage `verifiable` via `AGT-CONFIG-005`, and a
+  `.claude/memory` store's `ASI-MEMORY-UNREVIEWED-STORE` triages `verifiable`
+  via `AGT-XPIA-001`. A dashboard that counted these as coverage gaps will
+  show fewer. Verdicts, schemas and the MCP surface are unchanged.
 
 ## [0.4.3] — 2026-09-04
 
@@ -406,7 +480,9 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
-[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/trionnemesis/AgentSec/compare/v0.4.4...v0.5.0
+[0.4.4]: https://github.com/trionnemesis/AgentSec/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/trionnemesis/AgentSec/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/trionnemesis/AgentSec/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/trionnemesis/AgentSec/compare/v0.4.0...v0.4.1

@@ -6,12 +6,16 @@ It does not claim to exercise GitHub's remote workflow_call dispatch.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
+from agentsec.scenario.catalog import ScenarioCatalog
 from tests.conftest import REPO_ROOT
 
 
@@ -28,6 +32,9 @@ def _commit(root: Path) -> str:
 
 
 def test_install_from_pinned_producer_and_run_from_another_repository(tmp_path):
+    expected_catalogue = ScenarioCatalog.from_dir(REPO_ROOT / "scenarios", strict=True)
+    expected_ids = expected_catalogue.ids()
+    expected_digest = expected_catalogue.content_digest()
     producer = tmp_path / "producer"
     consumer = tmp_path / "consumer"
     install = tmp_path / "installed"
@@ -41,7 +48,7 @@ def test_install_from_pinned_producer_and_run_from_another_repository(tmp_path):
     commit = _commit(producer)
     for name in ("policy", "fixtures"):
         shutil.copytree(REPO_ROOT / name, consumer / name)
-    _commit(consumer)
+    consumer_commit = _commit(consumer)
     assert not (consumer / "pyproject.toml").exists()
     assert not (consumer / "scenarios").exists()
 
@@ -73,16 +80,27 @@ from typer.testing import CliRunner
 assert pathlib.Path(installation.__file__).is_relative_to(pathlib.Path(sys.argv[1]))
 assert installation.package_identity(sys.argv[2])[1] == sys.argv[2]
 service = HarnessService()
-assert len(service.catalog.ids()) == 8
+assert service.catalog.ids() == json.loads(sys.argv[3])
+assert service.catalog.content_digest() == sys.argv[4]
 for entry in service.catalog:
     assert entry.path.is_relative_to(pathlib.Path(sys.argv[1]))
 runner = CliRunner()
 validation = runner.invoke(app, ['validate', '--strict'])
 assert validation.exit_code == 0, validation.output
 result = runner.invoke(app, ['run', '--target', 'demo-agent-fixture', '--profile', 'nightly',
-                            '--output', 'junit', '--output-file', 'results/agentsec.xml'])
+                            '--output', 'json', '--output-file', 'results/agentsec-run.json'])
 assert result.exit_code == 1, result.output
-report = service.generate_report(target_id='demo-agent-fixture', profile='nightly')
+captured = json.loads(pathlib.Path('results/agentsec-run.json').read_text())
+exported = runner.invoke(app, [
+    'report', '--target', 'demo-agent-fixture', '--profile', 'nightly',
+    '--limit', str(len(captured['runs'])), '--format', 'html', '--format', 'json',
+    '--format', 'junit',
+])
+assert exported.exit_code == 0, exported.output
+pathlib.Path('results/agentsec-report.json').write_text(exported.output)
+report = json.loads(exported.output)
+assert set(report['written']) == {'html', 'json', 'junit'}
+assert all(pathlib.Path(path).is_file() for path in report['written'].values())
 batch = json.loads(pathlib.Path(report['written']['json']).read_text())
 assert batch['total_runs'] == 4
 assert set(batch['blocking_scenarios']) == {'AGT-TENANT-001', 'AGT-MEMPOIS-001'}
@@ -97,7 +115,7 @@ published = publish('report', batch)
 assert published['runs'] == batch['runs']
 html = pathlib.Path(report['written']['html']).read_text()
 assert sys.argv[2] in html
-cases = ET.parse('results/agentsec.xml').getroot().findall('testcase')
+cases = ET.parse(report['written']['junit']).getroot().findall('testcase')
 assert len(cases) == 4
 for case in cases:
     props = {p.attrib['name']: p.attrib['value'] for p in case.findall('properties/property')}
@@ -114,6 +132,37 @@ else:
 assert len(service.list_runs()) == 4
 print('跨 repo 安裝與報表驗證通過 / Cross-repository installation and reports verified')
 '''
-    checked = subprocess.run([sys.executable, "-I", "-c", probe, str(install), commit],
-                             cwd=consumer, env=env, text=True, capture_output=True, timeout=120)
+    checked = subprocess.run([
+        sys.executable, "-I", "-c", probe, str(install), commit,
+        json.dumps(expected_ids), expected_digest,
+    ], cwd=consumer, env=env, text=True, capture_output=True, timeout=120)
     assert checked.returncode == 0, checked.stdout + checked.stderr
+
+    # Execute the workflow's exact summary step against the installed CLI's artifacts.
+    # It must accept the full normalized rows, including provenance and timestamps,
+    # without relying on a synthetic report or an available producer checkout.
+    gate = yaml.safe_load((REPO_ROOT / ".github/workflows/agentsec-gate.yml").read_text())
+    summary = next(step for step in gate["jobs"]["purple"]["steps"] if step.get("id") == "summary")
+    runner_temp = tmp_path / "runner"
+    interpreter = runner_temp / "agentsec-venv/bin/python"
+    interpreter.parent.mkdir(parents=True)
+    interpreter.symlink_to(sys.executable)
+    summary_path = tmp_path / "step-summary.md"
+    summarized = subprocess.run(["bash", "-eu", "-c", summary["run"]], cwd=consumer, env={
+        **env,
+        "RUNNER_TEMP": str(runner_temp),
+        "GITHUB_STEP_SUMMARY": str(summary_path),
+        "AGENTSEC_EXPECTED_SHA": commit,
+        "AGENTSEC_TARGET": "demo-agent-fixture",
+        "AGENTSEC_PROFILE": "nightly",
+        "CALLER_WORKFLOW_REF": "consumer/.github/workflows/security.yml@refs/heads/main",
+        "CALLER_WORKFLOW_SHA": consumer_commit,
+        "RUN_EXIT": "1",
+    }, text=True, capture_output=True, timeout=30)
+    assert summarized.returncode == 0, summarized.stdout + summarized.stderr
+    summary_text = summary_path.read_text()
+    assert commit in summary_text
+    assert consumer_commit in summary_text
+    assert "Blocking findings: 2" in summary_text
+    captured = json.loads((consumer / "results/agentsec-run.json").read_text())
+    assert all(row["run_id"] in summary_text for row in captured["runs"])
