@@ -61,7 +61,8 @@ from agentsec.models.run import Run
 #: repository implement an agent" qualifies the identity `project` already
 #: reports. No plane was added, none was merged, and nothing already published
 #: changed shape.
-PUBLISH_SCHEMA_VERSION = "1.4.0"
+#: 1.5.0 adds frozen package/catalogue identity; evidence provenance is unchanged.
+PUBLISH_SCHEMA_VERSION = "1.5.0"
 
 #: Names the ruleset, so a stored export says which policy produced it.
 PUBLISH_POLICY = "observed-data-v1"
@@ -215,6 +216,9 @@ def _run_body(run: Run) -> dict[str, Any]:
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "scenario_digest": run.scenario_digest,
+        "source_provenance": (
+            run.source_provenance.model_dump(mode="json") if run.source_provenance else None
+        ),
         # The token itself is a credential; whether one was presented is the
         # fact a reviewer actually needs.
         "approved": run.approval_id is not None,

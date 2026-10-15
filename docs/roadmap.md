@@ -78,6 +78,8 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 |---|---|---|
 | Finding workflow with enforced transitions | ✅ | cannot verify a detection gap without a detection rule |
 | Report normaliser → JUnit / HTML / JSON | ✅ | HTML is self-contained and theme-aware |
+| Pinned external-consumer installation | ✅ | Reusable workflow installs a reviewed full AgentSec SHA separately from the consumer and verifies PEP 610 installer metadata; all 9 scenarios ship as package data ([#50](https://github.com/trionnemesis/AgentSec/issues/50), first slice only) |
+| Frozen package/catalogue provenance | ✅ | Each run retains its source snapshot in JUnit/HTML/JSON; legacy source identity remains unknown. Independent Git-repository tests prove the package/CLI boundary, not hosted cross-repository dispatch ([consumer guide](external-consumer.md)) |
 | OWASP Agentic Top 10 coverage reporting | ✅ | 8/10 categories covered by the bundled scenarios |
 | MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
 | Composed dashboard resource | ✅ | `agentsec://dashboard/latest`, five planes kept separate |
@@ -90,6 +92,14 @@ agentsec init → agentsec scan → agentsec scan --verify -t <id> → dashboard
 
 ### Adoption — open
 
+- [ ] **Hosted cross-repository reusable-gate acceptance** ([#50](https://github.com/trionnemesis/AgentSec/issues/50)).
+      Attach an actual caller Actions URL and artifacts from a second GitHub
+      repository. Local isolated repositories, including when tested on hosted
+      CI runners, do not satisfy this acceptance.
+- [ ] **Remaining #50 lifecycle and catalogue work**: explicit project overlays,
+      asynchronous states, central quotas/concurrency, idempotency, leases,
+      cancellation/recovery and MCP start+poll. The shipped installation slice
+      does not close the issue or provide these guarantees.
 - [ ] **Host the Artifact.** The page and the resource exist; publishing it and
       binding it to a Desktop-registered gateway is manual. Checklist in
       `packaging/claude-desktop/README.md` — three of seven steps are asserted by

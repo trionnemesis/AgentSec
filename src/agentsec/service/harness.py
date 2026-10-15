@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from agentsec.config import Settings, load_settings
+from agentsec.config import Settings, load_settings, package_scenario_dir
 from agentsec.errors import (
     AgentSecError,
     ConfigError,
@@ -37,10 +37,12 @@ from agentsec.evidence.collector import EvidenceCollector
 from agentsec.execution.base import ExecutionContext, RedExecutor
 from agentsec.execution.registry import available_executors, get_executor
 from agentsec.inspect import inspect_project
+from agentsec.installation import package_identity
 from agentsec.models.evidence import Evidence
 from agentsec.models.finding import FINDING_TRANSITIONS, Finding, FindingStatus
 from agentsec.models.run import Run, RunStatus
 from agentsec.models.scenario import Scenario
+from agentsec.models.source import SourceProvenance
 from agentsec.models.target import Target
 from agentsec.policy.allowlist import load_allowlist
 from agentsec.policy.approvals import ApprovalStore
@@ -128,8 +130,30 @@ class HarnessService:
     @property
     def catalog(self) -> ScenarioCatalog:
         if self._catalog is None:
-            self._catalog = ScenarioCatalog.from_dir(self.settings.scenarios_dir)
+            directory = self.settings.scenarios_dir
+            if self.settings.catalogue_mode == "builtin":
+                package_identity(self.settings.expected_commit)
+                if directory.exists() and (not directory.is_dir() or any(directory.iterdir())):
+                    raise ConfigError(
+                        "尚未支援專案情境覆寫 / Project scenario overlays are not supported "
+                        "in builtin catalogue mode"
+                    )
+                directory = package_scenario_dir()
+            self._catalog = ScenarioCatalog.from_dir(
+                directory, strict=self.settings.catalogue_mode == "builtin"
+            )
         return self._catalog
+
+    def _source_snapshot(self, scenario: Scenario) -> SourceProvenance:
+        version, commit = package_identity(self.settings.expected_commit)
+        return SourceProvenance(
+            package_version=version,
+            package_commit=commit,
+            catalogue_origin=self.settings.catalogue_mode,
+            catalogue_ref=commit if self.settings.catalogue_mode == "builtin" else None,
+            catalogue_digest=self.catalog.content_digest(),
+            scenario_digest=scenario_digest(scenario),
+        )
 
     @property
     def profiles(self):  # noqa: ANN201 - ProfileSet, avoids a circular import in typing
@@ -459,6 +483,7 @@ class HarnessService:
                 refusal_reason=reason,
                 initiated_by=self.actor,
                 scenario_digest=scenario_digest(scenario),
+                source_provenance=self._source_snapshot(scenario),
             )
             self.store.save_run(run)
             self.store.audit(
@@ -498,6 +523,7 @@ class HarnessService:
         run_id = self._next_run_id()
         created = datetime.now(UTC)
         digest = scenario_digest(scenario)
+        source_snapshot = self._source_snapshot(scenario)
 
         # Re-evaluate immediately before execution.  The batch preflight above
         # must happen before any approval is consumed, but its decision cannot
@@ -513,6 +539,7 @@ class HarnessService:
                 finished_at=datetime.now(UTC), dry_run=dry_run,
                 refusal_reason=decision.summary, initiated_by=self.actor,
                 scenario_digest=digest,
+                source_provenance=source_snapshot,
             )
             self.store.save_run(run)
             self.store.audit(
@@ -528,6 +555,7 @@ class HarnessService:
                 started_at=created, finished_at=datetime.now(UTC), dry_run=True,
                 refusal_reason="dry run: policy allowed, nothing executed",
                 initiated_by=self.actor, scenario_digest=digest,
+                source_provenance=source_snapshot,
                 approval_id=decision.approval_id,
             )
             self.store.save_run(run)
@@ -559,6 +587,7 @@ class HarnessService:
                 profile=profile.name, status=RunStatus.FAILED, created_at=created,
                 started_at=started, finished_at=datetime.now(UTC), verdict=verdict,
                 refusal_reason=reason, initiated_by=self.actor, scenario_digest=digest,
+                source_provenance=source_snapshot,
                 approval_id=decision.approval_id,
             )
             self.store.save_run(run)
@@ -595,6 +624,7 @@ class HarnessService:
                     finished_at=datetime.now(UTC), dry_run=dry_run,
                     refusal_reason=reason, initiated_by=self.actor,
                     scenario_digest=digest,
+                    source_provenance=source_snapshot,
                 )
                 self.store.save_run(run)
                 self.store.audit(
@@ -632,6 +662,7 @@ class HarnessService:
                 profile=profile.name, status=RunStatus.FAILED, created_at=created,
                 started_at=started, finished_at=datetime.now(UTC), verdict=verdict,
                 refusal_reason=crash, initiated_by=self.actor, scenario_digest=digest,
+                source_provenance=source_snapshot,
                 approval_id=decision.approval_id,
             )
             self.store.save_run(run)
@@ -669,6 +700,7 @@ class HarnessService:
             execution=execution, verdict=verdict, evidence_ref=evidence_ref,
             refusal_reason=failure,
             initiated_by=self.actor, scenario_digest=digest,
+            source_provenance=source_snapshot,
             approval_id=decision.approval_id,
         )
         self.store.save_run(run)

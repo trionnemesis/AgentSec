@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from agentsec.errors import ConfigError
 from agentsec.project.resolver import ENV_WORKSPACE, resolve_root
@@ -34,6 +35,8 @@ class Settings:
     results_dir: Path
     db_path: Path
     actor: str
+    catalogue_mode: Literal["workspace", "builtin"] = "workspace"
+    expected_commit: str | None = None
 
     @property
     def targets_file(self) -> Path:
@@ -67,6 +70,10 @@ class Settings:
 def load_settings(workspace: str | Path | None = None) -> Settings:
     root = resolve_root(workspace)
 
+    mode = os.environ.get("AGENTSEC_CATALOGUE", "workspace")
+    if mode not in {"workspace", "builtin"}:
+        raise ConfigError("目錄模式錯誤 / AGENTSEC_CATALOGUE must be workspace or builtin")
+
     db_env = os.environ.get(ENV_DB)
     db_path = Path(db_env).resolve() if db_env else root / "results" / "agentsec.db"
 
@@ -77,7 +84,17 @@ def load_settings(workspace: str | Path | None = None) -> Settings:
         results_dir=root / "results",
         db_path=db_path,
         actor=os.environ.get(ENV_ACTOR, "cli"),
+        catalogue_mode="builtin" if mode == "builtin" else "workspace",
+        expected_commit=os.environ.get("AGENTSEC_EXPECTED_SHA"),
     )
+
+
+def package_scenario_dir() -> Path:
+    """External consumers must load installed data, without a checkout fallback."""
+    installed = Path(__file__).parent / "_data" / "scenarios"
+    if not installed.is_dir():
+        raise ConfigError("缺少內建情境 / Installed AgentSec catalogue is missing")
+    return installed
 
 
 def package_schema_dir() -> Path:

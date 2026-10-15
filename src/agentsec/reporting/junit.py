@@ -64,6 +64,20 @@ def render_junit(summaries: list[RunSummary], *, suite_name: str = "agentsec") -
             },
         )
 
+        # Every case carries identity, including secure/refused cases that return early.
+        case_props = ET.SubElement(case, "properties")
+        ET.SubElement(case_props, "property", {"name": "agentsec.run_id", "value": s.run_id})
+        source = s.source_provenance
+        if source is None:
+            ET.SubElement(case_props, "property", {
+                "name": "agentsec.source_provenance", "value": "unknown",
+            })
+        else:
+            for key, value in source.model_dump(mode="json").items():
+                ET.SubElement(case_props, "property", {
+                    "name": f"agentsec.source.{key}", "value": value or "unknown",
+                })
+
         detail = _detail(s)
 
         if s.status == "refused":

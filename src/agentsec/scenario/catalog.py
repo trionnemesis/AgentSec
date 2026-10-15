@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +11,7 @@ from pathlib import Path
 from agentsec.errors import ScenarioError, ScenarioNotFound
 from agentsec.models.scenario import Scenario
 from agentsec.models.target import Target
-from agentsec.scenario.loader import load_scenario_file
+from agentsec.scenario.loader import load_scenario_file, resolve_payload, scenario_digest
 
 #: OWASP Agentic AI Top 10 (2025). Used as the coverage denominator so an empty
 #: catalog reports 0% against a real target instead of a flattering 100%.
@@ -83,6 +85,23 @@ class ScenarioCatalog:
 
     def ids(self) -> list[str]:
         return sorted(self._entries)
+
+    def content_digest(self) -> str:
+        """Hash effective contracts and referenced payloads, independent of location."""
+        manifest = []
+        for sid in self.ids():
+            entry = self._entries[sid]
+            payloads = {
+                step.payload_ref: hashlib.sha256(
+                    resolve_payload(entry.path, step.payload_ref).encode("utf-8")
+                ).hexdigest()
+                for step in entry.scenario.spec.attack.steps if step.payload_ref is not None
+            }
+            manifest.append({
+                "id": sid, "contract": scenario_digest(entry.scenario), "payloads": payloads,
+            })
+        canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def get(self, scenario_id: str) -> Scenario:
         entry = self._entries.get(scenario_id)

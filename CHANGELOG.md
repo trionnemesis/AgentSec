@@ -8,6 +8,54 @@ drafts even when they appear in a release.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-10-15
+
+### Added
+
+- **固定來源的外部 CI / Pinned external CI adoption (#50, first slice).**
+  The reusable gate requires a full AgentSec SHA, installs its committed content
+  separately from the consumer, verifies installer metadata and loads packaged
+  all nine reviewed scenarios as package data. Runs retain package/catalogue
+  source snapshots in JUnit/HTML/JSON;
+  report schema 1.5.0 adds nullable `source_provenance` without changing evidence
+  origin or verdicts. New workflow messages are Traditional Chinese / English.
+  Existing workspace mode is preserved; overlays and async lifecycle are deferred.
+  Report-only mode still fails on infrastructure/evaluation errors. See
+  [consumer setup and verification limits](docs/external-consumer.md).
+- **Deployable Wazuh rule pack with static contract checks.**
+  `packaging/wazuh/agentsec-wazuh-rules.xml` defines `100501`, `100610`,
+  `100720`, `100810` and `100901`–`100905`. Tests check each scenario's
+  `rule_id` and `min_level` against the pack
+  ([#90](https://github.com/trionnemesis/AgentSec/pull/90)).
+
+### Fixed
+
+- Wazuh correlation accepts the JSON decoder's `data.agentsec.run_id` as
+  well as the legacy root field; missing or conflicting run identity still
+  fails closed ([#90](https://github.com/trionnemesis/AgentSec/pull/90)).
+
+### Compatibility and verification limits
+
+- **Upgrade required for reusable-workflow callers.** Pin the workflow to a
+  reviewed full commit SHA and provide the new required `agentsec-sha` input
+  as a full lowercase 40-character SHA. The workflow installs AgentSec
+  separately from the consumer and verifies `direct_url.json` PEP 610 metadata
+  against the imported package. A plain wheel or editable install does not
+  establish a VCS commit identity; the gate uses a non-editable VCS install.
+- Existing workspace mode remains the default. Builtin mode rejects nonempty
+  project `scenarios/` directories; overlays remain a separate #50 follow-up.
+  Legacy run source snapshots stay null/unknown. Evidence provenance
+  (`recorded/live/mixed`), verdict precedence and the four axes are unchanged.
+- The isolated two-Git-repository test proves the package/CLI boundary and
+  recorded replay output. It does **not** prove a hosted cross-repository
+  `workflow_call`; that acceptance and #50's asynchronous lifecycle remain open.
+- Track B's documentation now distinguishes the shipped rule pack from the
+  remaining operator recordings ([#91](https://github.com/trionnemesis/AgentSec/pull/91)).
+  `AGT-CONFIG-001..005` fixtures, live Wazuh E2E acceptance and gate promotion
+  remain uncompleted under [#86](https://github.com/trionnemesis/AgentSec/issues/86).
+  Rule-pack consistency tests are static; the four original fixtures remain
+  recorded evidence. This release does not claim live detection acceptance.
+
 ## [0.4.4] — 2026-09-24
 
 ### Added
@@ -432,7 +480,8 @@ Initial release.
 - CLI with meaningful exit codes (`0` clean, `1` blocking, `2` could not tell)
   and a reusable CI gate workflow (`agentsec-gate.yml`).
 
-[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/trionnemesis/AgentSec/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/trionnemesis/AgentSec/compare/v0.4.4...v0.5.0
 [0.4.4]: https://github.com/trionnemesis/AgentSec/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/trionnemesis/AgentSec/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/trionnemesis/AgentSec/compare/v0.4.1...v0.4.2
