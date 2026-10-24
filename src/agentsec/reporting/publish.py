@@ -35,6 +35,7 @@ import json
 import os
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
 
@@ -62,7 +63,8 @@ from agentsec.models.run import Run
 #: reports. No plane was added, none was merged, and nothing already published
 #: changed shape.
 #: 1.5.0 adds frozen package/catalogue identity; evidence provenance is unchanged.
-PUBLISH_SCHEMA_VERSION = "1.5.0"
+#: 1.6.0 adds evidence provenance to the published single-run shape (#42).
+PUBLISH_SCHEMA_VERSION = "1.6.0"
 
 #: Names the ruleset, so a stored export says which policy produced it.
 PUBLISH_POLICY = "observed-data-v1"
@@ -203,6 +205,20 @@ def _attributes(attrs: dict[str, Any]) -> dict[str, Any]:
 # -- run ---------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class PublishedRun:
+    """Bounded service result required by the single-run publisher.
+
+    ``Run`` deliberately does not persist derived evidence provenance. The
+    service supplies that current presentation context before this pure
+    allowlist projection runs; accepting a raw Run here would make it too easy
+    for a new transport to publish the old, incomplete shape again.
+    """
+
+    run: Run
+    provenance: dict[str, Any]
+
+
 def _run_body(run: Run) -> dict[str, Any]:
     verdict = run.verdict
     return {
@@ -274,8 +290,49 @@ _RUN_DROPPED = [
 ]
 
 
-def publish_run(run: Run) -> dict[str, Any]:
-    return _envelope("run", _RUN_DROPPED, run=_run_body(run))
+@lru_cache(maxsize=1)
+def _published_run_validator() -> Draft202012Validator:
+    from agentsec.config import package_schema_dir
+
+    path = package_schema_dir() / "published-run.schema.json"
+    return Draft202012Validator(json.loads(path.read_text(encoding="utf-8")))
+
+
+def publish_run(value: PublishedRun) -> dict[str, Any]:
+    if not isinstance(value, PublishedRun):
+        raise RedactionError(
+            "run publication requires service-supplied provenance context",
+            details={"expected": "PublishedRun"},
+        )
+    if not isinstance(value.provenance, dict) or not isinstance(
+        value.provenance.get("backends", {}), dict
+    ):
+        raise PublicationInvalid(
+            "run provenance context is not a publishable object",
+            details={"schema": "published-run.schema.json"},
+        )
+    provenance = {
+        "executor": value.provenance.get("executor"),
+        "adapter": value.provenance.get("adapter"),
+        "evidence": value.provenance.get("evidence"),
+        "backends": dict(value.provenance.get("backends", {})),
+    }
+    body = _envelope(
+        "run",
+        _RUN_DROPPED,
+        run={**_run_body(value.run), "provenance": provenance},
+    )
+    errors = sorted(_published_run_validator().iter_errors(body), key=str)
+    if errors:
+        detail = "; ".join(
+            f"{'/'.join(str(p) for p in e.absolute_path) or '(root)'}: {e.message}"
+            for e in errors[:5]
+        )
+        raise PublicationInvalid(
+            f"run does not match its published schema: {detail}",
+            details={"schema": "published-run.schema.json"},
+        )
+    return body
 
 
 def publish_runs(runs: list[Run]) -> dict[str, Any]:

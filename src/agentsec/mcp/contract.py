@@ -217,13 +217,16 @@ TOOLS: tuple[ToolSpec, ...] = (
     ToolSpec(
         name="agentsec_get_run",
         title="Get a run",
-        description="Fetch one run: status, purple verdict, per-axis results and failed checks.",
+        description=(
+            "Fetch one run: status, purple verdict, per-axis results, failed checks "
+            "and evidence provenance."
+        ),
         risk="read",
         input_schema=_obj(
             {"run_id": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$"}},
             ["run_id"],
         ),
-        handler="get_run",
+        handler="get_published_run",
     ),
     ToolSpec(
         name="agentsec_compare_runs",
@@ -362,8 +365,8 @@ RESOURCES: tuple[ResourceSpec, ...] = (
     ResourceSpec(
         uri_template="agentsec://runs/{run_id}",
         title="Run",
-        description="One run's verdict and per-axis results.",
-        handler="get_run",
+        description="One run's verdict, per-axis results and evidence provenance.",
+        handler="get_published_run",
         publish="run",
     ),
     ResourceSpec(

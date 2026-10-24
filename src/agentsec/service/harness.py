@@ -61,12 +61,13 @@ from agentsec.reporting.html import write_html_report
 from agentsec.reporting.junit import render_junit
 from agentsec.reporting.normalizer import (
     RunSummary,
+    derive_provenance,
     latest_per_scenario,
     normalize_batch,
     normalize_run,
     verdict_history,
 )
-from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
+from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION, PublishedRun
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.loader import scenario_digest
 from agentsec.scenario.validator import validate_scenario
@@ -224,6 +225,16 @@ class HarnessService:
 
     def get_run(self, run_id: str) -> Run:
         return self.store.get_run(run_id)
+
+    def get_published_run(self, run_id: str) -> PublishedRun:
+        """Supply bounded lookup context for the pure single-run projection."""
+        run = self.store.get_run(run_id)
+        provenance = derive_provenance(
+            run,
+            self._target_for(run),
+            evidence=self._provenance_evidence_for(run),
+        )
+        return PublishedRun(run=run, provenance=provenance.to_dict())
 
     def get_run_evidence(self, run_id: str) -> dict[str, Any]:
         run = self.store.get_run(run_id)

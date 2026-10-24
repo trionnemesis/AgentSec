@@ -43,6 +43,7 @@ from agentsec.models.run import (
 from agentsec.reporting.publish import (
     PUBLISH_SCHEMA_VERSION,
     PUBLISHERS,
+    PublishedRun,
     RedactionError,
     pseudonym,
     publish,
@@ -350,8 +351,20 @@ def _run() -> Run:
     )
 
 
+def _published_run(run: Run | None = None) -> PublishedRun:
+    return PublishedRun(
+        run=run or _run(),
+        provenance={
+            "executor": "replay",
+            "adapter": "fixture",
+            "evidence": "recorded",
+            "backends": {"otel": "file"},
+        },
+    )
+
+
 def test_run_dto_drops_storage_paths_and_the_approval_token() -> None:
-    body = publish("run", _run())
+    body = publish("run", _published_run())
     text = json.dumps(body)
 
     assert "results/evidence" not in text
@@ -370,7 +383,7 @@ def test_run_dto_drops_storage_paths_and_the_approval_token() -> None:
 
 def test_run_dto_keeps_the_verdict_intact() -> None:
     """Redaction must not cost the reader the thing they came for."""
-    run = publish("run", _run())["run"]
+    run = publish("run", _published_run())["run"]
 
     assert run["verdict"]["purple_verdict"] == "prevention_gap"
     assert run["verdict"]["prevention"] == "fail"
@@ -383,7 +396,7 @@ def test_run_dto_keeps_the_verdict_intact() -> None:
 
 
 def test_published_envelope_is_versioned() -> None:
-    for kind, value in (("run", _run()), ("findings", []), ("audit", [])):
+    for kind, value in (("run", _published_run()), ("findings", []), ("audit", [])):
         body = publish(kind, value)
         assert body["schema_version"] == PUBLISH_SCHEMA_VERSION
         assert body["redaction"]["policy"] == "observed-data-v1"
@@ -391,7 +404,7 @@ def test_published_envelope_is_versioned() -> None:
 
 def test_redaction_manifest_names_what_was_withheld() -> None:
     """A withheld field must not be indistinguishable from an absent one."""
-    dropped = publish("run", _run())["redaction"]["dropped"]
+    dropped = publish("run", _published_run())["redaction"]["dropped"]
     assert "evidence_ref" in dropped
     assert "execution.raw_ref" in dropped
     assert "approval_id" in dropped
@@ -432,6 +445,12 @@ def test_unknown_output_kind_is_refused() -> None:
     with pytest.raises(RedactionError) as exc:
         publish("something_new", {"anything": 1})
     assert "no publication policy" in exc.value.message
+
+
+def test_raw_run_is_refused_without_service_provenance_context() -> None:
+    with pytest.raises(RedactionError) as exc:
+        publish("run", _run())
+    assert "requires service-supplied provenance" in exc.value.message
 
 
 def test_every_resource_declares_a_registered_policy() -> None:

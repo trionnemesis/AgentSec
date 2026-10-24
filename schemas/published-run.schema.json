@@ -1,0 +1,242 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentsec.dev/schemas/published-run.schema.json",
+  "title": "AgentSec Published Run",
+  "description": "The allowlisted single-run shape returned by agentsec_get_run and agentsec://runs/{run_id}. Evidence provenance uses ADR 0010 correlation and event-time qualification; transport alone never promotes a source to live.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "run", "redaction"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "kind": { "const": "run" },
+    "run": { "$ref": "#/$defs/run" },
+    "redaction": { "$ref": "#/$defs/redaction" }
+  },
+  "$defs": {
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "timestamp": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "axisStatus": {
+      "type": "string",
+      "enum": ["pass", "fail", "not_tested", "error"]
+    },
+    "purpleVerdict": {
+      "type": "string",
+      "enum": [
+        "secure",
+        "prevention_gap",
+        "detection_gap",
+        "evidence_gap",
+        "response_gap",
+        "error"
+      ]
+    },
+    "sourceProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_version",
+        "package_commit",
+        "catalogue_origin",
+        "catalogue_ref",
+        "catalogue_digest",
+        "scenario_digest"
+      ],
+      "properties": {
+        "package_version": { "$ref": "#/$defs/nullableString" },
+        "package_commit": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            { "type": "null" }
+          ]
+        },
+        "catalogue_origin": { "type": "string", "enum": ["builtin", "workspace"] },
+        "catalogue_ref": {
+          "anyOf": [
+            { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+            { "type": "null" }
+          ]
+        },
+        "catalogue_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "scenario_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executor", "adapter", "evidence", "backends"],
+      "properties": {
+        "executor": { "type": "string" },
+        "adapter": { "type": "string" },
+        "evidence": {
+          "type": "string",
+          "enum": ["recorded", "live", "mixed"],
+          "description": "Derived from persisted execution plus correlated, timestamp-qualified evidence. Insufficient proof conservatively remains recorded."
+        },
+        "backends": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Collector name to persisted backend kind. Contains no endpoint, path, query, credential, principal, or tenant data."
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executor",
+        "ok",
+        "started_at",
+        "finished_at",
+        "steps_completed",
+        "error"
+      ],
+      "properties": {
+        "executor": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "steps_completed": { "type": "array", "items": { "type": "string" } },
+        "error": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "axis", "status", "assertion", "observed", "reason"],
+      "properties": {
+        "id": { "type": "string" },
+        "axis": {
+          "type": "string",
+          "enum": ["prevention", "detection", "evidence", "response"]
+        },
+        "status": { "$ref": "#/$defs/axisStatus" },
+        "assertion": { "$ref": "#/$defs/nullableString" },
+        "observed": { "$ref": "#/$defs/nullableString" },
+        "reason": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "axis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis", "status", "summary", "checks"],
+      "properties": {
+        "axis": {
+          "type": "string",
+          "enum": ["prevention", "detection", "evidence", "response"]
+        },
+        "status": { "$ref": "#/$defs/axisStatus" },
+        "summary": { "$ref": "#/$defs/nullableString" },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "purple_verdict",
+        "prevention",
+        "detection",
+        "evidence",
+        "response",
+        "rationale",
+        "axes"
+      ],
+      "properties": {
+        "purple_verdict": { "$ref": "#/$defs/purpleVerdict" },
+        "prevention": { "$ref": "#/$defs/axisStatus" },
+        "detection": { "$ref": "#/$defs/axisStatus" },
+        "evidence": { "$ref": "#/$defs/axisStatus" },
+        "response": { "$ref": "#/$defs/axisStatus" },
+        "rationale": { "$ref": "#/$defs/nullableString" },
+        "axes": { "type": "array", "items": { "$ref": "#/$defs/axis" } }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_id",
+        "scenario_id",
+        "target_id",
+        "profile",
+        "status",
+        "dry_run",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "scenario_digest",
+        "source_provenance",
+        "approved",
+        "initiated_by",
+        "refusal_reason",
+        "execution",
+        "verdict",
+        "provenance"
+      ],
+      "properties": {
+        "run_id": { "type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$" },
+        "scenario_id": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" },
+        "target_id": { "type": "string" },
+        "profile": { "type": "string" },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "running", "completed", "failed", "refused"]
+        },
+        "dry_run": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "started_at": { "$ref": "#/$defs/timestamp" },
+        "finished_at": { "$ref": "#/$defs/timestamp" },
+        "scenario_digest": {
+          "anyOf": [
+            { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            { "type": "null" }
+          ]
+        },
+        "source_provenance": {
+          "anyOf": [
+            { "$ref": "#/$defs/sourceProvenance" },
+            { "type": "null" }
+          ]
+        },
+        "approved": { "type": "boolean" },
+        "initiated_by": {
+          "anyOf": [
+            { "type": "string", "pattern": "^actor_[0-9a-f]{8}$" },
+            { "type": "null" }
+          ]
+        },
+        "refusal_reason": { "$ref": "#/$defs/nullableString" },
+        "execution": {
+          "anyOf": [
+            { "$ref": "#/$defs/execution" },
+            { "type": "null" }
+          ]
+        },
+        "verdict": {
+          "anyOf": [
+            { "$ref": "#/$defs/verdict" },
+            { "type": "null" }
+          ]
+        },
+        "provenance": { "$ref": "#/$defs/provenance" }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "dropped"],
+      "properties": {
+        "policy": { "const": "observed-data-v1" },
+        "dropped": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}
