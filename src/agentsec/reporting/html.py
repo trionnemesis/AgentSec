@@ -71,11 +71,12 @@ def render_dashboard(
     what makes "this page cannot leak an evidence bundle" a property of the
     plumbing rather than of the template's good manners.
 
-    The same file is the renderer for a Claude Code Live Artifact and for a page
-    written to disk: the intended Live Artifact consumer can re-read the gateway
-    resource on refresh, while the local file is a snapshot of the moment it was
-    written. Both render from this template, so a reader comparing them is
-    comparing data rather than two renderers.
+    The same template renders a page that a Claude Code session can publish as a
+    Live Artifact and a page written to disk. The published page cannot call a
+    local MCP server: refresh means the session re-reads the published DTO and
+    republishes the same Artifact URL. The local file remains a snapshot of the
+    moment it was written. Both paths use this renderer, so a reader comparing
+    them is comparing data rather than two renderers.
     """
     template = _environment().get_template("dashboard.html.j2")
     runs = document.get("purple", {}).get("runs", [])

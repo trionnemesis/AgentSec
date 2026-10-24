@@ -175,7 +175,10 @@ def test_dashboard_names_the_intended_live_artifact_consumer(
     service: HarnessService,
 ) -> None:
     page = render_dashboard(publish("dashboard", service.dashboard()))
-    assert "Claude Code Live Artifact" in page
+    assert "A Claude Code session can read" in page
+    assert "published page cannot" in page
+    assert "session re-reads" in page
+    assert "same Artifact URL" in page
     assert "renderer snapshot, not a Claude Code client" in page
 
 

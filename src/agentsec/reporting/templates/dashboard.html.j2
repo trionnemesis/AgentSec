@@ -573,13 +573,14 @@
     Verdicts are produced by the deterministic AgentSec evaluator from the scenario
     contract and collected evidence. No language model participates in the pass/fail
     decision.<br>
-    In a Claude Code Live Artifact, this page reads
+    A Claude Code session can read
     <code>agentsec://dashboard/latest</code>{% if findings %} and
-    <code>agentsec://findings</code>{% endif %} on a report gateway. Opening,
-    filtering and refreshing it start no run, write no file and change no finding —
-    the gateway it binds to has no tool that could.
-    A locally saved HTML file is a renderer snapshot, not a Claude Code client
-    integration test.
+    <code>agentsec://findings</code>{% endif %} from the local read-only gateway,
+    render this page, and publish it as a Live Artifact. The published page cannot
+    call a local <code>.mcp.json</code> server. To refresh it, the session re-reads
+    the DTO and republishes the same Artifact URL. Interactions with this page
+    start no run, write no file and change no finding. A locally saved HTML file
+    is a renderer snapshot, not a Claude Code client integration test.
     {% if d.redaction %}
       Published under policy <code>{{ d.redaction.policy }}</code>.
     {% endif %}
