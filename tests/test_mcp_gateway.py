@@ -151,7 +151,11 @@ def test_a_resource_without_a_publication_policy_stops_the_server(
 # -- over a real stdio client ------------------------------------------------
 
 
-async def _probe(env: dict[str, str], uris: list[str]) -> dict:
+async def _probe(
+    env: dict[str, str],
+    uris: list[str],
+    tool_calls: dict[str, dict] | None = None,
+) -> dict:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
@@ -167,15 +171,20 @@ async def _probe(env: dict[str, str], uris: list[str]) -> dict:
             uri: (await session.read_resource(uri)).contents[0].text  # type: ignore[union-attr]
             for uri in uris
         }
+        calls = {
+            name: (await session.call_tool(name, arguments)).content[0].text
+            for name, arguments in (tool_calls or {}).items()
+        }
     return {
         "tools": sorted(t.name for t in tools.tools),
         "resources": sorted(str(r.uri) for r in resources.resources)
         + sorted(str(t.uriTemplate) for t in templates.resourceTemplates),
         "reads": reads,
+        "calls": calls,
     }
 
 
-def _stdio(workspace, uris, **extra):  # noqa: ANN001, ANN202
+def _stdio(workspace, uris, *, tool_calls=None, **extra):  # noqa: ANN001, ANN202
     env = {
         **os.environ,
         "AGENTSEC_WORKSPACE": str(workspace),
@@ -184,7 +193,7 @@ def _stdio(workspace, uris, **extra):  # noqa: ANN001, ANN202
     }
     env.pop(ENV_READ_ONLY, None)
     env.update(extra)
-    return asyncio.run(asyncio.wait_for(_probe(env, uris), timeout=90))
+    return asyncio.run(asyncio.wait_for(_probe(env, uris, tool_calls), timeout=90))
 
 
 def test_report_gateway_over_stdio_lists_and_reads_only_what_it_should(
@@ -203,6 +212,7 @@ def test_report_gateway_over_stdio_lists_and_reads_only_what_it_should(
     probe = _stdio(
         service.settings.workspace,
         ["agentsec://coverage", f"agentsec://runs/{run_id}"],
+        tool_calls={"agentsec_get_run": {"run_id": run_id}},
         AGENTSEC_MCP_READ_ONLY="1",
     )
 
@@ -218,9 +228,15 @@ def test_report_gateway_over_stdio_lists_and_reads_only_what_it_should(
     assert coverage["schema_version"]
 
     run = json.loads(probe["reads"][f"agentsec://runs/{run_id}"])
+    tool_response = json.loads(probe["calls"]["agentsec_get_run"])
+    assert tool_response["ok"] is True
+    tool_run = tool_response["result"]
     assert run["kind"] == "run"
     assert run["run"]["run_id"] == run_id
     assert run["run"]["verdict"]["purple_verdict"]
+    assert run == tool_run
+    assert run["run"]["provenance"] == result.report["runs"][0]["provenance"]
+    assert run["run"]["provenance"]["evidence"] == "recorded"
     # The projection survived the round trip: no workspace path, no token.
     assert "evidence_ref" not in run["run"]
     assert str(service.settings.workspace) not in probe["reads"][f"agentsec://runs/{run_id}"]

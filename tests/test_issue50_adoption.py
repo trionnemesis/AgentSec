@@ -17,7 +17,7 @@ from agentsec.models.run import Run
 from agentsec.reporting.html import render_html_report
 from agentsec.reporting.junit import render_junit
 from agentsec.reporting.normalizer import normalize_run
-from agentsec.reporting.publish import publish
+from agentsec.reporting.publish import PublishedRun, publish
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.service.harness import HarnessService
 
@@ -137,7 +137,8 @@ def test_legacy_run_is_unknown_even_with_a_current_catalogue(service):
     legacy = Run.model_validate(payload)
     summary = normalize_run(legacy, service.catalog.get(legacy.scenario_id))
     assert summary.to_dict()["source_provenance"] is None
-    assert publish("run", legacy)["run"]["source_provenance"] is None
+    published = PublishedRun(run=legacy, provenance=summary.provenance.to_dict())
+    assert publish("run", published)["run"]["source_provenance"] is None
     assert 'value="unknown"' in render_junit([summary])
 
 
@@ -168,7 +169,7 @@ def test_executor_failure_keeps_source_identity_in_published_run_and_junit(servi
     assert run.status == "failed"
     assert run.verdict is not None and run.verdict.purple_verdict == "error"
     assert run.source_provenance is not None
-    assert publish("run", run)["run"]["source_provenance"] == (
+    assert publish("run", service.get_published_run(run.run_id))["run"]["source_provenance"] == (
         run.source_provenance.model_dump(mode="json")
     )
     case = ET.fromstring(render_junit(result.summaries)).find("testcase")

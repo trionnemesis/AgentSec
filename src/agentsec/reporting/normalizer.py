@@ -29,6 +29,15 @@ from agentsec.reporting.publish import PUBLISH_SCHEMA_VERSION
 
 EvidenceProvenance = Literal["recorded", "live", "mixed"]
 
+_PUBLISHED_ADAPTER_LABELS = frozenset({"fixture", "http", "cli", "unknown"})
+_PUBLISHED_BACKEND_LABELS = frozenset({"file", "http", "opensearch", "none", "unknown"})
+_PUBLISHED_BACKEND_SOURCES = frozenset({"otel", "wazuh", "tool_audit", "state_diff"})
+
+
+def _safe_diagnostic_label(value: str, allowed: frozenset[str]) -> str:
+    """Keep fixed diagnostic vocabulary; never publish persisted free text."""
+    return value if value in allowed else "unknown"
+
 @dataclass
 class Provenance:
     """How a run's evidence was actually produced — never how it was judged.
@@ -47,9 +56,13 @@ class Provenance:
     def to_dict(self) -> dict[str, Any]:
         return {
             "executor": self.executor,
-            "adapter": self.adapter,
+            "adapter": _safe_diagnostic_label(self.adapter, _PUBLISHED_ADAPTER_LABELS),
             "evidence": self.evidence,
-            "backends": dict(self.backends),
+            "backends": {
+                source: _safe_diagnostic_label(backend, _PUBLISHED_BACKEND_LABELS)
+                for source, backend in self.backends.items()
+                if source in _PUBLISHED_BACKEND_SOURCES
+            },
         }
 
 

@@ -27,7 +27,7 @@ from agentsec.errors import AgentSecError
 from agentsec.mcp.contract import RESOURCES, TOOLS, ResourceSpec, ToolSpec, tool_by_name
 from agentsec.mcp.prompts import PROMPTS
 from agentsec.models.run import Run
-from agentsec.reporting.publish import PUBLISHERS, publish
+from agentsec.reporting.publish import PUBLISHERS, PublishedRun, publish
 from agentsec.service.harness import BatchResult, HarnessService
 
 #: Set to "1" to refuse every non-read-only tool. This is the read-only report
@@ -45,10 +45,11 @@ def _jsonable(value: Any) -> Any:
         # Return the normalised report, not the raw Run objects: the report is
         # already the redacted, stable shape both interfaces consume.
         return publish("report", value.report)
+    if isinstance(value, PublishedRun):
+        return publish("run", value)
     if isinstance(value, Run):
-        # A Run carries evidence_ref, execution.raw_ref and the approval token.
-        # Those are workspace paths and a credential, and dumping the model sent
-        # all three to whoever called the tool.
+        # Fail closed through the publisher: a raw Run both carries secrets and
+        # lacks the service-derived provenance required by the public shape.
         return publish("run", value)
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")

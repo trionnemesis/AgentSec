@@ -213,7 +213,7 @@
         "gate"
       ],
       "properties": {
-        "run_id": { "type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$" },
+        "run_id": { "type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3,}$" },
         "scenario_id": { "type": "string", "pattern": "^AGT-[A-Z0-9]+-[0-9]{3}$" },
         "scenario_title": { "type": "string" },
         "severity": { "type": "string" },
@@ -278,7 +278,10 @@
           "additionalProperties": false,
           "properties": {
             "executor": { "type": "string" },
-            "adapter": { "type": "string" },
+            "adapter": {
+              "type": "string",
+              "enum": ["fixture", "http", "cli", "unknown"]
+            },
             "evidence": {
               "type": "string",
               "enum": ["recorded", "live", "mixed"],
@@ -287,7 +290,13 @@
             "backends": {
               "type": "object",
               "description": "Collector name -> backend kind, for collectors that actually contributed. Backend kinds only, never an endpoint or credential.",
-              "additionalProperties": { "type": "string" }
+              "propertyNames": {
+                "enum": ["otel", "wazuh", "tool_audit", "state_diff"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["file", "http", "opensearch", "none", "unknown"]
+              }
             }
           }
         }
