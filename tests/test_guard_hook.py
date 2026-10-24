@@ -143,6 +143,19 @@ def test_refuses_cli_run_in_favour_of_the_audited_mcp_tool() -> None:
         (r"C:\repo\POLICY\targets.yaml", DEFAULT_CWD),
         (r"\\server\share\FIXTURES\demo\x.json", DEFAULT_CWD),
         (r"PoLiCy\approvals.yaml", r"C:\repo"),
+        (r"C:\repo\policy\targets.yaml.", DEFAULT_CWD),
+        (r"C:\repo\policy\targets.yaml. ", DEFAULT_CWD),
+        (r"C:\repo\policy\approvals.yaml ", DEFAULT_CWD),
+        (r"C:\repo\policy\approvals.yaml::$DATA", DEFAULT_CWD),
+        (r"\\server\share\fixtures. \demo\x.json", DEFAULT_CWD),
+        (r"policy\targets.yaml.", r"C:\repo"),
+        (r"policy\approvals.yaml::$DATA", r"C:\repo"),
+        (r"C:\repo\policy\TARGET~1.YAM", DEFAULT_CWD),
+        (r"C:\repo\policy\APPROV~27.YAM", DEFAULT_CWD),
+        (r"policy\TARGET~2.YAM", r"C:\repo"),
+        (r"C:\repo\policy\foo\.. \targets.yaml", DEFAULT_CWD),
+        (r"C:\repo\policy. \targets.yaml::$DATA", DEFAULT_CWD),
+        (r"policy\. \approvals.yaml", r"C:\repo"),
     ],
 )
 def test_refuses_writes_to_operator_owned_files(path: str, cwd: str) -> None:
@@ -202,6 +215,48 @@ def test_simulated_linux_host_keeps_posix_paths_case_sensitive() -> None:
     )
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repo/policy/targets.yaml.",
+        "/repo/policy/targets.yaml ",
+        "/repo/policy/approvals.yaml::$DATA",
+        "/repo/policy/TARGET~1.YAM",
+        "/repo/policy/APPROV~1.YAM",
+    ],
+)
+def test_linux_posix_names_are_not_treated_as_windows_aliases(path: str) -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": path},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="linux",
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repo/policy/targets.yaml.",
+        "/repo/policy/approvals.yaml::$DATA",
+    ],
+)
+def test_simulated_windows_host_rejects_posix_spelled_windows_aliases(path: str) -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": path},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="win32",
+    )
+    assert deny_payload(result)["permissionDecision"] == "deny"
 
 
 def test_case_insensitive_matching_does_not_expand_protected_file_names() -> None:
@@ -326,3 +381,30 @@ def test_relative_write_with_a_relative_project_root_is_denied(
     reason = decide("Write", {"file_path": "src/agentsec/cli.py"}, cwd=None)
     assert reason is not None
     assert "could not validate" in reason
+
+
+def test_windows_alias_relative_to_windows_project_root_is_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", r"C:\repo")
+    reason = decide("Write", {"file_path": r"policy\targets.yaml."}, cwd=None)
+    assert reason is not None
+    assert "operator-owned" in reason
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:policy\targets.yaml",
+        r"C:fixtures\demo\x.json",
+        r"C:src\agentsec\cli.py",
+    ],
+)
+def test_windows_drive_relative_path_is_denied_as_indeterminate(path: str) -> None:
+    reason = decide("Write", {"file_path": path}, cwd=r"C:\repo")
+    assert reason == INDETERMINATE_INPUT_REASON
+
+
+def test_windows_component_that_collapses_empty_is_denied_as_indeterminate() -> None:
+    reason = decide("Write", {"file_path": r"C:\repo\...\source.py"})
+    assert reason == INDETERMINATE_INPUT_REASON

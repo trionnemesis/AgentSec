@@ -78,6 +78,11 @@ PROTECTED_PATHS = (
     "/fixtures/",
 )
 
+WINDOWS_SHORT_POLICY_ALIASES = (
+    (re.compile(r"/policy/target~[1-9][0-9]*\.yam$"), "/policy/targets.yaml"),
+    (re.compile(r"/policy/approv~[1-9][0-9]*\.yam$"), "/policy/approvals.yaml"),
+)
+
 INDETERMINATE_INPUT_REASON = (
     "AgentSec denied this request because its hook could not validate the "
     "PreToolUse input."
@@ -159,9 +164,14 @@ def _is_absolute_path(path: str) -> bool:
     return normalised.startswith("/") or bool(re.match(r"^[A-Za-z]:/", normalised))
 
 
-def _uses_case_insensitive_paths(path: str, base: str | None) -> bool:
-    """Whether aliases differing only by case can name the same target."""
-    windows_spelling = any(
+def _is_drive_relative_path(path: str) -> bool:
+    """A Win32 ``C:foo`` path whose per-drive base the hook cannot know."""
+    return bool(re.match(r"^[A-Za-z]:(?:$|[^/])", path.replace("\\", "/")))
+
+
+def _uses_windows_paths(path: str, base: str | None) -> bool:
+    """Whether the target is interpreted with Windows filename semantics."""
+    return sys.platform == "win32" or any(
         candidate is not None
         and (
             "\\" in candidate
@@ -170,10 +180,29 @@ def _uses_case_insensitive_paths(path: str, base: str | None) -> bool:
         )
         for candidate in (path, base)
     )
-    return sys.platform in {"win32", "darwin"} or windows_spelling
 
 
-def _normalise_path(path: str, cwd: str | None) -> tuple[str, bool]:
+def _windows_alias_key(path: str) -> str:
+    """Collapse Win32 aliases relevant to protected-path matching.
+
+    The ordinary Win32 namespace ignores trailing spaces and dots in components.
+    A colon after a component selects an NTFS stream; even a named stream remains
+    attached to the operator-owned file, while ``::$DATA`` names its default data
+    stream. Drive-letter colons are structural and are therefore retained.
+    """
+    components = []
+    for index, component in enumerate(path.split("/")):
+        is_drive = index == 0 and bool(re.fullmatch(r"[A-Za-z]:", component))
+        if not is_drive:
+            original = component
+            component = component.split(":", 1)[0].rstrip(" .")
+            if original and not component:
+                deny(INDETERMINATE_INPUT_REASON)
+        components.append(component)
+    return "/".join(components)
+
+
+def _normalise_path(path: str, cwd: str | None) -> tuple[str, bool, bool]:
     """Lexically resolve a tool path without touching the filesystem.
 
     Claude Code declares the current working directory in the hook envelope. The
@@ -182,17 +211,24 @@ def _normalise_path(path: str, cwd: str | None) -> tuple[str, bool]:
     segments the same component boundaries without following symlinks.
     """
     normalised = path.replace("\\", "/")
+    if _is_drive_relative_path(normalised):
+        deny(INDETERMINATE_INPUT_REASON)
     base = cwd or os.environ.get("CLAUDE_PROJECT_DIR")
-    case_insensitive = _uses_case_insensitive_paths(path, base)
+    windows_paths = _uses_windows_paths(path, base)
+    case_insensitive = windows_paths or sys.platform == "darwin"
     if not _is_absolute_path(normalised):
         if not base or not _is_absolute_path(base):
             deny(INDETERMINATE_INPUT_REASON)
         normalised = posixpath.join(base.replace("\\", "/"), normalised)
-    return posixpath.normpath(normalised), case_insensitive
+    return posixpath.normpath(normalised), case_insensitive, windows_paths
 
 
 def check_write(path: str, cwd: str | None) -> None:
-    normalised, case_insensitive = _normalise_path(path, cwd)
+    normalised, case_insensitive, windows_paths = _normalise_path(path, cwd)
+    if windows_paths:
+        # Alias collapse can turn `. ` and `.. ` into live dot segments, so run
+        # lexical traversal normalisation again after applying Win32 semantics.
+        normalised = posixpath.normpath(_windows_alias_key(normalised))
     match_path = normalised.casefold() if case_insensitive else normalised
     for protected in PROTECTED_PATHS:
         is_match = (
@@ -206,6 +242,14 @@ def check_write(path: str, cwd: str | None) -> None:
                 f"ledger and the recorded fixture corpus are reviewed like firewall "
                 f"rules — propose the change to the user instead of writing it."
             )
+    if windows_paths:
+        for alias, protected in WINDOWS_SHORT_POLICY_ALIASES:
+            if alias.search(match_path):
+                deny(
+                    f"{protected} is operator-owned. The target allowlist, the approval "
+                    f"ledger and the recorded fixture corpus are reviewed like firewall "
+                    f"rules — propose the change to the user instead of writing it."
+                )
     allow()
 
 

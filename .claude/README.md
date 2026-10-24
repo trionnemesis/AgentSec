@@ -47,8 +47,16 @@ boundary.
   dot segments and Windows separators are normalised before matching. Windows
   drive/UNC spellings and paths on Windows or macOS hosts are matched without
   case distinctions so a case-only filesystem alias cannot bypass the guard.
-  These operator-owned files must not be changed through Bash or another
-  mechanism either; arbitrary Bash file writes are not inferred by the hook.
+  Windows paths additionally collapse Win32 trailing-dot/space aliases and NTFS
+  stream suffixes for matching; those transformations are not applied to POSIX
+  paths on Linux or macOS. Drive-relative forms such as `C:policy\targets.yaml`
+  are denied as indeterminate because the hook cannot observe the process's
+  per-drive working directory. Plausible numeric DOS 8.3 aliases for the two
+  protected policy files (`TARGET~N.YAM`, `APPROV~N.YAM`) are denied under the
+  policy directory. The hook does not query the filesystem to enumerate assigned
+  short names or reparse points. These operator-owned files must not be changed
+  through Bash or another mechanism either; arbitrary Bash file writes are not
+  inferred by the hook.
 - **AgentSec MCP calls carrying `url`, `sql`, `command`, `token` and similar.**
   Redundant with the closed tool schemas and `tests/test_mcp_contract.py` — kept
   as the third layer because the cost is one dictionary lookup. Scoped to this
