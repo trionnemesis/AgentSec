@@ -7,7 +7,13 @@ import json
 import pytest
 from jsonschema import Draft202012Validator
 
-from agentsec.models.evidence import CollectorError, SourceMeta, StateDiffSource
+from agentsec.models.evidence import (
+    CollectorError,
+    SourceMeta,
+    StateDiffSource,
+    TranscriptSource,
+    TranscriptTurn,
+)
 from agentsec.models.target import Adapter, Target
 from agentsec.reporting.publish import (
     PUBLISH_SCHEMA_VERSION,
@@ -123,3 +129,34 @@ def test_published_provenance_adds_no_observed_identifiers(service) -> None:  # 
     assert str(service.settings.workspace) not in published
     assert "principal" not in published
     assert "tenant" not in published
+
+
+def test_free_text_source_labels_cannot_escape_through_provenance(service) -> None:  # noqa: ANN001
+    """Persisted SourceMeta is open text; published diagnostics are not."""
+    run, evidence = _provenance_case()
+    unsafe_adapter = "https://evil.example/token=sk-live-1234567890abcdef"
+    unsafe_backend = "/home/operator/secret/apr_0123456789abcdef"
+    evidence.sources.transcript = TranscriptSource(
+        turns=[TranscriptTurn(role="assistant", content="Denied")],
+        meta=SourceMeta(collector="custom", backend=unsafe_adapter),
+    )
+    assert evidence.sources.otel is not None and evidence.sources.otel.meta is not None
+    evidence.sources.otel.meta.backend = unsafe_backend
+    run.evidence_ref = service._persist_evidence(evidence)
+    service.store.save_run(run)
+
+    single = publish("run", service.get_published_run(run.run_id))
+    report, _, _ = service._rollup(target_id=run.target_id, profile=run.profile, limit=10)
+    published = json.dumps({"single": single, "report": report})
+
+    assert single["run"]["provenance"] == report["runs"][0]["provenance"]
+    assert single["run"]["provenance"] == {
+        "executor": "replay",
+        "adapter": "unknown",
+        "evidence": "mixed",
+        "backends": {"otel": "unknown"},
+    }
+    assert unsafe_adapter not in published
+    assert unsafe_backend not in published
+    assert "evil.example" not in published
+    assert "apr_0123456789abcdef" not in published

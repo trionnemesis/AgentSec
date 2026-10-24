@@ -278,7 +278,10 @@
           "additionalProperties": false,
           "properties": {
             "executor": { "type": "string" },
-            "adapter": { "type": "string" },
+            "adapter": {
+              "type": "string",
+              "enum": ["fixture", "http", "cli", "unknown"]
+            },
             "evidence": {
               "type": "string",
               "enum": ["recorded", "live", "mixed"],
@@ -287,7 +290,13 @@
             "backends": {
               "type": "object",
               "description": "Collector name -> backend kind, for collectors that actually contributed. Backend kinds only, never an endpoint or credential.",
-              "additionalProperties": { "type": "string" }
+              "propertyNames": {
+                "enum": ["otel", "wazuh", "tool_audit", "state_diff"]
+              },
+              "additionalProperties": {
+                "type": "string",
+                "enum": ["file", "http", "opensearch", "none", "unknown"]
+              }
             }
           }
         }

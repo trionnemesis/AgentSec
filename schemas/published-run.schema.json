@@ -74,7 +74,10 @@
       "required": ["executor", "adapter", "evidence", "backends"],
       "properties": {
         "executor": { "type": "string" },
-        "adapter": { "type": "string" },
+        "adapter": {
+          "type": "string",
+          "enum": ["fixture", "http", "cli", "unknown"]
+        },
         "evidence": {
           "type": "string",
           "enum": ["recorded", "live", "mixed"],
@@ -82,7 +85,13 @@
         },
         "backends": {
           "type": "object",
-          "additionalProperties": { "type": "string" },
+          "propertyNames": {
+            "enum": ["otel", "wazuh", "tool_audit", "state_diff"]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "enum": ["file", "http", "opensearch", "none", "unknown"]
+          },
           "description": "Collector name to persisted backend kind. Contains no endpoint, path, query, credential, principal, or tenant data."
         }
       }
