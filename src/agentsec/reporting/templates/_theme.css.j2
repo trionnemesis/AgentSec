@@ -46,7 +46,11 @@
   details { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem; margin: .6rem 0; background: var(--card); }
   details[hidden] { display: none; }
   details summary { cursor: pointer; font-weight: 600; }
-  summary:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  a { color: var(--accent); text-underline-offset: .16em; }
+  a:hover { text-decoration-thickness: 2px; }
+  a:focus-visible, summary:focus-visible, .chip:focus-visible, .scroll:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
   .check { border-left: 3px solid var(--fail); padding: .35rem 0 .35rem .7rem; margin: .55rem 0; }
   .check .a { font-weight: 600; }
   .check .o, .check .r { color: var(--muted); font-size: .85rem; }
@@ -54,6 +58,14 @@
   .banner.ok { color: var(--pass); background: var(--pass-bg); }
   .banner.bad { color: var(--fail); background: var(--fail-bg); }
   .banner.info { color: var(--warn); background: var(--warn-bg); font-weight: 500; }
+  .origin-live { color: var(--accent); background: var(--accent-soft); }
+  .run-meta { display: flex; flex-wrap: wrap; gap: .35rem .7rem; align-items: center; }
+  .run-meta .sub { margin: 0; }
+  .source-identity { background: transparent; margin-top: .8rem; }
+  .source-kv { margin-top: .65rem; }
+  .source-unknown { margin: .65rem 0 0; }
+  .digest { overflow-wrap: anywhere; word-break: break-word; }
+  [id^="scenario-"], [id^="run-"] { scroll-margin-top: 1rem; }
   footer { margin-top: 3rem; color: var(--muted); font-size: .8rem; border-top: 1px solid var(--line); padding-top: 1rem; }
 
   /* --- axis rollup ------------------------------------------------------- */
@@ -91,7 +103,10 @@
   .tick.now { outline: 2px solid var(--fg); outline-offset: 1px; }
 
   @media (max-width: 640px) {
+    body { padding: 1.25rem .75rem 3rem; }
     .meter { grid-template-columns: 1fr; gap: .4rem; }
+    .source-kv { grid-template-columns: 1fr; gap: .1rem; }
+    .source-kv dd { margin-bottom: .45rem; }
   }
   @media print {
     .filters { display: none; }

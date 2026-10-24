@@ -1,0 +1,74 @@
+{% macro batch_summary(batch) -%}
+  {% set complete_secure = namespace(value=batch.runs and batch.secure == batch.total_runs) %}
+  {% for run in batch.runs %}
+    {% if run.status != 'completed' or run.purple_verdict != 'secure' %}
+      {% set complete_secure.value = false %}
+    {% endif %}
+  {% endfor %}
+  {% if not batch.total_runs or not batch.runs %}
+    <div class="banner info" role="status">
+      No run verdicts are available — CI exit code {{ batch.exit_code }}.
+      No security conclusion can be drawn from an empty result set.
+    </div>
+  {% elif batch.blocking_count %}
+    <div class="banner bad" role="status">
+      {{ batch.blocking_count }} blocking finding{{ '' if batch.blocking_count == 1 else 's' }} —
+      CI exit code {{ batch.exit_code }}
+    </div>
+  {% elif complete_secure.value %}
+    <div class="banner ok" role="status">
+      All {{ batch.total_runs }} completed run verdict{{ '' if batch.total_runs == 1 else 's' }}
+      are <code>secure</code> for their asserted axes — CI exit code {{ batch.exit_code }}.
+      Check each run's origin and any <code>not_tested</code> axes before drawing a broader conclusion.
+    </div>
+  {% else %}
+    {% set incomplete = batch.total_runs - batch.secure %}
+    <div class="banner info" role="status">
+      No blocking findings, but
+      {% if incomplete %}
+        {{ incomplete }} run verdict{{ '' if incomplete == 1 else 's' }}
+        {{ 'reports' if incomplete == 1 else 'report' }} a non-blocking gap or error
+      {% else %}
+        one or more runs are incomplete
+      {% endif %}
+      — CI exit code {{ batch.exit_code }}. This is not a clean result.
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+{% macro origin_badge(run) -%}
+  {% set origin = run.provenance.evidence if run.provenance else 'unknown' %}
+  <span class="pill origin {{ 'origin-live' if origin == 'live' else ('warn' if origin == 'mixed' else 'skip') }}">
+    origin {{ origin }}
+  </span>
+{%- endmacro %}
+
+{% macro source_identity(run) -%}
+  <details class="source-identity">
+    <summary>Package and scenario source</summary>
+    {% if run.source_provenance %}
+      <dl class="kv source-kv">
+        <dt>package</dt>
+        <dd>
+          <code>{{ run.source_provenance.package_version or 'unknown version' }}</code>
+          {% if run.source_provenance.package_commit %}
+            · commit <code class="digest">{{ run.source_provenance.package_commit }}</code>
+          {% endif %}
+        </dd>
+        <dt>catalogue</dt>
+        <dd>
+          <code>{{ run.source_provenance.catalogue_origin }}</code>
+          {% if run.source_provenance.catalogue_ref %}
+            · ref <code class="digest">{{ run.source_provenance.catalogue_ref }}</code>
+          {% endif %}
+        </dd>
+        <dt>catalogue digest</dt>
+        <dd><code class="digest">{{ run.source_provenance.catalogue_digest }}</code></dd>
+        <dt>scenario digest</dt>
+        <dd><code class="digest">{{ run.source_provenance.scenario_digest }}</code></dd>
+      </dl>
+    {% else %}
+      <p class="sub source-unknown">Source snapshot was not recorded.</p>
+    {% endif %}
+  </details>
+{%- endmacro %}
