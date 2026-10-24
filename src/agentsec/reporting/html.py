@@ -8,6 +8,7 @@ for a Live Artifact later.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,14 @@ _VERDICT_CLASS = {
     "error": "warn",
 }
 
+_UNSAFE_FRAGMENT = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _fragment_id(prefix: str, value: object) -> str:
+    """Return a stable local-link target without trusting a DTO value as markup."""
+    cleaned = _UNSAFE_FRAGMENT.sub("-", str(value)).strip("-") or "unknown"
+    return f"{prefix}-{cleaned}"
+
 
 def _environment() -> Environment:
     env = Environment(
@@ -41,6 +50,8 @@ def _environment() -> Environment:
     )
     env.globals["status_class"] = lambda s: _STATUS_CLASS.get(s, "skip")
     env.globals["verdict_class"] = lambda v: _VERDICT_CLASS.get(v, "skip")
+    env.globals["scenario_anchor"] = lambda value: _fragment_id("scenario", value)
+    env.globals["run_anchor"] = lambda value: _fragment_id("run", value)
     return env
 
 
@@ -60,13 +71,24 @@ def render_dashboard(
     what makes "this page cannot leak an evidence bundle" a property of the
     plumbing rather than of the template's good manners.
 
-    The same file is the source for a hosted Live Artifact and for a page written
-    to disk: one is served by a gateway and re-read on refresh, the other is a
-    snapshot of the moment it was written. Both render from this template, so a
-    reader comparing them is comparing data rather than two renderers.
+    The same template renders a page that a Claude Code session can publish as a
+    Live Artifact and a page written to disk. The published page cannot call a
+    local MCP server: refresh means the session re-reads the published DTO and
+    republishes the same Artifact URL. The local file remains a snapshot of the
+    moment it was written. Both paths use this renderer, so a reader comparing
+    them is comparing data rather than two renderers.
     """
     template = _environment().get_template("dashboard.html.j2")
-    return template.render(d=document, findings=findings or [])
+    runs = document.get("purple", {}).get("runs", [])
+    runs_by_scenario: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        if isinstance(run, dict) and isinstance(run.get("scenario_id"), str):
+            runs_by_scenario.setdefault(run["scenario_id"], []).append(run)
+    return template.render(
+        d=document,
+        findings=findings or [],
+        runs_by_scenario=runs_by_scenario,
+    )
 
 
 def write_dashboard(

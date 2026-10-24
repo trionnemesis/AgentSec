@@ -9,6 +9,7 @@
 </style>
 </head>
 <body>
+{% from "_evidence.html.j2" import batch_summary, origin_badge, source_identity %}
 <div class="wrap">
 
   <h1>AgentSec Purple Report</h1>
@@ -18,14 +19,7 @@
     generated {{ batch.generated_at }}
   </div>
 
-  {% if batch.blocking_count %}
-    <div class="banner bad">
-      {{ batch.blocking_count }} blocking finding{{ '' if batch.blocking_count == 1 else 's' }} —
-      CI exit code {{ batch.exit_code }}
-    </div>
-  {% else %}
-    <div class="banner ok">No blocking findings — CI exit code {{ batch.exit_code }}</div>
-  {% endif %}
+  {{ batch_summary(batch) }}
 
   {% if batch.fixture_derived %}
     <div class="banner info">
@@ -118,7 +112,7 @@
     <table>
       <thead>
         <tr>
-          <th>Scenario</th><th>Prevention</th><th>Detection</th><th>Evidence</th>
+          <th>Scenario</th><th>Run evidence</th><th>Prevention</th><th>Detection</th><th>Evidence</th>
           <th>Response</th><th>Verdict</th>{% if batch.history %}<th>Trend</th>{% endif %}
         </tr>
       </thead>
@@ -127,6 +121,11 @@
         <tr class="run-row" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
             data-blocking="{{ 'true' if r.blocking else 'false' }}">
           <td><code>{{ r.scenario_id }}</code><br><span class="sub">{{ r.scenario_title }}</span></td>
+          <td>
+            <code>{{ r.run_id }}</code><br>
+            {{ origin_badge(r) }}<br>
+            <span class="sub">target {{ r.target_id }}</span>
+          </td>
           {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
             <td class="axis"><span class="pill {{ status_class(r[axis]) }}">{{ r[axis] }}</span></td>
           {% endfor %}
@@ -170,26 +169,17 @@
 
       <p class="sub">
         run <code>{{ r.run_id }}</code> ·
+        target <code>{{ r.target_id }}</code> ·
         severity {{ r.severity }} ·
         gate {{ r.gate }} ·
         {{ '%.2f'|format(r.duration_seconds) }}s
         {% if r.owasp %} · OWASP {{ r.owasp|join(', ') }}{% endif %}
       </p>
+      <p>{{ origin_badge(r) }}</p>
 
       <p>{{ r.rationale }}</p>
 
-      <details>
-        <summary>程式與情境來源 / Package and catalogue source</summary>
-        {% if r.source_provenance %}
-          <dl>
-          {% for key, value in r.source_provenance.items() %}
-            <dt>{{ key }}</dt><dd><code>{{ value or '未知 / unknown' }}</code></dd>
-          {% endfor %}
-          </dl>
-        {% else %}
-          <p>未記錄來源快照 / Source snapshot was not recorded.</p>
-        {% endif %}
-      </details>
+      {{ source_identity(r) }}
 
       {% if r.collector_errors %}
         <p><strong>Evidence could not be collected:</strong></p>

@@ -22,9 +22,13 @@
   .finding { border-left: 3px solid var(--warn); padding: .4rem 0 .4rem .75rem; margin: .6rem 0; }
   .finding[hidden] { display: none; }
   select.chip { appearance: none; padding-inline-end: 1.4rem; }
+  .evidence-chain { display: flex; flex-wrap: wrap; gap: .2rem .35rem; align-items: baseline; }
+  .evidence-chain .missing { color: var(--muted); font-size: .8rem; }
+  .linked-target { outline: 2px solid var(--accent); outline-offset: -2px; }
 </style>
 </head>
 <body>
+{% from "_evidence.html.j2" import batch_summary, origin_badge, source_identity %}
 <div class="wrap">
 
   <div class="masthead">
@@ -63,14 +67,7 @@
     </div>
   {% endif %}
 
-  {% if d.purple.blocking_count %}
-    <div class="banner bad">
-      {{ d.purple.blocking_count }} blocking finding{{ '' if d.purple.blocking_count == 1 else 's' }} —
-      CI exit code {{ d.purple.exit_code }}
-    </div>
-  {% else %}
-    <div class="banner ok">No blocking findings — CI exit code {{ d.purple.exit_code }}</div>
-  {% endif %}
+  {{ batch_summary(d.purple) }}
 
   {% if d.purple.fixture_derived %}
     <div class="banner info">
@@ -138,7 +135,7 @@
           <dt>risks</dt><dd>{{ d.repo_risk.counts.total }}</dd>
           <dt>critical + high</dt>
           <dd>{{ d.repo_risk.counts.by_severity.get('critical', 0) + d.repo_risk.counts.by_severity.get('high', 0) }}</dd>
-          <dt>verified</dt><dd>{{ d.repo_risk.counts.by_verification.get('verified', 0) }}</dd>
+          <dt>verdict available</dt><dd>{{ d.repo_risk.counts.by_verification.get('verified', 0) }}</dd>
           <dt>runnable</dt><dd>{{ d.repo_risk.counts.by_verification.get('verifiable', 0) }}</dd>
           <dt>unprovable</dt><dd>{{ d.repo_risk.counts.by_verification.get('not_verifiable', 0) }}</dd>
         {% else %}
@@ -261,7 +258,7 @@
 
   <h2>Scenarios</h2>
 
-  <div class="filters" id="filters">
+  <div class="filters" id="filters" aria-label="Scenario filters">
     <span class="lbl">Verdict</span>
     <button type="button" class="chip" data-verdict="all" aria-pressed="true">all {{ d.purple.total_runs }}</button>
     <button type="button" class="chip" data-verdict="gap" aria-pressed="false">gaps {{ d.purple.total_runs - d.purple.secure }}</button>
@@ -288,30 +285,41 @@
       <span class="lbl" style="margin-left:.75rem">Scenario</span>
       <select class="chip" id="scenario-filter" aria-label="Filter by scenario">
         <option value="all">all scenarios</option>
-        {% for r in d.purple.runs %}
-          <option value="{{ r.scenario_id }}">{{ r.scenario_id }}</option>
+        {% for scenario_id in d.purple.runs | map(attribute='scenario_id') | unique %}
+          <option value="{{ scenario_id }}">{{ scenario_id }}</option>
         {% endfor %}
       </select>
     {% endif %}
   </div>
 
-  <div class="scroll">
+  <p class="sub" id="filter-status" aria-live="polite"></p>
+
+  <div class="scroll" role="region" aria-label="Scenario run evidence" tabindex="0">
     <table>
       <thead>
         <tr>
-          <th>Scenario</th><th>Prevention</th><th>Detection</th><th>Evidence</th>
-          <th>Response</th><th>Verdict</th>{% if d.purple.history %}<th>Trend</th>{% endif %}
+          <th scope="col">Scenario</th><th scope="col">Run evidence</th>
+          <th scope="col">Prevention</th><th scope="col">Detection</th><th scope="col">Evidence</th>
+          <th scope="col">Response</th><th scope="col">Verdict</th>{% if d.purple.history %}<th scope="col">Trend</th>{% endif %}
         </tr>
       </thead>
       <tbody>
       {% for r in d.purple.runs %}
         {% set axes = [r.prevention, r.detection, r.evidence, r.response] %}
-        <tr class="run-row" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
+        <tr class="run-row" id="{{ scenario_anchor(r.scenario_id ~ '-' ~ r.run_id) }}"
+            data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
             data-scenario="{{ r.scenario_id }}"
             data-blocking="{{ 'true' if r.blocking else 'false' }}"
             data-untested="{{ 'true' if 'not_tested' in axes else 'false' }}"
             data-errored="{{ 'true' if 'error' in axes else 'false' }}">
           <td><code>{{ r.scenario_id }}</code><br><span class="sub">{{ r.scenario_title }}</span></td>
+          <td>
+            <a class="run-link" href="#{{ run_anchor(r.run_id) }}"><code>{{ r.run_id }}</code></a><br>
+            {{ origin_badge(r) }}
+            {% if r.provenance %}
+              <br><span class="sub">target {{ r.target_id }} · {{ r.provenance.executor }} · {{ r.provenance.adapter }}</span>
+            {% endif %}
+          </td>
           {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
             <td class="axis"><span class="pill {{ status_class(r[axis]) }}">{{ r[axis] }}</span></td>
           {% endfor %}
@@ -346,26 +354,41 @@
   </div>
   <p class="empty" id="no-match" hidden>No scenario matches this filter.</p>
 
-  <h2>What failed</h2>
+  <h2 id="run-evidence">Run evidence</h2>
   {% if not d.purple.runs %}
     <p class="empty">No runs are stored for this project yet.</p>
   {% endif %}
-  {% for r in d.purple.runs if r.purple_verdict != 'secure' or r.collector_errors %}
-    <details class="run-detail" data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
+  {% for r in d.purple.runs %}
+    <details class="run-detail" id="{{ run_anchor(r.run_id) }}"
+             data-verdict="{{ r.purple_verdict }}" data-severity="{{ r.severity }}"
              data-scenario="{{ r.scenario_id }}"
              data-blocking="{{ 'true' if r.blocking else 'false' }}"
              data-untested="{{ 'true' if 'not_tested' in [r.prevention, r.detection, r.evidence, r.response] else 'false' }}"
              data-errored="{{ 'true' if 'error' in [r.prevention, r.detection, r.evidence, r.response] else 'false' }}"
-             open>
+             {% if r.purple_verdict != 'secure' or r.collector_errors %}open{% endif %}>
       <summary>
         <span class="pill {{ verdict_class(r.purple_verdict) }}">{{ r.purple_verdict }}</span>
         <code>{{ r.scenario_id }}</code> — {{ r.scenario_title }}
       </summary>
-      <p class="sub">
-        run <code>{{ r.run_id }}</code> · severity {{ r.severity }} · gate {{ r.gate }}
-        {% if r.owasp %} · OWASP {{ r.owasp | join(', ') }}{% endif %}
-      </p>
+      <div class="run-meta">
+        <span class="sub">
+          run <code>{{ r.run_id }}</code> · target <code>{{ r.target_id }}</code> ·
+          severity {{ r.severity }} · gate {{ r.gate }}
+          {% if r.owasp %} · OWASP {{ r.owasp | join(', ') }}{% endif %}
+        </span>
+        {{ origin_badge(r) }}
+        {% if r.provenance %}
+          <span class="sub">executor <code>{{ r.provenance.executor }}</code> · adapter <code>{{ r.provenance.adapter }}</code></span>
+        {% endif %}
+      </div>
+      <dl class="kv" aria-label="Four-axis result">
+        {% for axis in ['prevention', 'detection', 'evidence', 'response'] %}
+          <dt>{{ axis }}</dt><dd><span class="pill {{ status_class(r[axis]) }}">{{ r[axis] }}</span></dd>
+        {% endfor %}
+      </dl>
       <p>{{ r.rationale }}</p>
+
+      {{ source_identity(r) }}
 
       {% if r.collector_errors %}
         <p><strong>Evidence could not be collected:</strong></p>
@@ -384,6 +407,11 @@
           {% if c.reason %}<div class="r">why it matters: {{ c.reason }}</div>{% endif %}
         </div>
       {% endfor %}
+      {% if r.purple_verdict == 'secure' and not r.failed_checks and not r.collector_errors %}
+        <p class="sub">All asserted checks held. Any unasserted axis remains <code>not_tested</code>.</p>
+      {% elif not r.failed_checks and not r.collector_errors %}
+        <p class="sub">No evaluator check detail is available for this run.</p>
+      {% endif %}
     </details>
   {% endfor %}
 
@@ -393,8 +421,9 @@
       This repository's own agent configuration — skills, agents, hooks, tool grants,
       MCP servers and memory stores — read by static rules. A risk is a reason to run a
       scenario, never the result of having run one. The verification column is the
-      difference: <code>verified</code> means a scenario covering that surface produced a
-      verdict, <code>runnable</code> means one exists and has not, and
+      difference: <code>verdict available</code> means a scenario covering that surface
+      produced a verdict of any kind — including a gap or error. It is verification
+      metadata, not a pass. <code>runnable</code> means one exists and has not run, and
       <code>unprovable</code> means nothing in the catalogue exercises it — neither
       passing nor failing.
       {% if d.repo_risk.problems %}
@@ -416,11 +445,11 @@
       <span class="lbl">Verification</span>
       <button type="button" class="chip" data-verification="all" aria-pressed="true">all {{ d.repo_risk.counts.total }}</button>
       <button type="button" class="chip" data-verification="verifiable" aria-pressed="false">runnable {{ d.repo_risk.counts.by_verification.get('verifiable', 0) }}</button>
-      <button type="button" class="chip" data-verification="verified" aria-pressed="false">verified {{ d.repo_risk.counts.by_verification.get('verified', 0) }}</button>
+      <button type="button" class="chip" data-verification="verified" aria-pressed="false">verdict available {{ d.repo_risk.counts.by_verification.get('verified', 0) }}</button>
       <button type="button" class="chip" data-verification="not_verifiable" aria-pressed="false">unprovable {{ d.repo_risk.counts.by_verification.get('not_verifiable', 0) }}</button>
     </div>
 
-    <div class="scroll">
+    <div class="scroll" role="region" aria-label="Repository attack surface" tabindex="0">
       <table>
         <thead>
           <tr><th>Rule</th><th>Severity</th><th>Surface</th><th>File</th><th>Verification</th></tr>
@@ -437,10 +466,32 @@
             <td>{{ r.surface_kind.replace('_', ' ') }}</td>
             <td><code>{{ r.file }}</code></td>
             <td>
-              <span class="pill {{ 'pass' if r.verification.state == 'verified' else ('warn' if r.verification.state == 'verifiable' else 'skip') }}">
-                {{ 'runnable' if r.verification.state == 'verifiable' else ('unprovable' if r.verification.state == 'not_verifiable' else r.verification.state) }}
+              <span class="pill {{ 'warn' if r.verification.state == 'verifiable' else 'skip' }}">
+                {{ 'runnable' if r.verification.state == 'verifiable' else ('unprovable' if r.verification.state == 'not_verifiable' else 'verdict available') }}
               </span>
-              {% if r.verification.scenario_ids %}<br><span class="sub">{{ r.verification.scenario_ids | join(', ') }}</span>{% endif %}
+              {% if r.verification.scenario_ids %}
+                {% for scenario_id in r.verification.scenario_ids %}
+                  {% set matched_runs = runs_by_scenario.get(scenario_id, []) %}
+                  {% if matched_runs %}
+                    {% for matched_run in matched_runs %}
+                      <span class="evidence-chain">
+                        <a class="scenario-evidence-link"
+                           href="#{{ scenario_anchor(scenario_id ~ '-' ~ matched_run.run_id) }}"
+                           data-show-scenario="{{ scenario_id }}"><code>{{ scenario_id }}</code></a>
+                        <span>on <code>{{ matched_run.target_id }}</code></span>
+                        <span aria-hidden="true">→</span>
+                        <a class="run-evidence-link" href="#{{ run_anchor(matched_run.run_id) }}"
+                           data-show-scenario="{{ scenario_id }}"><code>{{ matched_run.run_id }}</code></a>
+                      </span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="evidence-chain">
+                      <code>{{ scenario_id }}</code>
+                      <span class="missing">no displayed run</span>
+                    </span>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -522,10 +573,14 @@
     Verdicts are produced by the deterministic AgentSec evaluator from the scenario
     contract and collected evidence. No language model participates in the pass/fail
     decision.<br>
-    This page reads <code>agentsec://dashboard/latest</code>{% if findings %} and
-    <code>agentsec://findings</code>{% endif %} on a report gateway. Opening,
-    filtering and refreshing it start no run, write no file and change no finding —
-    the gateway it binds to has no tool that could.
+    A Claude Code session can read
+    <code>agentsec://dashboard/latest</code>{% if findings %} and
+    <code>agentsec://findings</code>{% endif %} from the local read-only gateway,
+    render this page, and publish it as a Live Artifact. The published page cannot
+    call a local <code>.mcp.json</code> server. To refresh it, the session re-reads
+    the DTO and republishes the same Artifact URL. Interactions with this page
+    start no run, write no file and change no finding. A locally saved HTML file
+    is a renderer snapshot, not a Claude Code client integration test.
     {% if d.redaction %}
       Published under policy <code>{{ d.redaction.policy }}</code>.
     {% endif %}
@@ -563,6 +618,15 @@
     if (note) { note.hidden = visibleRows !== 0; }
   }
 
+  function selectAll(group) {
+    bar.querySelectorAll(".chip").forEach(function (chip) {
+      if (chip.dataset[group] !== undefined) {
+        chip.setAttribute("aria-pressed", chip.dataset[group] === "all" ? "true" : "false");
+      }
+    });
+    state[group] = "all";
+  }
+
   bar.querySelectorAll(".chip").forEach(function (chip) {
     if (chip.tagName === "SELECT") { return; }
     var group = ["verdict", "severity", "tested"].filter(function (g) {
@@ -586,6 +650,29 @@
       apply();
     });
   }
+
+  document.querySelectorAll("[data-show-scenario]").forEach(function (link) {
+    link.addEventListener("click", function () {
+      selectAll("verdict");
+      selectAll("severity");
+      selectAll("tested");
+      state.scenario = link.dataset.showScenario;
+      if (picker) { picker.value = state.scenario; }
+      document.querySelectorAll(".linked-target").forEach(function (target) {
+        target.classList.remove("linked-target");
+      });
+      apply();
+      var targetId = link.getAttribute("href").slice(1);
+      var target = document.getElementById(targetId);
+      if (target) {
+        target.hidden = false;
+        target.classList.add("linked-target");
+        if (target.tagName === "DETAILS") { target.open = true; }
+      }
+      var status = document.getElementById("filter-status");
+      if (status) { status.textContent = "Showing linked scenario " + state.scenario + "."; }
+    });
+  });
 }());
 
 (function () {
