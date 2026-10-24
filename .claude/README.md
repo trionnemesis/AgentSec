@@ -44,9 +44,11 @@ boundary.
   paths. `Write` and `Edit` declare `file_path`; Claude Code's documented
   `NotebookEdit` contract declares `notebook_path`. Relative paths are resolved
   against the hook payload's `cwd` (or `CLAUDE_PROJECT_DIR` as a fallback), and
-  dot segments and Windows separators are normalised before matching. These
-  operator-owned files must not be changed through Bash or another mechanism
-  either; arbitrary Bash file writes are not inferred by the hook.
+  dot segments and Windows separators are normalised before matching. Windows
+  drive/UNC spellings and paths on Windows or macOS hosts are matched without
+  case distinctions so a case-only filesystem alias cannot bypass the guard.
+  These operator-owned files must not be changed through Bash or another
+  mechanism either; arbitrary Bash file writes are not inferred by the hook.
 - **AgentSec MCP calls carrying `url`, `sql`, `command`, `token` and similar.**
   Redundant with the closed tool schemas and `tests/test_mcp_contract.py` — kept
   as the third layer because the cost is one dictionary lookup. Scoped to this

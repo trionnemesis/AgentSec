@@ -31,9 +31,23 @@ INDETERMINATE_INPUT_REASON = (
 )
 
 
-def run_hook(payload: object) -> subprocess.CompletedProcess[str]:
+def run_hook(
+    payload: object, *, platform: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, str(HOOK)]
+    if platform is not None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import runpy,sys; sys.platform=sys.argv[1]; "
+                "runpy.run_path(sys.argv[2], run_name='__main__')"
+            ),
+            platform,
+            str(HOOK),
+        ]
     return subprocess.run(
-        [sys.executable, str(HOOK)],
+        command,
         input=json.dumps(payload),
         capture_output=True, text=True, check=False,
     )
@@ -126,6 +140,9 @@ def test_refuses_cli_run_in_favour_of_the_audited_mcp_tool() -> None:
         ("../policy/targets.yaml", "/repo/src"),
         (r"policy\approvals.yaml", DEFAULT_CWD),
         (r"C:\repo\fixtures\demo\x.json", DEFAULT_CWD),
+        (r"C:\repo\POLICY\targets.yaml", DEFAULT_CWD),
+        (r"\\server\share\FIXTURES\demo\x.json", DEFAULT_CWD),
+        (r"PoLiCy\approvals.yaml", r"C:\repo"),
     ],
 )
 def test_refuses_writes_to_operator_owned_files(path: str, cwd: str) -> None:
@@ -155,6 +172,49 @@ def test_refuses_edit_of_a_protected_relative_path() -> None:
 )
 def test_allows_writes_outside_the_protected_set(path: str) -> None:
     assert decide("Write", {"file_path": path}) is None
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+def test_simulated_case_insensitive_host_matches_protected_path_aliases(
+    platform: str,
+) -> None:
+    # This exercises the platform branch in a subprocess; it is not a native
+    # filesystem integration test.
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/Policy/targets.yaml"},
+            "cwd": DEFAULT_CWD,
+        },
+        platform=platform,
+    )
+    assert deny_payload(result)["permissionDecision"] == "deny"
+
+
+def test_simulated_linux_host_keeps_posix_paths_case_sensitive() -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/Policy/targets.yaml"},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="linux",
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+def test_case_insensitive_matching_does_not_expand_protected_file_names() -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/POLICY/TARGETS.YAML.bak"},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="darwin",
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
 
 
 def test_refuses_mcp_calls_carrying_a_locator() -> None:
