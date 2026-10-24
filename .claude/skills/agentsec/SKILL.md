@@ -17,6 +17,13 @@ author one reviewed Attack-Detection Contract, read structured results, locate
 responsible code, and prepare fixes and regressions. The deterministic harness
 decides pass/fail — never assert a verdict yourself.
 
+Keep the interfaces in their actual roles. MCP validates, projects and delegates
+to `HarnessService`; it adds no policy or verdict logic. This skill is guidance,
+and its Phase 0 profile proves package integrity only. The host hook is defense in
+depth around coding-agent tool requests, not a substitute for service policy.
+The runtime Live Artifact is a read-only view of published project evidence;
+the public GitHub Pages site is only an introduction and receives no user logs.
+
 The Red and Blue references split operational detail for progressive
 disclosure. They are lanes inside this single skill, not independently
 executable skills or new product surfaces. One contract must continue to bind
@@ -66,6 +73,38 @@ Only a `verifiable` risk enters contract authoring. Do not invent a prompt,
 URL, shell command, target path or adapter operation to make a
 `not_verifiable` risk green. Report the coverage gap and stop.
 
+### Read the complete evidence chain
+
+For every selected risk, keep these claims separate and cite the identifiers
+that connect them:
+
+1. **Repository risk:** name the surface, location, rule and severity. A static
+   match is a reason to test, not a verdict.
+2. **Reviewed scenario:** name the covering scenario and contract. `verifiable`
+   says the scenario exists; it does not say it ran.
+3. **Run:** name the `run_id`. `verified` says a covering run returned a verdict,
+   including a gap or `error`; it is not a synonym for secure.
+4. **Four axes:** report prevention, detection, evidence and response separately.
+   Preserve every `not_tested` and `error`.
+5. **Provenance:** report `recorded`, `mixed` or `live`, plus executor, adapter
+   and backend diagnostics. Provenance qualifies the observation; it does not
+   change the verdict or fill an untested axis.
+6. **Remediation:** choose the fix from the failed axes and retain the reviewed
+   scenario as the regression. Only a later passing run verifies the fix.
+
+Read a single run through `agentsec_get_run` or
+`agentsec://runs/{run_id}`. Both return the same published run envelope, with
+`run.provenance` containing `executor`, `adapter`, `evidence` and `backends`.
+The `evidence` value uses the same ADR 0010 derivation as reports and the
+composed `agentsec://dashboard/latest` resource. Backend kind alone never
+promotes a run to `live`; missing, insufficient, errored or no-execution
+context stays conservatively `recorded`.
+The published run remains a projection: it does not expose raw evidence
+references, approval tokens, raw paths or queries, principals, or tenant data.
+Its adapter and collector/backend diagnostics use closed vocabularies;
+unsupported persisted labels collapse to `unknown` and unsupported source keys
+are omitted rather than echoed.
+
 ## 2. Red execution plan
 
 When the task reaches attack-step design, target compatibility, prevention
@@ -103,9 +142,9 @@ Prevention `pass` means the control held and the Blue side needs work.
 Prevention `fail` means both the control and detection need fixes. This
 preserves ADR 0004 and does not alter verdict precedence.
 
-A recorded-fixture `secure` result is not live proof. Until a single-run
-resource reliably carries provenance, read it from
-`agentsec_generate_report` or `agentsec://dashboard/latest`.
+A recorded-fixture `secure` result is not live proof. Read the published
+single-run provenance together with the verdict and four axes; do not infer
+provenance from the collector or adapter name.
 
 ## Investigating a finding
 
@@ -154,4 +193,6 @@ remain deferred.
 - `docs/adr/0004-detection-outranks-prevention.md` — verdict precedence
 - `docs/adr/0008-skill-assurance-bounded-context.md` — static versus dynamic skill assurance
 - `docs/adr/0009-repository-first-golden-path.md` — repository-first triage
+- `docs/adr/0010-provenance-from-correlation.md` — provenance qualification
+- `docs/adr/0011-evidence-workflow-and-interface-roles.md` — evidence chain and role boundaries
 - `docs/roadmap.md` — named coverage gaps and parked work

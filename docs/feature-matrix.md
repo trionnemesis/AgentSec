@@ -17,10 +17,11 @@ This document fixes the order. It does not remove anything that works.
 ## The golden path
 
 ```
-agentsec init                     select the repository
-agentsec scan                     find the attack surface and rank it
-agentsec scan --verify -t <id>    hand the provable high-risk subset to the harness
-agentsec dashboard --html results/dashboard.html  render it, or read agentsec://project/risks live
+agentsec init                                      select the repository
+agentsec scan                                      find the attack surface and rank it
+agentsec dashboard --html results/dashboard.html  inspect risks without starting a run
+agentsec scan --verify -t <id>                     explicitly verify the runnable high-risk subset
+agentsec dashboard --html results/dashboard.html  read the run, axes and provenance, then remediate
 ```
 
 Stated once, in one sentence:
@@ -39,7 +40,7 @@ Everything below is classified by its relationship to that path.
 converges one step earlier, on the repository scan, for a reason the gate
 proposal exposes rather than contradicts:
 
-**The CI gate cannot be the entry point, because reaching it requires a
+**The CI gate and dynamic verification cannot be the entry point, because reaching them requires a
 configured target.** A target means an allowlist entry, a staging agent, and
 usually a Wazuh or OTel backend — work owned by a security or platform team that
 most engineers evaluating AgentSec do not have. An entry point that first
@@ -49,6 +50,36 @@ requires someone else's sprint is not an entry point.
 else, and it produces the one thing that makes the gate worth configuring: a
 specific, named list of what in *this* repository is worth testing. The CI gate
 is still the destination. It is now the second step rather than the first.
+
+### Read one risk all the way through
+
+Do not collapse the six claims below into one status. The dashboard, report and
+single-run resource are views of this same evidence chain:
+
+| Step | Question | Honest reading |
+|---|---|---|
+| Repository risk | What surface did inspection flag? | A deterministic static match is a reason to test, not a verdict. |
+| Reviewed scenario | What Attack–Detection Contract covers it? | `verifiable` means a matching scenario exists; it has not necessarily run. |
+| Run | Which immutable execution produced the result? | `verified` means a verdict exists, including a gap or `error`; it does not mean safe. |
+| Four axes | What held, failed, errored or was unasserted? | Read prevention, detection, evidence and response individually; `not_tested` is never pass. |
+| Provenance | What did this run actually observe? | `recorded`, `mixed` and `live` qualify the result; they do not change its verdict. |
+| Remediation | What changes, and what must rerun? | Follow the failed axes, keep the same reviewed contract, and verify only with a later run. |
+
+The runtime Live Artifact is a read-only evidence interface over the project's
+published DTO. The public eight-page GitHub Pages site is only an introduction;
+it uses labelled examples and never receives or publishes a user's raw evidence.
+See [ADR 0011](adr/0011-evidence-workflow-and-interface-roles.md).
+
+### Responsibility matrix
+
+| Component | Role | Boundary |
+|---|---|---|
+| Agent / workbench | Discover and classify runtime agent code separately from development-agent configuration; triage risks, draft contracts, read results and prepare fixes. | Does not grant permission, execute the harness or decide a verdict. |
+| MCP gateway | Validate constrained inputs, project allowed output and delegate to `HarnessService`. | Adapter only; no independent policy or capability. |
+| Single AgentSec skill | Route one workbench through Red and Blue guidance; Phase 0 pins reviewed package bytes and links. | Guidance is not permission; static integrity is not dynamic Skill Assurance. |
+| Host hook | Reject unsafe coding-agent tool requests as defense in depth. | Does not replace service policy and is not target-side evidence. |
+| Deterministic service / evaluator | Enforce policy, execute reviewed scenarios, collect evidence, resolve four axes and persist/query results. | No model, UI or gateway may recalculate the verdict. |
+| Live Artifact | Present projected risks, runs, axes, provenance and next actions without mutation. | Read-only; no raw private evidence, run start, finding mutation or verdict inference. |
 
 ---
 
@@ -66,7 +97,7 @@ Changes here need an ADR. These are load-bearing.
 | Repository risk plane | `inspect/` | Turns the inventory into ranked risks, and each risk into `verified` / `verifiable` / `not_verifiable` ([ADR 0009](adr/0009-repository-first-golden-path.md)). |
 | `config-surface:` correlation | `scenario/surface_tags.py` | The one bridge from a static surface to a runnable scenario, shared by the risk and posture planes so neither can disagree about a surface match. The posture plane additionally requires a `threat-class:` tag match before calling a finding `covered` ([#68](https://github.com/trionnemesis/AgentSec/issues/68)); the risk plane cannot yet apply that requirement because a `RepoRisk` carries no scanner-emitted category to match against. |
 | Replay executor + fixture corpus | `execution/replay.py` | Deterministic. What CI relies on. |
-| Run provenance | `RunSummary.provenance` | `recorded` / `live` / `mixed`. A fixture-derived `secure` is never presented as a live one ([#27](https://github.com/trionnemesis/AgentSec/issues/27)). |
+| Run provenance | Published run/report/dashboard summaries | `recorded` / `live` / `mixed`, derived from the same persisted execution and qualified evidence context. Backend kind alone cannot promote live, and a fixture-derived `secure` is never presented as live proof ([ADR 0010](adr/0010-provenance-from-correlation.md)). |
 | Policy guard, approvals, target allowlist | `policy/` | One decision point for CLI, MCP and CI. `production` is not expressible. |
 | Publication projection | `reporting/publish.py` | Fail-closed. An output kind with no policy is refused, not sent. |
 | CLI exit codes | `cli.py` | `0` success · `1` command-specific blocking/invalid result · `2` could not tell. The distinction is the gate's credibility. |
@@ -108,7 +139,7 @@ for the golden path.
 |---|---|---|
 | Finding workflow | Built | The fix loop after a verdict. Engineer-facing states are `open → fixing → verified`; the full transition table is expert mode. |
 | Report normaliser → JUnit / HTML / JSON | Built | How CI and tickets consume a run. |
-| Live Artifact dashboard page | Built | An alternative *interface* to the same published DTO. Never a source of capability the CLI lacks. |
+| Live Artifact dashboard page | Built, client smoke test open | A read-only runtime *interface* to the same published DTO, distinct from public GitHub Pages. Never a source of capability the CLI lacks. Real Desktop/Cowork connect, render and refresh acceptance remains [#20](https://github.com/trionnemesis/AgentSec/issues/20). |
 | MCP gateway | Built, thinly proven | An adapter. `HarnessService` is the API; the gateway may not grow behaviour the CLI does not have. |
 | Claude Desktop / Cowork packaging | Built, manual | Read-only registration for the Artifact path. |
 | Static posture ingestion | Built | Opt-in. Requires a third-party scanner's report; absent by default and `not_tested` when absent ([#25](https://github.com/trionnemesis/AgentSec/issues/25)). |
@@ -184,15 +215,16 @@ only lists what works is marketing.
    `demo-agent-fixture` (environment `local`) correctly refuses with exit 2
    rather than selecting nothing and reporting success. Until fixtures exist,
    `--verify` needs a real staging target.
-4. **The catalogue does not travel with the CLI.** `Settings.scenarios_dir` is
-   `<workspace>/scenarios`, so in a repository that is not a checkout of
-   AgentSec there are no scenarios to triage against and *every* risk resolves
-   to `not_verifiable` — correct, and misleading at a glance now that the screen
-   above it can say `confirmed langgraph`. Bundling the reviewed catalogue as
-   package data is the fix; which catalogue version an installed CLI should
-   trust is the question that makes it more than a one-line change.
-5. **No end-to-end run against a live agent has happened.** This remains the
-   single most valuable open item, exactly as #32 says.
+4. **The catalogue now travels with installed source/package builds, but hosted
+   external-caller proof is still missing.** All nine reviewed scenarios ship as
+   package data and `AGENTSEC_CATALOGUE=builtin` selects them without a checkout.
+   That closes the local package/CLI boundary only. [#50](https://github.com/trionnemesis/AgentSec/issues/50)
+   still requires an actual second-repository Actions URL and artifacts; local
+   isolated repositories, even on hosted runners, are not that proof.
+5. **No end-to-end run against a live agent has happened.** The Wazuh rule pack
+   has a static catalogue contract, but the `AGT-CONFIG-001..005` recordings are
+   still operator-owned and live Wazuh/OTel acceptance remains open in
+   [#86](https://github.com/trionnemesis/AgentSec/issues/86).
 
 ---
 

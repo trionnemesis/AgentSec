@@ -105,11 +105,11 @@ flowchart TD
 > 尚未發佈到 PyPI —— 請從 release 或原始碼安裝。
 
 ```bash
-# 本機使用的 release wheel（固定版本）
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.5.0/agentsec-0.5.0-py3-none-any.whl
+# 本機使用的最新已發佈 release wheel（固定版本）
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.4/agentsec-0.4.4-py3-none-any.whl
 
-# 或安裝目前的 main
-pip install git+https://github.com/trionnemesis/AgentSec.git
+# 或用完整、已審查的 commit SHA 評估尚未發佈的 v0.5.0 原始碼
+pip install "git+https://github.com/trionnemesis/AgentSec.git@291df29a2febf2b98686b42972a8c5205ca93b22"
 
 # 或 clone 下來做本機開發
 git clone https://github.com/trionnemesis/AgentSec.git
@@ -117,8 +117,10 @@ cd AgentSec
 pip install -e '.[dev]'
 ```
 
-本機使用請固定 release 版本。Reusable CI gate 另要求完整、已審查的 commit SHA，
-並驗證獨立的非 editable VCS 安裝；詳見[消費端設定](docs/external-consumer.md)。
+目前最新已發佈版本是 v0.4.4；目前原始碼雖宣告 v0.5.0，但尚無 v0.5.0
+release 資產。本機使用請固定 release 版本；若要評估未發佈原始碼，請固定完整、
+已審查的 commit SHA。Reusable CI gate 同樣要求完整 SHA，並驗證獨立的非
+editable VCS 安裝；詳見[消費端設定](docs/external-consumer.md)。
 
 ### 2. 掃描你自己的 repository
 
@@ -263,9 +265,10 @@ Phase 1/2 runner 也仍維持 parked。已探索到的 skill 若沒有靜態 sui
 
 ### 5. 在 CI 中為真實 Agent 把關
 
-從擁有該 agent 的 repo 呼叫 reusable workflow。v0.5.0 要求 `uses:` 固定到
+從擁有該 agent 的 repo 呼叫 reusable workflow。目前尚未發佈的 v0.5.0
+原始碼契約要求 `uses:` 固定到
 已審查的完整 commit SHA，並提供新增的必要輸入 `agentsec-sha`。請替換下方
-兩個佔位符；兩者可以指向同一個已審查的 release commit。
+兩個佔位符；兩者可以指向同一個已審查的 commit。
 
 ```yaml
 jobs:
@@ -509,7 +512,7 @@ runner 上也測得動。
 
 ## 狀態
 
-Alpha，最新版本為 [`v0.5.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.5.0)。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。端到端驗證一個**外部** agent 控制 —— 真實 Claude Code session、第三方 PreToolUse hook，以及把兩者關聯起來的證據 —— 另外追蹤於 [`docs/route-a-resumption.md`](docs/route-a-resumption.md)，目前**尚未**驗證成立。
+Alpha，最新已發佈版本為 [`v0.4.4`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.4)；目前原始碼宣告 v0.5.0，但尚未發佈。決定性核心 —— schema → 政策 → replay → 證據 → 判定 → 報表 —— 已完成且有測試覆蓋。Phase 0 skill package assurance 是靜態完整性閘門；動態 Skill Assurance plane 仍為 `not_tested`。Promptfoo 執行器、Wazuh/OTel HTTP 蒐集器與 MCP server binding 已寫好，但尚未在真實系統上驗證；PyRIT 與 pytest 執行器已宣告，會乾淨地拒絕執行。[`docs/roadmap.md`](docs/roadmap.md) 對每一列都誠實標示。端到端驗證一個**外部** agent 控制 —— 真實 Claude Code session、第三方 PreToolUse hook，以及把兩者關聯起來的證據 —— 另外追蹤於 [`docs/route-a-resumption.md`](docs/route-a-resumption.md)，目前**尚未**驗證成立。
 
 預設 workspace 模式仍讀取 `<workspace>/scenarios`。安裝的 wheel 已包含九個
 經審查的情境；消費端沒有本機 scenarios 時，可設定 `AGENTSEC_CATALOGUE=builtin`

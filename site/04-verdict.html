@@ -19,7 +19,7 @@
     <div class="page-intro">
       <p class="eyebrow">Deterministic evaluation</p>
       <h2>Turn evidence into one verdict.</h2>
-      <p class="supporting-copy">No language model, clock, or network decides the result. The same correlated evidence produces the same verdict, and missing, late, or broken evidence cannot become a pass.</p>
+      <p class="supporting-copy">No language model, clock, UI, or network decides the result. The same contract and correlated evidence produce the same verdict. Read it with the four axes and provenance: missing, late, untested, or broken evidence cannot become a pass.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0002-deterministic-verdict.md" rel="noopener noreferrer">Read the verdict model ↗</a></div>
     </div>
 
@@ -33,7 +33,7 @@
         <div class="verdict-row" role="listitem"><span>05</span><code>response_gap</code><span>the alert did not trigger action</span></div>
         <div class="verdict-row verdict-row--secure" role="listitem"><span>06</span><code>secure</code><span>every asserted axis passed</span></div>
       </div>
-      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>Remediation reads the prevention axis too: <code>detection_gap</code> plus prevention pass means fix detection only; prevention fail means fix both control and detection.</span></p>
+      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span><code>recorded</code>, <code>mixed</code>, and <code>live</code> say what the run observed; they do not change the verdict. Remediation reads the axes: <code>detection_gap</code> plus prevention pass means fix detection only; prevention fail means fix both.</span></p>
     </div>
   </main>
 

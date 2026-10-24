@@ -5,7 +5,7 @@ profile: static
 skill_id: agentsec
 entrypoint:
   path: .claude/skills/agentsec/SKILL.md
-  digest: sha256:ed2b30895c3fd438a240fcf0ff6f9e2c4a5db4db65b78e12e9a376c74630fd82
+  digest: sha256:3657a7837550465c36951b4410a8d48cccce5552bf40a55bcd4328a37d2c85cf
 references:
   - path: .claude/skills/agentsec/references/red-execution.md
     digest: sha256:f0233808af09a99d8d31d72e2b668c7030a3a10006893deced2eda84f2194a9f

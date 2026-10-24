@@ -115,11 +115,11 @@ Requires Python 3.11+. No agent, no Wazuh and no network needed — the repo shi
 > Not yet published to PyPI — install from a release or from source.
 
 ```bash
-# the released wheel for local use (version pinned)
-pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.5.0/agentsec-0.5.0-py3-none-any.whl
+# latest published wheel for local use (version pinned)
+pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.4/agentsec-0.4.4-py3-none-any.whl
 
-# or the current main
-pip install git+https://github.com/trionnemesis/AgentSec.git
+# or evaluate unreleased v0.5.0 source at a full reviewed commit SHA
+pip install "git+https://github.com/trionnemesis/AgentSec.git@291df29a2febf2b98686b42972a8c5205ca93b22"
 
 # or clone for local development
 git clone https://github.com/trionnemesis/AgentSec.git
@@ -127,9 +127,11 @@ cd AgentSec
 pip install -e '.[dev]'
 ```
 
-Pin a release for local use. The reusable CI gate requires a full reviewed
-commit SHA and verifies a separate non-editable VCS installation; see
-[external consumer setup](docs/external-consumer.md).
+The latest published release is v0.4.4; the current source tree declares v0.5.0
+but no v0.5.0 release assets exist yet. Pin a release for local use, or a full
+reviewed commit SHA when evaluating unreleased source. The reusable CI gate also
+requires a full reviewed commit SHA and verifies a separate non-editable VCS
+installation; see [external consumer setup](docs/external-consumer.md).
 
 ### 2. Scan your own repository
 
@@ -299,10 +301,11 @@ bare URLs.
 
 ### 5. Gate a real agent in CI
 
-Call the reusable workflow from the repository that owns the agent. In v0.5.0,
+Call the reusable workflow from the repository that owns the agent. In the
+current unreleased v0.5.0 source contract,
 pin `uses:` to a reviewed full commit SHA and provide the required
 `agentsec-sha` input. Replace both placeholders; they may name the same reviewed
-release commit.
+commit.
 
 ```yaml
 jobs:
@@ -577,7 +580,7 @@ runner.
 
 ## Status
 
-Alpha; latest release [`v0.5.0`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.5.0). The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly. Verifying an *external* agent control end to end — a real Claude Code session, a third-party PreToolUse hook, and the evidence that correlates them — is tracked separately in [`docs/route-a-resumption.md`](docs/route-a-resumption.md) and is **not** yet proven.
+Alpha; latest published release [`v0.4.4`](https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.4), while the current source tree declares v0.5.0 and is not released. The deterministic core — schema → policy → replay → evidence → verdict → report — is complete and tested. Phase 0 skill-package assurance is a static integrity gate, while the dynamic Skill Assurance plane remains `not_tested`. The Promptfoo executor, the Wazuh/OTel HTTP collectors and the MCP server binding are written but not yet proven against a live system; PyRIT and pytest executors are declared and refuse cleanly. [`docs/roadmap.md`](docs/roadmap.md) marks every row honestly. Verifying an *external* agent control end to end — a real Claude Code session, a third-party PreToolUse hook, and the evidence that correlates them — is tracked separately in [`docs/route-a-resumption.md`](docs/route-a-resumption.md) and is **not** yet proven.
 
 Workspace mode still reads `<workspace>/scenarios` by default. Installed wheels
 now include all nine reviewed scenarios; set `AGENTSEC_CATALOGUE=builtin` to use
