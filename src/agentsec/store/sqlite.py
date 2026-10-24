@@ -105,9 +105,10 @@ _MIGRATIONS: list[tuple[int, str]] = [
         -- already used, so the next claim continues past it.
         INSERT INTO run_counter (day, next_n)
         SELECT substr(run_id, 5, 8) AS day,
-               MAX(CAST(substr(run_id, 14, 3) AS INTEGER)) AS next_n
+               MAX(CAST(substr(run_id, 14) AS INTEGER)) AS next_n
         FROM runs
-        WHERE run_id LIKE 'RUN-________-___'
+        WHERE run_id GLOB 'RUN-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9]*'
+          AND substr(run_id, 14) NOT GLOB '*[^0-9]*'
         GROUP BY day
         ON CONFLICT(day) DO UPDATE SET
             next_n = MAX(run_counter.next_n, excluded.next_n);

@@ -176,6 +176,30 @@ def test_migrating_a_v1_database_with_existing_runs_seeds_the_counter_past_them(
     assert store.next_run_id("20260101") == "RUN-20260101-001"
 
 
+def test_v1_migration_seeds_past_four_digit_ids_without_accepting_malformed_ids(
+    tmp_path: Path,
+) -> None:
+    """The old ``:03d`` allocator had a minimum width, not a 999 ceiling."""
+    db_path = tmp_path / "legacy_four_digit_run.db"
+    _make_v1_database(db_path)
+    _insert_run_row(db_path, "RUN-20261024-1000")
+    # SQLite CAST accepts a numeric prefix; the migration must not let this
+    # malformed id reseed the counter to 9999.
+    _insert_run_row(db_path, "RUN-20261024-9999oops")
+
+    store = ResultStore(db_path)
+
+    assert store.next_run_id("20261024") == "RUN-20261024-1001"
+    conn = sqlite3.connect(db_path)
+    try:
+        stored = conn.execute(
+            "SELECT payload FROM runs WHERE run_id = ?", ("RUN-20261024-1000",)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert stored == ("{}",)
+
+
 def test_a_future_schema_version_is_refused_rather_than_silently_opened(
     tmp_path: Path,
 ) -> None:
