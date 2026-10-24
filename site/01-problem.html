@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="AgentSec closes the blind-success gap in AI agent security testing.">
-  <title>AgentSec — The blind-success gap</title>
+  <meta name="description" content="AgentSec keeps static risks, executed scenarios, deterministic verdicts, and evidence provenance distinct.">
+  <title>AgentSec — Do not turn missing evidence green</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
@@ -17,15 +17,15 @@
 
   <main id="main-content" class="page page--split">
     <div class="page-intro">
-      <p class="eyebrow">The blind-success gap</p>
-      <h2>Blocking an attack is only half the story.</h2>
-      <p class="supporting-copy">A prevention failure that alerts is visible. A prevention failure that alerts nothing is a blind spot. “Not tested” is not a pass.</p>
+      <p class="eyebrow">The evidence gap</p>
+      <h2>Do not turn uncertainty into green.</h2>
+      <p class="supporting-copy">A static match, an available scenario, an executed run, a control outcome, and live evidence are five different claims. AgentSec keeps them separate so “not tested” can never masquerade as a pass.</p>
       <div class="page-actions"><a class="button button--primary" href="03-contract.html">See the four axes <span aria-hidden="true">→</span></a></div>
     </div>
 
-    <div class="comparison" aria-label="Visible failure and blind success comparison">
-      <article class="compare-card compare-card--visible"><span class="card-number">01 / visible failure</span><h3>Prevention gap</h3><p>The control failed, but the blue side can see it fail and schedule a fix.</p></article>
-      <article class="compare-card compare-card--blind"><span class="card-number">02 / blind success</span><h3>Detection gap</h3><p>Nothing alerted — and here the attack also worked, so you learn about it from the incident. The verdict is the same even when the attempt was blocked: silence is the gap.</p></article>
+    <div class="comparison" aria-label="Static risk and dynamic verification comparison">
+      <article class="compare-card compare-card--visible"><span class="card-number">01 / inspect</span><h3>Risk is a reason to test</h3><p>Read repository code and configuration without importing or executing it. A match may be <code>verifiable</code>, but it is not a verdict.</p></article>
+      <article class="compare-card compare-card--blind"><span class="card-number">02 / verify</span><h3>Evidence earns the claim</h3><p>A reviewed scenario must run. Read all four axes and its <code>recorded</code>, <code>mixed</code>, or <code>live</code> provenance before choosing a fix.</p></article>
     </div>
   </main>
 

@@ -20,26 +20,29 @@
       <div class="page-intro">
         <p class="eyebrow">Get started</p>
         <h2>Triage the repository first.</h2>
-        <p class="supporting-copy"><code>agentsec init</code> and <code>agentsec scan</code> need nothing configured, and rank a repository's real attack surface before anything runs. A <code>verifiable</code> risk then becomes a reviewed scenario against a real target—try the offline fixture corpus first if you don't have one yet.</p>
+        <p class="supporting-copy"><code>agentsec init</code>, <code>agentsec scan</code>, and the first dashboard read need nothing configured. They inventory and rank before anything runs. Dynamic verification is a separate, explicit action against an allowlisted target.</p>
       </div>
       <div class="stacked-actions">
         <a class="button button--primary button--block" href="https://github.com/trionnemesis/AgentSec/blob/main/README.md#quick-start" rel="noopener noreferrer"><span>Read the quick start</span><span aria-hidden="true">↗</span></a>
-        <a class="button button--block" href="https://github.com/trionnemesis/AgentSec/releases/tag/v0.5.0" rel="noopener noreferrer"><span>Download the v0.5.0 release</span><span aria-hidden="true">↗</span></a>
+        <a class="button button--block" href="https://github.com/trionnemesis/AgentSec/releases/tag/v0.4.4" rel="noopener noreferrer"><span>Download the v0.4.4 release</span><span aria-hidden="true">↗</span></a>
         <a class="button button--block" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/roadmap.md" rel="noopener noreferrer"><span>See the roadmap</span><span aria-hidden="true">↗</span></a>
       </div>
     </div>
 
     <div class="terminal" aria-label="AgentSec quick start commands">
       <div class="terminal-bar"><i aria-hidden="true"></i><span>agentsec / terminal</span></div>
-      <pre><code><span class="prompt">$</span> pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.5.0/agentsec-0.5.0-py3-none-any.whl
-<span class="comment">  # or track main: pip install git+https://github.com/trionnemesis/AgentSec.git</span>
+      <pre><code><span class="prompt">$</span> pip install https://github.com/trionnemesis/AgentSec/releases/download/v0.4.4/agentsec-0.4.4-py3-none-any.whl
+<span class="comment">  # main is unreleased; pin a full reviewed commit SHA if evaluating it</span>
 <span class="prompt">$</span> agentsec init
 <span class="prompt">$</span> agentsec scan
+<span class="prompt">$</span> agentsec dashboard
+<span class="comment">  # optional dynamic verification after reviewing the risk and target</span>
 <span class="prompt">$</span> agentsec scan --verify --target order-agent-staging
 <span class="prompt">$</span> agentsec dashboard</code></pre>
     </div>
-    <p class="supporting-copy">The v0.5.0 reusable CI gate requires a full <code>agentsec-sha</code> and loads the packaged nine-scenario catalogue. <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/external-consumer.md" rel="noopener noreferrer">Read the consumer migration guide ↗</a></p>
-    <span class="status-line">Alpha · v0.5.0 · offline package/CLI path verified; hosted cross-repository workflow and live Wazuh/OTel staging remain validation gaps</span>
+    <p class="supporting-copy">Current main declares v0.5.0 and includes the packaged nine-scenario catalogue, but it is not a published release. Its reusable CI gate requires a full reviewed <code>agentsec-sha</code>. <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/external-consumer.md" rel="noopener noreferrer">Read the consumer migration guide ↗</a></p>
+    <span class="status-line">Alpha · latest release v0.4.4 · main targets v0.5.0; real Claude Code Artifact render, hosted external caller, operator recordings, and live Wazuh/OTel remain unverified</span>
+    <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>Claude Code is the intended Live Artifact display: its session reads the local DTO, renders self-contained HTML, and publishes a snapshot. Refresh re-reads and republishes the same URL; the page itself never calls local MCP. <a href="https://github.com/trionnemesis/AgentSec/blob/main/docs/claude-code-artifact.md" rel="noopener noreferrer">Read the workflow ↗</a> <a href="https://github.com/trionnemesis/AgentSec/issues/20" rel="noopener noreferrer">Desktop/Cowork #20 ↗</a> is a separate legacy optional-client check. Acceptance also remains open for <a href="https://github.com/trionnemesis/AgentSec/issues/50" rel="noopener noreferrer">a hosted external caller #50 ↗</a> and <a href="https://github.com/trionnemesis/AgentSec/issues/86" rel="noopener noreferrer">operator recordings and live Wazuh #86 ↗</a>.</span></p>
     <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>One purple-team skill routes all four phases, linking to red or blue guidance only when that lane begins. Static Phase 0 checks package integrity in CI; it does not execute the guidance or issue a <code>PurpleVerdict</code>.</span></p>
   </main>
 

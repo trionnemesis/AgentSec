@@ -19,9 +19,9 @@
     <div class="page-intro">
       <p class="eyebrow">Repository-first security</p>
       <h2>See what your repository exposes.</h2>
-      <p class="supporting-copy">AgentSec maps instructions, agents, skills, hooks, MCP servers, tool grants, and memory stores to ranked risks, then says which ones a scenario can actually settle. A static grade is context; it is never the verdict.</p>
+      <p class="supporting-copy">AgentSec classifies runtime agent code separately from development-agent configuration, then maps instructions, agents, skills, hooks, MCP servers, tool grants, and memory stores to ranked risks. It reads files; it does not import or execute the repository.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/adr/0009-repository-first-golden-path.md" rel="noopener noreferrer">Explore the golden path ↗</a></div>
-      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>New in v0.4.4: the settings and memory surfaces moved from <code>not_verifiable</code> to <code>verifiable</code>. Skills is the one surface no scenario covers yet.</span></p>
+      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>Runtime presence is <code>confirmed</code>, <code>likely</code>, <code>configuration_only</code>, <code>not_detected</code>, or <code>unsupported</code>. None is a security grade. On current main, settings and default memory surfaces are <code>verifiable</code>; skills still has no covering scenario.</span></p>
     </div>
 
     <div class="visual-panel" aria-label="Repository surfaces and the scenarios that settle them">
@@ -38,7 +38,7 @@
           <li class="triage-row triage-row--gap"><span class="triage-surface">skills<code>.claude/skills</code></span><span class="triage-scenario triage-scenario--none">no scenario yet</span><span class="state-chip state-chip--gap">not_verifiable</span></li>
         </ul>
       </div>
-      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span><code>verifiable</code> means a scenario exists and has not run here yet. Once it produces any verdict, gap or <code>secure</code>, the risk is <code>verified</code>, and the outcome is read in the purple plane. <code>not_verifiable</code> is a catalogue gap, never a pass.</span></p>
+      <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span><code>verifiable</code> means a reviewed scenario covers the surface; it does not say that the scenario ran. <code>verified</code> means a verdict exists — including a gap or <code>error</code> — not that the risk is safe. <code>not_verifiable</code> is a coverage gap, never a pass.</span></p>
     </div>
   </main>
 

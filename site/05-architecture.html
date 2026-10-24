@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="AgentSec runs one security pipeline from contract validation to CI reports.">
-  <title>AgentSec — From repository to evidence</title>
+  <meta name="description" content="AgentSec preserves one traceable path from repository risk to evidence-aware remediation.">
+  <title>AgentSec — Follow the evidence chain</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
@@ -17,21 +17,21 @@
 
   <main id="main-content" class="page page--single">
     <div class="page-intro">
-      <p class="eyebrow">One pipeline</p>
-      <h2>Run the same logic locally and in CI.</h2>
-      <p class="supporting-copy">Validate the contract. Check policy. Replay against staging. Poll and correlate telemetry to its deadline. Publish JUnit, HTML, or JSON. The gate does not need an AI client to decide.</p>
+      <p class="eyebrow">One evidence workflow</p>
+      <h2>Follow one risk all the way through.</h2>
+      <p class="supporting-copy">Claude Code's Live Artifact, the report, and the published run are read-only views of the same stored result. Each preserves the link from a repository location to its contract, run, four axes, provenance, and the fix that should be tested next.</p>
       <div class="page-actions"><a class="button button--primary" href="https://github.com/trionnemesis/AgentSec/blob/main/docs/architecture.md" rel="noopener noreferrer">View the architecture ↗</a></div>
     </div>
 
-    <div class="flow" aria-label="AgentSec execution pipeline">
-      <div class="flow-step"><span>01</span><strong>Validate<br>the contract</strong></div>
-      <div class="flow-step"><span>02</span><strong>Check<br>policy</strong></div>
-      <div class="flow-step"><span>03</span><strong>Replay<br>the scenario</strong></div>
-      <div class="flow-step"><span>04</span><strong>Poll + correlate<br>evidence</strong></div>
-      <div class="flow-step"><span>05</span><strong>Resolve<br>the verdict</strong></div>
-      <div class="flow-step"><span>06</span><strong>Publish<br>the report</strong></div>
+    <div class="flow" aria-label="AgentSec evidence workflow">
+      <div class="flow-step"><span>01 / inspect</span><strong>Repository<br>surface + risk</strong></div>
+      <div class="flow-step"><span>02 / review</span><strong>Covering<br>scenario contract</strong></div>
+      <div class="flow-step"><span>03 / execute</span><strong>Policy-bound<br>run id</strong></div>
+      <div class="flow-step"><span>04 / decide</span><strong>Four axes<br>+ one verdict</strong></div>
+      <div class="flow-step"><span>05 / qualify</span><strong>Recorded · mixed<br>· live provenance</strong></div>
+      <div class="flow-step"><span>06 / improve</span><strong>Remediate<br>+ rerun regression</strong></div>
     </div>
-    <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span>Wazuh pagination consumes the bounded run window; OTel and audit records must carry the current <code>agentsec.run_id</code>.</span></p>
+    <p class="micro-note"><span class="proof-dot" aria-hidden="true"></span><span><code>verified</code> only means a covering run returned a verdict. It can be <code>error</code> or any gap. Provenance is derived from persisted execution plus correlated, timestamp-qualified evidence; backend kind alone cannot earn <code>live</code>.</span></p>
   </main>
 
   <footer class="page-footer">
