@@ -223,7 +223,7 @@ TOOLS: tuple[ToolSpec, ...] = (
         ),
         risk="read",
         input_schema=_obj(
-            {"run_id": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$"}},
+            {"run_id": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3,}$"}},
             ["run_id"],
         ),
         handler="get_published_run",
@@ -240,8 +240,8 @@ TOOLS: tuple[ToolSpec, ...] = (
         risk="read",
         input_schema=_obj(
             {
-                "run_a": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$"},
-                "run_b": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3}$"},
+                "run_a": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3,}$"},
+                "run_b": {"type": "string", "pattern": "^RUN-[0-9]{8}-[0-9]{3,}$"},
             },
             ["run_a", "run_b"],
         ),

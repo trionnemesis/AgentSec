@@ -373,6 +373,14 @@ def test_run_ids_are_claimed_atomically(service: HarnessService) -> None:
     assert other.next_run_id("20260801") == "RUN-20260801-001"
 
 
+def test_run_id_counter_expands_beyond_its_three_digit_minimum(service: HarnessService) -> None:
+    day = "20261024"
+    with service.store._conn() as conn:
+        conn.execute("INSERT INTO run_counter (day, next_n) VALUES (?, ?)", (day, 999))
+
+    assert service.store.next_run_id(day) == "RUN-20261024-1000"
+
+
 def test_report_counts_the_latest_run_per_scenario(service: HarnessService) -> None:
     """A rollup over every stored run measures how often CI ran, not what is broken.
 

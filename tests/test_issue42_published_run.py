@@ -7,6 +7,8 @@ import json
 import pytest
 from jsonschema import Draft202012Validator
 
+from agentsec.mcp.contract import tool_by_name
+from agentsec.mcp.server import _dispatch
 from agentsec.models.evidence import (
     CollectorError,
     SourceMeta,
@@ -107,6 +109,24 @@ def test_published_run_validates_against_its_explicit_schema(service) -> None:  
 
     assert body["schema_version"] == PUBLISH_SCHEMA_VERSION == "1.6.0"
     assert not list(Draft202012Validator(schema).iter_errors(body))
+
+
+def test_four_digit_daily_counter_publishes_through_the_mcp_service(service) -> None:  # noqa: ANN001
+    """The allocator's three-digit format is a minimum width, not a ceiling."""
+    run, _ = _provenance_case()
+    run.run_id = "RUN-20261024-1000"
+    run.evidence_ref = None
+    service.store.save_run(run)
+
+    direct = publish("run", service.get_published_run(run.run_id))
+    over_tool = _dispatch(
+        service,
+        tool_by_name("agentsec_get_run"),
+        {"run_id": run.run_id},
+    )
+
+    assert direct["run"]["run_id"] == run.run_id
+    assert over_tool == direct
 
 
 def test_malformed_service_context_fails_closed(service) -> None:  # noqa: ANN001
