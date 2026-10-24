@@ -41,8 +41,22 @@ boundary.
   allowed directly.
 - **Direct editor writes to `policy/targets.yaml`, `policy/approvals.yaml`
   and `fixtures/`.** The hook checks `Write`, `Edit` and `NotebookEdit`
-  paths. These operator-owned files must not be changed through Bash or another
-  mechanism either; arbitrary Bash file writes are not inferred by the hook.
+  paths. `Write` and `Edit` declare `file_path`; Claude Code's documented
+  `NotebookEdit` contract declares `notebook_path`. Relative paths are resolved
+  against the hook payload's `cwd` (or `CLAUDE_PROJECT_DIR` as a fallback), and
+  dot segments and Windows separators are normalised before matching. Windows
+  drive/UNC spellings and paths on Windows or macOS hosts are matched without
+  case distinctions so a case-only filesystem alias cannot bypass the guard.
+  Windows paths additionally collapse Win32 trailing-dot/space aliases and NTFS
+  stream suffixes for matching; those transformations are not applied to POSIX
+  paths on Linux or macOS. Drive-relative forms such as `C:policy\targets.yaml`
+  are denied as indeterminate because the hook cannot observe the process's
+  per-drive working directory. Plausible numeric DOS 8.3 aliases for the two
+  protected policy files (`TARGET~N.YAM`, `APPROV~N.YAM`) are denied under the
+  policy directory. The hook does not query the filesystem to enumerate assigned
+  short names or reparse points. These operator-owned files must not be changed
+  through Bash or another mechanism either; arbitrary Bash file writes are not
+  inferred by the hook.
 - **AgentSec MCP calls carrying `url`, `sql`, `command`, `token` and similar.**
   Redundant with the closed tool schemas and `tests/test_mcp_contract.py` — kept
   as the third layer because the cost is one dictionary lookup. Scoped to this
@@ -52,9 +66,19 @@ boundary.
   `query` and `headers` are ordinary arguments there and refusing them defends
   nothing.
 
-The hook exits 0 on any internal error, so it fails open rather than wedging the
-session. The permission rules in `settings.json` remain in force, but an internal
-hook error is not an additional enforcement layer.
+Malformed JSON, a non-object envelope, wrong envelope types, missing or mistyped
+guarded fields, and internal validation errors return the same small structured
+deny shape with a fixed, non-sensitive reason. A valid request for a tool this
+hook does not guard still produces no decision, so normal permission handling
+continues; in particular, non-AgentSec MCP arguments remain untouched.
+
+This hook is defense in depth, not a filesystem or process sandbox. Its path
+normalisation is lexical and does not resolve symlinks, and it does not infer
+writes performed by arbitrary Bash programs. A hook process that cannot start or
+times out is outside the script's decision path. Claude Code permissions and the
+runtime sandbox remain separate controls, while `HarnessService`, `PolicyGuard`
+and the reviewed target/approval policy remain AgentSec's primary enforcement
+boundary.
 
 ## Wiring the MCP server
 

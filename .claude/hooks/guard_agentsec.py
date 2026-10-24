@@ -16,12 +16,15 @@ Refuses:
   braces behind the closed tool schemas
 
 Reads a PreToolUse payload on stdin, writes a hook JSON response on stdout.
-Exit 0 always: a crashed hook must not become a silent bypass.
+Malformed or indeterminate requests, and unexpected validation errors, receive a
+fixed deny response rather than becoming a silent bypass.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import posixpath
 import re
 import sys
 
@@ -73,6 +76,16 @@ PROTECTED_PATHS = (
     "/policy/targets.yaml",
     "/policy/approvals.yaml",
     "/fixtures/",
+)
+
+WINDOWS_SHORT_POLICY_ALIASES = (
+    (re.compile(r"/policy/target~[1-9][0-9]*\.yam$"), "/policy/targets.yaml"),
+    (re.compile(r"/policy/approv~[1-9][0-9]*\.yam$"), "/policy/approvals.yaml"),
+)
+
+INDETERMINATE_INPUT_REASON = (
+    "AgentSec denied this request because its hook could not validate the "
+    "PreToolUse input."
 )
 
 
@@ -146,15 +159,97 @@ def _hosts(command: str) -> list[str]:
     return found
 
 
-def check_write(path: str) -> None:
+def _is_absolute_path(path: str) -> bool:
     normalised = path.replace("\\", "/")
+    return normalised.startswith("/") or bool(re.match(r"^[A-Za-z]:/", normalised))
+
+
+def _is_drive_relative_path(path: str) -> bool:
+    """A Win32 ``C:foo`` path whose per-drive base the hook cannot know."""
+    return bool(re.match(r"^[A-Za-z]:(?:$|[^/])", path.replace("\\", "/")))
+
+
+def _uses_windows_paths(path: str, base: str | None) -> bool:
+    """Whether the target is interpreted with Windows filename semantics."""
+    return sys.platform == "win32" or any(
+        candidate is not None
+        and (
+            "\\" in candidate
+            or candidate.startswith("//")
+            or bool(re.match(r"^[A-Za-z]:/", candidate))
+        )
+        for candidate in (path, base)
+    )
+
+
+def _windows_alias_key(path: str) -> str:
+    """Collapse Win32 aliases relevant to protected-path matching.
+
+    The ordinary Win32 namespace ignores trailing spaces and dots in components.
+    A colon after a component selects an NTFS stream; even a named stream remains
+    attached to the operator-owned file, while ``::$DATA`` names its default data
+    stream. Drive-letter colons are structural and are therefore retained.
+    """
+    components = []
+    for index, component in enumerate(path.split("/")):
+        is_drive = index == 0 and bool(re.fullmatch(r"[A-Za-z]:", component))
+        if not is_drive:
+            original = component
+            component = component.split(":", 1)[0].rstrip(" .")
+            if original and not component:
+                deny(INDETERMINATE_INPUT_REASON)
+        components.append(component)
+    return "/".join(components)
+
+
+def _normalise_path(path: str, cwd: str | None) -> tuple[str, bool, bool]:
+    """Lexically resolve a tool path without touching the filesystem.
+
+    Claude Code declares the current working directory in the hook envelope. The
+    project-root environment variable is a fallback for older/direct invocations.
+    POSIX normalisation after separator conversion gives Windows spellings and dot
+    segments the same component boundaries without following symlinks.
+    """
+    normalised = path.replace("\\", "/")
+    if _is_drive_relative_path(normalised):
+        deny(INDETERMINATE_INPUT_REASON)
+    base = cwd or os.environ.get("CLAUDE_PROJECT_DIR")
+    windows_paths = _uses_windows_paths(path, base)
+    case_insensitive = windows_paths or sys.platform == "darwin"
+    if not _is_absolute_path(normalised):
+        if not base or not _is_absolute_path(base):
+            deny(INDETERMINATE_INPUT_REASON)
+        normalised = posixpath.join(base.replace("\\", "/"), normalised)
+    return posixpath.normpath(normalised), case_insensitive, windows_paths
+
+
+def check_write(path: str, cwd: str | None) -> None:
+    normalised, case_insensitive, windows_paths = _normalise_path(path, cwd)
+    if windows_paths:
+        # Alias collapse can turn `. ` and `.. ` into live dot segments, so run
+        # lexical traversal normalisation again after applying Win32 semantics.
+        normalised = posixpath.normpath(_windows_alias_key(normalised))
+    match_path = normalised.casefold() if case_insensitive else normalised
     for protected in PROTECTED_PATHS:
-        if protected in normalised:
+        is_match = (
+            protected in match_path
+            if protected.endswith("/")
+            else match_path.endswith(protected)
+        )
+        if is_match:
             deny(
                 f"{protected} is operator-owned. The target allowlist, the approval "
                 f"ledger and the recorded fixture corpus are reviewed like firewall "
                 f"rules — propose the change to the user instead of writing it."
             )
+    if windows_paths:
+        for alias, protected in WINDOWS_SHORT_POLICY_ALIASES:
+            if alias.search(match_path):
+                deny(
+                    f"{protected} is operator-owned. The target allowlist, the approval "
+                    f"ledger and the recorded fixture corpus are reviewed like firewall "
+                    f"rules — propose the change to the user instead of writing it."
+                )
     allow()
 
 
@@ -199,23 +294,46 @@ def check_mcp(tool_name: str, tool_input: dict) -> None:
     allow()
 
 
+def _required_text(tool_input: dict, field: str) -> str:
+    value = tool_input.get(field)
+    if not isinstance(value, str) or not value.strip():
+        deny(INDETERMINATE_INPUT_REASON)
+    return value
+
+
 def main() -> None:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        allow()
-        return
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        deny(INDETERMINATE_INPUT_REASON)
 
-    tool = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input") or {}
-    if not isinstance(tool_input, dict):
-        allow()
-        return
+    if not isinstance(payload, dict):
+        deny(INDETERMINATE_INPUT_REASON)
+
+    tool = payload.get("tool_name")
+    tool_input = payload.get("tool_input")
+    cwd = payload.get("cwd")
+    if (
+        not isinstance(tool, str)
+        or not tool
+        or not isinstance(tool_input, dict)
+        or (
+            cwd is not None
+            and (
+                not isinstance(cwd, str)
+                or not cwd.strip()
+                or not _is_absolute_path(cwd)
+            )
+        )
+    ):
+        deny(INDETERMINATE_INPUT_REASON)
 
     if tool == "Bash":
-        check_bash(str(tool_input.get("command", "")))
-    elif tool in {"Write", "Edit", "NotebookEdit"}:
-        check_write(str(tool_input.get("file_path", "")))
+        check_bash(_required_text(tool_input, "command"))
+    elif tool in {"Write", "Edit"}:
+        check_write(_required_text(tool_input, "file_path"), cwd)
+    elif tool == "NotebookEdit":
+        check_write(_required_text(tool_input, "notebook_path"), cwd)
     elif is_agentsec_tool(tool):
         check_mcp(tool, tool_input)
 
@@ -226,5 +344,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # Never let a hook bug turn into an unnoticed bypass or a wedged session.
-        allow()
+        # Do not expose exception text or let a hook bug become a silent bypass.
+        deny(INDETERMINATE_INPUT_REASON)

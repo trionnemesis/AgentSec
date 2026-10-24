@@ -24,21 +24,60 @@ HOOK = REPO_ROOT / ".claude" / "hooks" / "guard_agentsec.py"
 ACME_ORG = "db.payments." + "acme" + ".org"
 SPOOF = "example.com." + "evil" + ".net"
 CLI_RUN = "agentsec" + " run --target demo-agent-fixture"
+DEFAULT_CWD = "/repo"
+INDETERMINATE_INPUT_REASON = (
+    "AgentSec denied this request because its hook could not validate the "
+    "PreToolUse input."
+)
 
 
-def decide(tool: str, tool_input: dict) -> str | None:
-    """Run the hook; return the refusal reason, or None when it allows."""
-    result = subprocess.run(
-        [sys.executable, str(HOOK)],
-        input=json.dumps({"tool_name": tool, "tool_input": tool_input}),
+def run_hook(
+    payload: object, *, platform: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, str(HOOK)]
+    if platform is not None:
+        command = [
+            sys.executable,
+            "-c",
+            (
+                "import runpy,sys; sys.platform=sys.argv[1]; "
+                "runpy.run_path(sys.argv[2], run_name='__main__')"
+            ),
+            platform,
+            str(HOOK),
+        ]
+    return subprocess.run(
+        command,
+        input=json.dumps(payload),
         capture_output=True, text=True, check=False,
     )
+
+
+def deny_payload(result: subprocess.CompletedProcess[str]) -> dict:
+    assert result.returncode == 0
+    assert result.stderr == ""
+    output = json.loads(result.stdout)
+    assert set(output) == {"hookSpecificOutput"}
+    decision = output["hookSpecificOutput"]
+    assert set(decision) == {
+        "hookEventName", "permissionDecision", "permissionDecisionReason",
+    }
+    assert decision["hookEventName"] == "PreToolUse"
+    assert decision["permissionDecision"] == "deny"
+    assert isinstance(decision["permissionDecisionReason"], str)
+    return decision
+
+
+def decide(tool: str, tool_input: dict, *, cwd: str | None = DEFAULT_CWD) -> str | None:
+    """Run the hook; return the refusal reason, or None when it allows."""
+    payload = {"tool_name": tool, "tool_input": tool_input}
+    if cwd is not None:
+        payload["cwd"] = cwd
+    result = run_hook(payload)
     assert result.returncode == 0, "a crashed hook must never become a silent bypass"
     if not result.stdout.strip():
         return None
-    payload = json.loads(result.stdout)["hookSpecificOutput"]
-    assert payload["permissionDecision"] == "deny"
-    return payload["permissionDecisionReason"]
+    return deny_payload(result)["permissionDecisionReason"]
 
 
 @pytest.mark.parametrize(
@@ -90,15 +129,147 @@ def test_refuses_cli_run_in_favour_of_the_audited_mcp_tool() -> None:
 
 
 @pytest.mark.parametrize(
-    "path",
-    ["/repo/policy/targets.yaml", "/repo/policy/approvals.yaml", "/repo/fixtures/demo/x.json"],
+    ("path", "cwd"),
+    [
+        ("/repo/policy/targets.yaml", DEFAULT_CWD),
+        ("/repo/policy/approvals.yaml", DEFAULT_CWD),
+        ("/repo/fixtures/demo/x.json", DEFAULT_CWD),
+        ("policy/targets.yaml", DEFAULT_CWD),
+        ("./policy/approvals.yaml", DEFAULT_CWD),
+        ("src/../fixtures/demo/x.json", DEFAULT_CWD),
+        ("../policy/targets.yaml", "/repo/src"),
+        (r"policy\approvals.yaml", DEFAULT_CWD),
+        (r"C:\repo\fixtures\demo\x.json", DEFAULT_CWD),
+        (r"C:\repo\POLICY\targets.yaml", DEFAULT_CWD),
+        (r"\\server\share\FIXTURES\demo\x.json", DEFAULT_CWD),
+        (r"PoLiCy\approvals.yaml", r"C:\repo"),
+        (r"C:\repo\policy\targets.yaml.", DEFAULT_CWD),
+        (r"C:\repo\policy\targets.yaml. ", DEFAULT_CWD),
+        (r"C:\repo\policy\approvals.yaml ", DEFAULT_CWD),
+        (r"C:\repo\policy\approvals.yaml::$DATA", DEFAULT_CWD),
+        (r"\\server\share\fixtures. \demo\x.json", DEFAULT_CWD),
+        (r"policy\targets.yaml.", r"C:\repo"),
+        (r"policy\approvals.yaml::$DATA", r"C:\repo"),
+        (r"C:\repo\policy\TARGET~1.YAM", DEFAULT_CWD),
+        (r"C:\repo\policy\APPROV~27.YAM", DEFAULT_CWD),
+        (r"policy\TARGET~2.YAM", r"C:\repo"),
+        (r"C:\repo\policy\foo\.. \targets.yaml", DEFAULT_CWD),
+        (r"C:\repo\policy. \targets.yaml::$DATA", DEFAULT_CWD),
+        (r"policy\. \approvals.yaml", r"C:\repo"),
+    ],
 )
-def test_refuses_writes_to_operator_owned_files(path: str) -> None:
-    assert decide("Write", {"file_path": path}) is not None
+def test_refuses_writes_to_operator_owned_files(path: str, cwd: str) -> None:
+    assert decide("Write", {"file_path": path}, cwd=cwd) is not None
 
 
-def test_allows_writes_to_source() -> None:
-    assert decide("Write", {"file_path": "/repo/src/agentsec/cli.py"}) is None
+def test_refuses_notebook_edits_using_the_documented_path_field() -> None:
+    assert decide("NotebookEdit", {"notebook_path": "fixtures/demo/run.ipynb"}) is not None
+
+
+def test_allows_notebook_edits_outside_the_protected_set() -> None:
+    assert decide("NotebookEdit", {"notebook_path": "notebooks/report.ipynb"}) is None
+
+
+def test_refuses_edit_of_a_protected_relative_path() -> None:
+    assert decide("Edit", {"file_path": "policy/targets.yaml"}) is not None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repo/src/agentsec/cli.py",
+        "src/agentsec/cli.py",
+        "policy/targets.yaml.bak",
+        "test_fixtures/demo/x.json",
+    ],
+)
+def test_allows_writes_outside_the_protected_set(path: str) -> None:
+    assert decide("Write", {"file_path": path}) is None
+
+
+@pytest.mark.parametrize("platform", ["darwin", "win32"])
+def test_simulated_case_insensitive_host_matches_protected_path_aliases(
+    platform: str,
+) -> None:
+    # This exercises the platform branch in a subprocess; it is not a native
+    # filesystem integration test.
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/Policy/targets.yaml"},
+            "cwd": DEFAULT_CWD,
+        },
+        platform=platform,
+    )
+    assert deny_payload(result)["permissionDecision"] == "deny"
+
+
+def test_simulated_linux_host_keeps_posix_paths_case_sensitive() -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/Policy/targets.yaml"},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="linux",
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repo/policy/targets.yaml.",
+        "/repo/policy/targets.yaml ",
+        "/repo/policy/approvals.yaml::$DATA",
+        "/repo/policy/TARGET~1.YAM",
+        "/repo/policy/APPROV~1.YAM",
+    ],
+)
+def test_linux_posix_names_are_not_treated_as_windows_aliases(path: str) -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": path},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="linux",
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/repo/policy/targets.yaml.",
+        "/repo/policy/approvals.yaml::$DATA",
+    ],
+)
+def test_simulated_windows_host_rejects_posix_spelled_windows_aliases(path: str) -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": path},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="win32",
+    )
+    assert deny_payload(result)["permissionDecision"] == "deny"
+
+
+def test_case_insensitive_matching_does_not_expand_protected_file_names() -> None:
+    result = run_hook(
+        {
+            "tool_name": "Write",
+            "tool_input": {"file_path": "/repo/POLICY/TARGETS.YAML.bak"},
+            "cwd": DEFAULT_CWD,
+        },
+        platform="darwin",
+    )
+    assert result.returncode == 0
+    assert result.stdout == ""
 
 
 def test_refuses_mcp_calls_carrying_a_locator() -> None:
@@ -149,10 +320,91 @@ def test_leaves_other_mcp_servers_alone(tool: str, tool_input: dict) -> None:
     assert decide(tool, tool_input) is None
 
 
-def test_malformed_payload_allows_rather_than_wedging_the_session() -> None:
+@pytest.mark.parametrize(
+    "raw_input",
+    [
+        "not json",
+        "null",
+        "[]",
+        # json.load raises RecursionError here, exercising the fail-closed outer
+        # exception path in a subprocess rather than a same-process mock.
+        "[" * 2000,
+    ],
+)
+def test_malformed_json_or_envelope_is_denied_with_a_stable_schema(raw_input: str) -> None:
     result = subprocess.run(
-        [sys.executable, str(HOOK)], input="not json",
+        [sys.executable, str(HOOK)], input=raw_input,
         capture_output=True, text=True, check=False,
     )
-    assert result.returncode == 0
-    assert not result.stdout.strip()
+    decision = deny_payload(result)
+    assert decision["permissionDecisionReason"] == INDETERMINATE_INPUT_REASON
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"tool_name": 1, "tool_input": {}},
+        {"tool_name": "Bash", "tool_input": None},
+        {"tool_name": "Bash", "tool_input": []},
+        {"tool_name": "Bash", "tool_input": {}, "cwd": DEFAULT_CWD},
+        {"tool_name": "Bash", "tool_input": {"command": 1}, "cwd": DEFAULT_CWD},
+        {"tool_name": "Write", "tool_input": {}, "cwd": DEFAULT_CWD},
+        {"tool_name": "Edit", "tool_input": {"file_path": []}, "cwd": DEFAULT_CWD},
+        {
+            "tool_name": "NotebookEdit",
+            "tool_input": {"file_path": "fixtures/x.ipynb"},
+            "cwd": DEFAULT_CWD,
+        },
+        {"tool_name": "Write", "tool_input": {"file_path": "relative.py"}, "cwd": 3},
+        {"tool_name": "Write", "tool_input": {"file_path": "relative.py"}, "cwd": "."},
+    ],
+)
+def test_malformed_types_and_guarded_fields_are_denied(payload: object) -> None:
+    decision = deny_payload(run_hook(payload))
+    assert decision["permissionDecisionReason"] == INDETERMINATE_INPUT_REASON
+
+
+def test_relative_write_without_a_declared_base_is_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    reason = decide("Write", {"file_path": "src/agentsec/cli.py"}, cwd=None)
+    assert reason is not None
+    assert "could not validate" in reason
+
+
+def test_relative_write_with_a_relative_project_root_is_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", ".")
+    reason = decide("Write", {"file_path": "src/agentsec/cli.py"}, cwd=None)
+    assert reason is not None
+    assert "could not validate" in reason
+
+
+def test_windows_alias_relative_to_windows_project_root_is_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", r"C:\repo")
+    reason = decide("Write", {"file_path": r"policy\targets.yaml."}, cwd=None)
+    assert reason is not None
+    assert "operator-owned" in reason
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        r"C:policy\targets.yaml",
+        r"C:fixtures\demo\x.json",
+        r"C:src\agentsec\cli.py",
+    ],
+)
+def test_windows_drive_relative_path_is_denied_as_indeterminate(path: str) -> None:
+    reason = decide("Write", {"file_path": path}, cwd=r"C:\repo")
+    assert reason == INDETERMINATE_INPUT_REASON
+
+
+def test_windows_component_that_collapses_empty_is_denied_as_indeterminate() -> None:
+    reason = decide("Write", {"file_path": r"C:\repo\...\source.py"})
+    assert reason == INDETERMINATE_INPUT_REASON
