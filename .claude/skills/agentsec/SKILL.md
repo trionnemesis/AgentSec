@@ -21,8 +21,9 @@ Keep the interfaces in their actual roles. MCP validates, projects and delegates
 to `HarnessService`; it adds no policy or verdict logic. This skill is guidance,
 and its Phase 0 profile proves package integrity only. The host hook is defense in
 depth around coding-agent tool requests, not a substitute for service policy.
-The runtime Live Artifact is a read-only view of published project evidence;
-the public GitHub Pages site is only an introduction and receives no user logs.
+The Claude Code Live Artifact is the primary read-only view of published project
+evidence; the public GitHub Pages site is only an introduction and receives no
+user logs. Desktop/Cowork packaging is a separate legacy optional client path.
 
 The Red and Blue references split operational detail for progressive
 disclosure. They are lanes inside this single skill, not independently
@@ -58,7 +59,8 @@ Repository risk triage → Red execution plan → Blue evidence plan → Purple 
 Read `agentsec://project/risks`, or drive the golden path from a checkout:
 
 ```text
-agentsec init → agentsec scan → agentsec scan --verify -t <target> → agentsec dashboard
+agentsec init → agentsec scan → agentsec dashboard
+              → explicit agentsec scan --verify -t <target> → agentsec dashboard
 ```
 
 Keep the two returned states separate:
@@ -72,6 +74,23 @@ Keep the two returned states separate:
 Only a `verifiable` risk enters contract authoring. Do not invent a prompt,
 URL, shell command, target path or adapter operation to make a
 `not_verifiable` risk green. Report the coverage gap and stop.
+
+### Present the inspection in Claude Code
+
+Follow `docs/claude-code-artifact.md`:
+
+1. Read `agentsec://dashboard/latest` in the Claude Code session.
+2. Render the projected DTO as self-contained HTML with AgentSec's existing
+   dashboard template, preserving every neutral, empty, error and untested state.
+3. Publish that HTML as the Live Artifact. The page is a snapshot; it cannot
+   call the local MCP server after publication.
+4. For refresh, re-read the resource in Claude Code, re-render, and republish the
+   same Artifact URL. This must not start a run or mutate a finding.
+
+Use `/artifacts`, or attach the existing Artifact URL, to reuse it in a later
+Claude Code conversation. Do not call the public GitHub Pages introduction the
+Artifact. Local HTML or schema validation does not prove that a real Claude Code
+publish or same-URL refresh occurred.
 
 ### Read the complete evidence chain
 
@@ -195,4 +214,5 @@ remain deferred.
 - `docs/adr/0009-repository-first-golden-path.md` — repository-first triage
 - `docs/adr/0010-provenance-from-correlation.md` — provenance qualification
 - `docs/adr/0011-evidence-workflow-and-interface-roles.md` — evidence chain and role boundaries
+- `docs/claude-code-artifact.md` — supported Claude Code publish and refresh flow
 - `docs/roadmap.md` — named coverage gaps and parked work

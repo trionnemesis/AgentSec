@@ -12,7 +12,7 @@ Jump to: [GitHub Pages](#github-pages) ・ [Why](#why) ・ [What it does](#what-
 
 ## GitHub Pages
 
-The [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/) is the public-facing, eight-page English introduction to AgentSec. It gives a fast visual overview of the problem, the Attack–Detection Contract, deadline-aware and run-correlated evidence, deterministic verdicts, trust boundaries, and the offline quick start. Use this README and the linked docs for detailed commands, implementation guidance, deployment, and roadmap status.
+The [GitHub Pages presentation](https://trionnemesis.github.io/AgentSec/) is the public-facing, eight-page English introduction to AgentSec. It gives a fast visual overview of the problem, the Attack–Detection Contract, deadline-aware and run-correlated evidence, deterministic verdicts, trust boundaries, and the offline quick start. It is not the runtime Live Artifact: a Claude Code session reads the current project's projected dashboard DTO, renders self-contained HTML, and publishes the snapshot. The published page cannot call the local MCP server; refresh is a session re-read and same-URL republish. See the [Claude Code Artifact workflow](docs/claude-code-artifact.md), then use this README and the linked docs for detailed commands, implementation guidance, deployment, and roadmap status.
 
 ---
 
@@ -441,7 +441,7 @@ the gateway becomes a *report* gateway and serves seven of the ten:
 schema are working surfaces for whoever operates the harness, and are not
 registered at all rather than rendered carefully.
 
-`agentsec://dashboard/latest` is the one a dashboard polls: project identity, the
+`agentsec://dashboard/latest` is the one a Claude Code session or dashboard client reads: project identity, the
 repository risk plane, the four-axis purple rollup, the Skill Assurance summary
 and the static posture plane, each in its own property and described by
 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json).

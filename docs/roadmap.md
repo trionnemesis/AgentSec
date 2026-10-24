@@ -23,9 +23,9 @@ explicit later action for a selected, covered risk. Follow that risk through a
 reviewed scenario, one run, four independent axes, and `recorded` / `mixed` /
 `live` provenance before choosing remediation. `verified` only means that a
 covering scenario produced a verdict; it is not a green state. Reports, the
-single-run resource and the runtime Live Artifact project the same stored truth.
-The public GitHub Pages site is an introduction, not a runtime evidence client
-([ADR 0011](adr/0011-evidence-workflow-and-interface-roles.md)).
+single-run resource and the Claude Code Live Artifact project the same stored
+truth. The public GitHub Pages site is an introduction, not a runtime evidence
+client ([ADR 0011](adr/0011-evidence-workflow-and-interface-roles.md)).
 
 | Component | Status | Notes |
 |---|---|---|
@@ -52,6 +52,8 @@ The public GitHub Pages site is an introduction, not a runtime evidence client
 | `AGT-CONFIG-*` agent-configuration family | ✅ | 5 scenarios ([#26](https://github.com/trionnemesis/AgentSec/issues/26)); `gate: warning` until stable across nightlies |
 | Publication projection + fail-closed publication | ✅ | unknown output kind raises; a resource with no policy stops the gateway booting |
 | Versioned dashboard contracts | ✅ | `dashboard.schema.json`, `project-dashboard.schema.json`; validated on every read |
+| Dashboard DTO / Live Artifact source | ✅ | Claude Code can read the projected local resource and render the existing self-contained template; the published page cannot call local MCP ([workflow](claude-code-artifact.md)) |
+| Claude Code Live Artifact display | 🟡 | Still needs a real-client render and no-mutation refresh check. Local HTML tests validate the source, not the client integration. |
 
 ### Core — open
 
@@ -75,6 +77,11 @@ The public GitHub Pages site is an introduction, not a runtime evidence client
 - [ ] Fixture recordings for `AGT-CONFIG-001..005`. These remain
       operator-owned; until recorded, the family is scoped to
       `environments: [ci, staging]` and `scan --verify` needs a real target.
+- [ ] **Verify the intended Claude Code Live Artifact display.** Render the
+      projected dashboard in a real Claude Code client, publish it, attach it in
+      a later conversation, then re-read and republish the same URL. Prove the
+      flow starts no run and mutates no finding. Local schema and HTML checks are
+      necessary, not client acceptance.
 - [x] Wazuh rule pack for the four original bundled scenarios
       (`100501`, `100610`, `100720`, `100810`) in the same deployable
       pack. This check is static and does not claim a live Wazuh E2E run.
@@ -93,8 +100,7 @@ The public GitHub Pages site is an introduction, not a runtime evidence client
 | MCP contract as data + architectural tests | ✅ | forbidden tool/param names fail the build |
 | Composed dashboard resource | ✅ | `agentsec://dashboard/latest`, five planes kept separate |
 | Repository risk resource | ✅ | `agentsec://project/risks`, read-only, takes no arguments |
-| Dashboard page / Live Artifact source | ✅ | `agentsec dashboard --html results/dashboard.html` renders the read-only runtime evidence interface; public GitHub Pages is a separate introduction |
-| Claude Desktop / Cowork packaging | 🟡 | `packaging/claude-desktop/` is built; real connect, render and no-mutation refresh steps remain manual in [#20](https://github.com/trionnemesis/AgentSec/issues/20) |
+| Claude Desktop / Cowork packaging | 🟡 | Legacy optional-client path. Its connect, render and no-mutation refresh steps remain manual in [#20](https://github.com/trionnemesis/AgentSec/issues/20) and do not prove the Claude Code path. |
 | Resource allowlist for the report gateway | ✅ | evidence, audit and target authoring detail are unregistered under `AGENTSEC_MCP_READ_ONLY=1` |
 | MCP server (FastMCP binding) | 🟡 | a real stdio client drives a spawned server in CI; no other client has connected |
 | **Phase 0 static skill-package gate** | ✅ | `agentsec skill validate --profile static`; model- and credential-free validation of `SkillEvalSuite`, frontmatter, declared lane assets/scripts, full SHA-256 pins and parsed Markdown destinations. The separate `skill-eval-static.yml` workflow fails on package drift; no model behaviour or Purple verdict is evaluated ([#64](https://github.com/trionnemesis/AgentSec/issues/64)) |
@@ -109,11 +115,10 @@ The public GitHub Pages site is an introduction, not a runtime evidence client
       asynchronous states, central quotas/concurrency, idempotency, leases,
       cancellation/recovery and MCP start+poll. The shipped installation slice
       does not close the issue or provide these guarantees.
-- [ ] **Complete the real Desktop/Cowork Artifact smoke test**
-      ([#20](https://github.com/trionnemesis/AgentSec/issues/20)). The page,
-      resource and packaging exist; CI covers three of seven checklist steps.
-      A person must still connect the local gateway, render the Artifact and
-      prove refresh starts no run and mutates no finding.
+- [ ] **Complete the legacy optional Desktop/Cowork smoke test**
+      ([#20](https://github.com/trionnemesis/AgentSec/issues/20)). Its packaging
+      exists and CI covers three of seven checklist steps, but this is separate
+      from the intended Claude Code display path.
 - [ ] **Dual README paths**: "engineer quick start" (scan-first) and
       "security/platform setup" (targets, scenarios, Wazuh/OTel mappings).
 - [ ] **Simplified default output.** Engineer-facing finding states are

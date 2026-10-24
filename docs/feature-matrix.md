@@ -65,21 +65,26 @@ single-run resource are views of this same evidence chain:
 | Provenance | What did this run actually observe? | `recorded`, `mixed` and `live` qualify the result; they do not change its verdict. |
 | Remediation | What changes, and what must rerun? | Follow the failed axes, keep the same reviewed contract, and verify only with a later run. |
 
-The runtime Live Artifact is a read-only evidence interface over the project's
-published DTO. The public eight-page GitHub Pages site is only an introduction;
-it uses labelled examples and never receives or publishes a user's raw evidence.
-See [ADR 0011](adr/0011-evidence-workflow-and-interface-roles.md).
+The Claude Code Live Artifact is the primary read-only evidence interface over
+the project's published dashboard DTO. The Claude Code session reads the local
+resource, renders self-contained HTML, and publishes a snapshot; the published
+page cannot call the local MCP server. Refresh is a session re-read and
+same-URL republish. The public eight-page GitHub Pages site is only an
+introduction; it uses labelled examples and never receives or publishes a
+user's raw evidence. Desktop/Cowork packaging is a separate legacy
+optional-client path. See [ADR 0011](adr/0011-evidence-workflow-and-interface-roles.md)
+and the [Claude Code Artifact guide](claude-code-artifact.md).
 
 ### Responsibility matrix
 
 | Component | Role | Boundary |
 |---|---|---|
-| Agent / workbench | Discover and classify runtime agent code separately from development-agent configuration; triage risks, draft contracts, read results and prepare fixes. | Does not grant permission, execute the harness or decide a verdict. |
+| Claude Code agent / workbench | Discover and classify runtime agent code separately from development-agent configuration; triage risks, draft contracts, read results, prepare fixes and present the read-only Live Artifact. | Does not grant permission, execute the harness, decide a verdict or mutate through the Artifact. |
 | MCP gateway | Validate constrained inputs, project allowed output and delegate to `HarnessService`. | Adapter only; no independent policy or capability. |
 | Single AgentSec skill | Route one workbench through Red and Blue guidance; Phase 0 pins reviewed package bytes and links. | Guidance is not permission; static integrity is not dynamic Skill Assurance. |
 | Host hook | Reject unsafe coding-agent tool requests as defense in depth. | Does not replace service policy and is not target-side evidence. |
 | Deterministic service / evaluator | Enforce policy, execute reviewed scenarios, collect evidence, resolve four axes and persist/query results. | No model, UI or gateway may recalculate the verdict. |
-| Live Artifact | Present projected risks, runs, axes, provenance and next actions without mutation. | Read-only; no raw private evidence, run start, finding mutation or verdict inference. |
+| Claude Code Live Artifact | Present projected risks, runs, axes, provenance and next actions without mutation. | Primary runtime display; no raw private evidence, run start, finding mutation or verdict inference. |
 
 ---
 
@@ -89,7 +94,7 @@ Changes here need an ADR. These are load-bearing.
 
 | Capability | Where | Role on the path |
 |---|---|---|
-| Attack–Detection Contract + four-axis evaluator | `evaluation/` | The product. Everything else exists to feed it or read it. |
+| Attack–Detection Contract + four-axis evaluator | `evaluation/` | The credibility engine for a selected risk. It turns reviewed execution and evidence into a stable result; it is not the repository entry point or display layer. |
 | Verdict precedence | `evaluation/axes.py` | `error > detection_gap > prevention_gap > evidence_gap > response_gap > secure`. Frozen. |
 | Selected-project resolution + manifest | `project/` | Which repository. A process-boundary decision, never a tool argument ([ADR 0003](adr/0003-constrained-mcp-tools.md)). |
 | Surface discovery | `project/discovery.py` | Agents, skills, hooks, settings, instructions, MCP servers, tool grants, memory. Inventory only. |
@@ -100,6 +105,7 @@ Changes here need an ADR. These are load-bearing.
 | Run provenance | Published run/report/dashboard summaries | `recorded` / `live` / `mixed`, derived from the same persisted execution and qualified evidence context. Backend kind alone cannot promote live, and a fixture-derived `secure` is never presented as live proof ([ADR 0010](adr/0010-provenance-from-correlation.md)). |
 | Policy guard, approvals, target allowlist | `policy/` | One decision point for CLI, MCP and CI. `production` is not expressible. |
 | Publication projection | `reporting/publish.py` | Fail-closed. An output kind with no policy is refused, not sent. |
+| Claude Code Live Artifact contract | `agentsec://dashboard/latest` + dashboard source | The primary read-only product interface: repository inventory, risks, verification links, runs, axes, provenance and remediation context. A real Claude Code render remains an acceptance gap. |
 | CLI exit codes | `cli.py` | `0` success · `1` command-specific blocking/invalid result · `2` could not tell. The distinction is the gate's credibility. |
 
 ### The rule that keeps the planes apart
@@ -139,9 +145,8 @@ for the golden path.
 |---|---|---|
 | Finding workflow | Built | The fix loop after a verdict. Engineer-facing states are `open → fixing → verified`; the full transition table is expert mode. |
 | Report normaliser → JUnit / HTML / JSON | Built | How CI and tickets consume a run. |
-| Live Artifact dashboard page | Built, client smoke test open | A read-only runtime *interface* to the same published DTO, distinct from public GitHub Pages. Never a source of capability the CLI lacks. Real Desktop/Cowork connect, render and refresh acceptance remains [#20](https://github.com/trionnemesis/AgentSec/issues/20). |
 | MCP gateway | Built, thinly proven | An adapter. `HarnessService` is the API; the gateway may not grow behaviour the CLI does not have. |
-| Claude Desktop / Cowork packaging | Built, manual | Read-only registration for the Artifact path. |
+| Claude Desktop / Cowork packaging | Legacy optional, manual | Separate optional-client registration. Its open [#20](https://github.com/trionnemesis/AgentSec/issues/20) smoke test is not acceptance proof for the intended Claude Code display. |
 | Static posture ingestion | Built | Opt-in. Requires a third-party scanner's report; absent by default and `not_tested` when absent ([#25](https://github.com/trionnemesis/AgentSec/issues/25)). |
 | Phase 0 static skill-package gate | Built | `skill_eval/` validates structure and integrity in a separate fail-closed workflow. It does not execute the workbench, judge model behaviour, write a store/dashboard, or produce a Purple verdict ([#64](https://github.com/trionnemesis/AgentSec/issues/64)). |
 | Scenario authoring: `validate`, `preview`, `approve`, `validate-detection` | Built | Expert mode. Engineers on the golden path do not write scenario YAML. |

@@ -18,9 +18,11 @@ resource, or Live Artifact without those interfaces having created it.
 
 The corrected product entry point in #32 is the local repository and its
 read-only inspection, not a preconfigured staging target. Dynamic verification
-is an explicit later action for a selected risk. The public GitHub Pages site is
-an introduction to that workflow; it is not the runtime Live Artifact and never
-receives a user's evidence.
+is an explicit later action for a selected risk. The primary runtime display is
+a Live Artifact presented by the Claude Code workbench from the read-only
+published dashboard DTO. The public GitHub Pages site is an introduction to that
+workflow; it is not the runtime Live Artifact and never receives a user's
+evidence.
 
 ## Decision
 
@@ -54,17 +56,22 @@ Each arrow is a boundary, not a cosmetic step:
 
 | Role | Owns | Does not own |
 |---|---|---|
-| Agent/workbench | read-only repository discovery, risk triage, scenario drafting, result reading, and code remediation | target policy, execution authority, or verdict calculation |
+| Claude Code agent/workbench | read-only repository discovery, risk triage, scenario drafting, result reading, code remediation, and presentation through the available Live Artifact capability | target policy, execution authority, verdict calculation, or mutation through the Artifact |
 | MCP gateway | constrained schemas, projection, and delegation to the service | new capability, approval, policy, or evaluation logic |
 | AgentSec skill | workflow guidance and a single Red/Blue-lane router; Phase 0 static integrity pins | permissions, enforcement, execution, or dynamic Skill Assurance |
 | Host hook | defense in depth at the coding-agent boundary | replacement for service policy or evidence of a target control |
 | Service/evaluator | target policy, bounded execution, evidence collection, four-axis evaluation, precedence, persistence, and reporting queries | UI-derived or model-derived verdicts |
-| Live Artifact | read-only presentation of published project, risk, run, axis, provenance, and remediation context | raw private evidence, starting runs, mutating findings, or recomputing results |
+| Claude Code Live Artifact | primary read-only presentation of published project, risk, run, axis, provenance, and remediation context | raw private evidence, starting runs, mutating findings, or recomputing results |
 
 The runtime Live Artifact and the public `site/` are deliberately different.
-The Artifact consumes the current project's projected DTO through the read-only
-gateway. GitHub Pages explains the product with labelled examples and links; it
-does not connect to a project or publish user evidence.
+During authoring, the Claude Code session reads the current project's projected
+DTO through the read-only gateway, renders self-contained HTML with the existing
+dashboard template, and publishes it as an Artifact. The published page cannot
+call the local MCP server. Refresh means that a Claude Code session re-reads the
+DTO, re-renders, and republishes the same Artifact URL. GitHub Pages explains the
+product with labelled examples and links; it does not connect to a project or
+publish user evidence. The concrete workflow and official platform boundary are
+documented in [the Claude Code Artifact guide](../claude-code-artifact.md).
 
 ### 3. Guidance and host controls do not become service authority
 
@@ -95,9 +102,12 @@ collection-error states stay visible.
 
 This decision records boundaries; it does not claim external acceptance:
 
-- [#20](https://github.com/trionnemesis/AgentSec/issues/20): a person still has
-  to complete the real Claude Desktop/Cowork connection, render, and read-only
-  refresh smoke test.
+- The intended Claude Code Live Artifact display still needs a real-client
+  render and read-only refresh check. Local HTML rendering validates the source,
+  not the Claude Code integration.
+- [#20](https://github.com/trionnemesis/AgentSec/issues/20) remains a separate,
+  legacy optional-client acceptance item for Claude Desktop/Cowork. Completing
+  it would not by itself prove the intended Claude Code display path.
 - [#50](https://github.com/trionnemesis/AgentSec/issues/50): local isolated
   consumer tests do not prove a hosted cross-repository caller; a real caller
   Actions URL and artifacts are still required.
@@ -107,9 +117,10 @@ This decision records boundaries; it does not claim external acceptance:
 
 ## Alternatives rejected
 
-**Make MCP or the Artifact the product core.** Both are replaceable interfaces.
-Putting policy or evaluation there would create a path CI cannot reuse and a UI
-that can disagree with stored results.
+**Give MCP or the Artifact service authority.** The Claude Code Live Artifact is
+the primary delivery interface, but it and MCP remain replaceable consumers of
+service-owned truth. Putting policy or evaluation there would create a path CI
+cannot reuse and a UI that can disagree with stored results.
 
 **Treat the skill or hook as a permission boundary.** Guidance can be ignored
 and a host hook only sees its own tool envelope. Neither can authorize a run or

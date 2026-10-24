@@ -10,7 +10,7 @@ the product: a deterministic engine that judges evidence against a contract.
 flowchart TD
     subgraph L1["Interaction layer"]
         CC["Claude Code<br/><i>build · analyse · fix · regress</i>"]
-        LA["Live Artifact<br/><i>dashboard · triage · trends</i>"]
+        LA["Live Artifact snapshot<br/><i>dashboard · triage · trends</i>"]
     end
 
     subgraph L2["Control layer"]
@@ -35,7 +35,7 @@ flowchart TD
     CI["CI runner"]
 
     CC -. MCP .-> GW
-    LA -. MCP .-> GW
+    CC -->|render + publish| LA
     GW --> SVC
     CI ==> SVC
     SVC --> SC & RX & EC & PE & RN & ST
@@ -54,8 +54,8 @@ ask for, which is what keeps the gate honest.
 
 | Layer | Component | Owns | Must never |
 |---|---|---|---|
-| Interaction | Claude Code | authoring contracts, reading results, locating the responsible code, writing the fix and the regression | be the attack engine; decide pass/fail |
-| Interaction | Live Artifact | dashboards, finding triage, coverage and trend views | touch a container, a database or a credential |
+| Interaction | Claude Code | authoring contracts, reading results, locating the responsible code, writing the fix and regression, and publishing a self-contained Live Artifact from the projected DTO | be the attack engine; decide pass/fail |
+| Interaction | Live Artifact | read-only snapshot for dashboard, finding triage, coverage and trend views | call local MCP after publication; touch a container, database or credential |
 | Control | MCP Gateway | argument validation, read-only exposure, publication projection and service delegation; a remote deployment wrapper supplies auth/RBAC | decide run policy; host long-running work; contain SIEM/runner/report logic |
 | Execution | Purple Harness | policy and approval checks, executing attacks, collecting evidence, judging, reporting and run audit | depend on any AI client being present |
 
@@ -63,7 +63,7 @@ Four rules follow, and they are the ones worth defending in review:
 
 ```
 Claude Code is not the red-team execution engine.
-Live Artifact does not operate containers or databases.
+Live Artifact does not call local MCP or operate containers or databases.
 The MCP server does not host long-running tests.
 CI does not ask Claude whether something passed.
 ```

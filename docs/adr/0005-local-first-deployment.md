@@ -1,11 +1,14 @@
 # ADR 0005 — Local MCP first, remote gateway later
 
-**Status:** Accepted · **Date:** 2026-07-28
+**Status:** Accepted; Artifact client mechanics superseded by [ADR 0011](0011-evidence-workflow-and-interface-roles.md) · **Date:** 2026-07-28
 
 ## Context
 
-The appealing end state is a Live Artifact dashboard the whole team opens, backed
-by a remote MCP connector into the company harness.
+The appealing end state considered here was a shared remote dashboard or MCP app
+backed by a remote connector into the company harness. ADR 0011 later established
+the primary Live Artifact path: a Claude Code session reads the local projected
+DTO, renders self-contained HTML and publishes a snapshot. The published page
+does not call the local MCP server.
 
 The connector model makes that a bigger step than it looks: a remote MCP
 connector is dialled **from Anthropic's infrastructure to your server**, not from
@@ -29,7 +32,7 @@ Sequence, with an exit gate on each phase:
 |---|---|---|
 | 1 | Local MCP + CLI + static report | verdicts are changing engineering decisions |
 | 2 | CI gate on the `pr` profile | the gate has caught a real regression |
-| 3 | Read-only remote gateway + Live Artifact | someone outside security reads it weekly |
+| 3 | Read-only remote gateway + remote MCP consumer | someone outside security reads it weekly |
 | 4 | Full remote gateway, RBAC, approvals | more than one team authors scenarios |
 
 The code is built so this is additive, not a rewrite: `AGENTSEC_MCP_READ_ONLY=1`

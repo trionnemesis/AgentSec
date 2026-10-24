@@ -393,7 +393,7 @@ spec:
 
 每一個資源都是「讀取」，所以「唯讀」從來就不是區分它們的那個問題 —— 真正的問題是「另一端是誰」。設定 `AGENTSEC_MCP_READ_ONLY=1` 後，gateway 會變成**報表 gateway**，十個資源中只提供七個：`dashboard/latest`、`project/risks`、`targets`、`scenarios`、`runs/{run_id}`、`findings`、`coverage`。單次執行的證據、稽核紀錄與目標的撰寫綱要，是給營運這套 harness 的人用的工作介面，因此它們是**根本不註冊**，而不是「小心地渲染一下」。
 
-`agentsec://dashboard/latest` 是儀表板會輪詢的那一個：專案身分、repository 風險面、四面向的 purple 彙整、Skill Assurance 摘要，以及靜態 posture，五者各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。
+`agentsec://dashboard/latest` 是 Claude Code session 或儀表板 client 會讀取的資源：專案身分、repository 風險面、四面向的 purple 彙整、Skill Assurance 摘要，以及靜態 posture，五者各自佔一個屬性，由 [`schemas/project-dashboard.schema.json`](schemas/project-dashboard.schema.json) 描述。它在記憶體中計算 —— 讀取它不會啟動任何執行、也不會寫出任何檔案 —— 而不符合該 schema 的文件會被拒絕提供，而不是照樣送出。已發布的 Artifact 頁面不會直接輪詢本機 MCP；更新由 Claude Code session 重新讀取、render，並發布到同一個 Artifact URL。
 
 `agentsec://project/risks` 只提供風險面本身，給那些只想看 repository 視角、不需要執行歷史的用戶端。它不接受任何參數：「是哪一個 repository」是行程邊界的決定，永遠不是工具參數（[ADR 0003](docs/adr/0003-constrained-mcp-tools.md)）。
 

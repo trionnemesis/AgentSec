@@ -164,11 +164,11 @@ verdicts are not changing decisions, no amount of dashboard will fix it.
 
 ---
 
-## Option C — hybrid (the realistic first team rollout)
+## Option C — hybrid remote dashboard (not the Claude Code Artifact)
 
 ```mermaid
 flowchart TD
-    LA["Live Artifact"] -->|remote MCP, read-only| RG["Report gateway<br/>AGENTSEC_MCP_READ_ONLY=1"]
+    RC["Remote read-only MCP client"] -->|remote MCP| RG["Report gateway<br/>AGENTSEC_MCP_READ_ONLY=1"]
     RG --> RO[("Sanitised results<br/>read replica")]
     CC["Claude Code"] -->|local MCP| EX["Execution harness"]
     EX --> DB[("Results + evidence")]
@@ -179,6 +179,12 @@ flowchart TD
 Execution stays inside the network. The dashboard reads a redacted export.
 Nothing internet-reachable can start a run — not by policy, but because
 `start_run` is not registered on that process.
+
+This option describes a future remote MCP consumer. It is not the Claude Code
+Live Artifact workflow: a published Artifact cannot call a local MCP server.
+For the primary local path, the Claude Code session reads the projected resource,
+renders self-contained HTML and publishes the snapshot; see
+[`claude-code-artifact.md`](claude-code-artifact.md).
 
 ### What each side of that boundary holds
 
@@ -205,7 +211,7 @@ configuration* and *observed data*:
 | `agentsec://project/risks` | the risk plane alone, computed in memory | same document |
 | `agentsec://coverage`, `findings`, `scenarios`, `targets` | served | served |
 
-### The document a dashboard polls
+### The document a session or remote client reads
 
 `agentsec://dashboard/latest` composes five planes and keeps them apart:
 
@@ -288,8 +294,8 @@ enforced here:
 
 * **The read is a read.** It is computed from the store in memory and writes
   nothing — deliberately not implemented by calling `agentsec_generate_report`,
-  whose whole purpose is to write an HTML and a JSON file. An artifact that
-  refreshes itself must not leave a trail of reports behind it.
+  whose whole purpose is to write an HTML and a JSON file. A Claude Code session
+  rebuilding an Artifact should not leave a trail of reports behind it.
 * **The shape is the shape.** Every response is validated against
   `schemas/project-dashboard.schema.json` before it is served, and a document
   that does not match is refused. A consumer that pinned to the schema cannot
@@ -330,7 +336,7 @@ or MCP App can pin against them.
 |---|---|---|
 | `docs/reviews/assets/purple-dashboard.html` | a **design reference**, rendered once from a real run | correct on the day it was written and never again |
 | `agentsec dashboard --html out.html` | a **snapshot** of the store, from the same template as the Artifact | correct at the moment it was written |
-| The **Live Artifact** | the same page holding an MCP connection to `agentsec://dashboard/latest` | re-read on every refresh |
+| The **Claude Code Live Artifact** | self-contained HTML published after the session reads `agentsec://dashboard/latest` | correct when published; refresh requires the session to re-read, re-render and republish the same URL |
 
 The template is shared on purpose. A reader comparing a snapshot attached to a
 ticket with the live page is then comparing data rather than two renderers.
@@ -348,10 +354,11 @@ committed, so `ORD-B-77421` does appear on the page — as declared configuratio
 inside a failed check, not as transcript content. Redaction that costs the reader
 the finding would not be worth deploying.
 
-**Refresh is structurally read-only.** Opening, filtering and refreshing the
-Artifact start no run, write no file and move no finding — not by policy but
-because the gateway it binds to has no tool that could, and the one resource it
-polls is computed in memory.
+**Refresh is structurally read-only.** The published page has no local MCP
+connection. Opening and filtering it cannot start a run, write a file or move a
+finding. Refresh is a Claude Code session operation: re-read the in-memory
+published resource, re-render the self-contained template, and republish the same
+Artifact URL. The session uses no execute or mutation tool in that flow.
 
 **Recommended sequencing:**
 
