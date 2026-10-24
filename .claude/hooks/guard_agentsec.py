@@ -16,12 +16,15 @@ Refuses:
   braces behind the closed tool schemas
 
 Reads a PreToolUse payload on stdin, writes a hook JSON response on stdout.
-Exit 0 always: a crashed hook must not become a silent bypass.
+Malformed or indeterminate requests, and unexpected validation errors, receive a
+fixed deny response rather than becoming a silent bypass.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import posixpath
 import re
 import sys
 
@@ -73,6 +76,11 @@ PROTECTED_PATHS = (
     "/policy/targets.yaml",
     "/policy/approvals.yaml",
     "/fixtures/",
+)
+
+INDETERMINATE_INPUT_REASON = (
+    "AgentSec denied this request because its hook could not validate the "
+    "PreToolUse input."
 )
 
 
@@ -146,10 +154,37 @@ def _hosts(command: str) -> list[str]:
     return found
 
 
-def check_write(path: str) -> None:
+def _is_absolute_path(path: str) -> bool:
     normalised = path.replace("\\", "/")
+    return normalised.startswith("/") or bool(re.match(r"^[A-Za-z]:/", normalised))
+
+
+def _normalise_path(path: str, cwd: str | None) -> str:
+    """Lexically resolve a tool path without touching the filesystem.
+
+    Claude Code declares the current working directory in the hook envelope. The
+    project-root environment variable is a fallback for older/direct invocations.
+    POSIX normalisation after separator conversion gives Windows spellings and dot
+    segments the same component boundaries without following symlinks.
+    """
+    normalised = path.replace("\\", "/")
+    if not _is_absolute_path(normalised):
+        base = cwd or os.environ.get("CLAUDE_PROJECT_DIR")
+        if not base or not _is_absolute_path(base):
+            deny(INDETERMINATE_INPUT_REASON)
+        normalised = posixpath.join(base.replace("\\", "/"), normalised)
+    return posixpath.normpath(normalised)
+
+
+def check_write(path: str, cwd: str | None) -> None:
+    normalised = _normalise_path(path, cwd)
     for protected in PROTECTED_PATHS:
-        if protected in normalised:
+        is_match = (
+            protected in normalised
+            if protected.endswith("/")
+            else normalised.endswith(protected)
+        )
+        if is_match:
             deny(
                 f"{protected} is operator-owned. The target allowlist, the approval "
                 f"ledger and the recorded fixture corpus are reviewed like firewall "
@@ -199,23 +234,46 @@ def check_mcp(tool_name: str, tool_input: dict) -> None:
     allow()
 
 
+def _required_text(tool_input: dict, field: str) -> str:
+    value = tool_input.get(field)
+    if not isinstance(value, str) or not value.strip():
+        deny(INDETERMINATE_INPUT_REASON)
+    return value
+
+
 def main() -> None:
     try:
         payload = json.load(sys.stdin)
-    except (json.JSONDecodeError, ValueError):
-        allow()
-        return
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        deny(INDETERMINATE_INPUT_REASON)
 
-    tool = payload.get("tool_name", "")
-    tool_input = payload.get("tool_input") or {}
-    if not isinstance(tool_input, dict):
-        allow()
-        return
+    if not isinstance(payload, dict):
+        deny(INDETERMINATE_INPUT_REASON)
+
+    tool = payload.get("tool_name")
+    tool_input = payload.get("tool_input")
+    cwd = payload.get("cwd")
+    if (
+        not isinstance(tool, str)
+        or not tool
+        or not isinstance(tool_input, dict)
+        or (
+            cwd is not None
+            and (
+                not isinstance(cwd, str)
+                or not cwd.strip()
+                or not _is_absolute_path(cwd)
+            )
+        )
+    ):
+        deny(INDETERMINATE_INPUT_REASON)
 
     if tool == "Bash":
-        check_bash(str(tool_input.get("command", "")))
-    elif tool in {"Write", "Edit", "NotebookEdit"}:
-        check_write(str(tool_input.get("file_path", "")))
+        check_bash(_required_text(tool_input, "command"))
+    elif tool in {"Write", "Edit"}:
+        check_write(_required_text(tool_input, "file_path"), cwd)
+    elif tool == "NotebookEdit":
+        check_write(_required_text(tool_input, "notebook_path"), cwd)
     elif is_agentsec_tool(tool):
         check_mcp(tool, tool_input)
 
@@ -226,5 +284,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception:
-        # Never let a hook bug turn into an unnoticed bypass or a wedged session.
-        allow()
+        # Do not expose exception text or let a hook bug become a silent bypass.
+        deny(INDETERMINATE_INPUT_REASON)
