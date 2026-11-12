@@ -415,6 +415,13 @@
     </details>
   {% endfor %}
 
+  {% if d.repo_risk.problems %}
+    <p class="sub">
+      {{ d.repo_risk.problems | length }} repository inspection problem(s) mean some
+      surfaces could not be fully inspected.
+    </p>
+  {% endif %}
+
   {% if d.repo_risk.risks %}
     <h2>Repository attack surface</h2>
     <p class="sub">
@@ -426,10 +433,6 @@
       metadata, not a pass. <code>runnable</code> means one exists and has not run, and
       <code>unprovable</code> means nothing in the catalogue exercises it — neither
       passing nor failing.
-      {% if d.repo_risk.problems %}
-        {{ d.repo_risk.problems | length }} surface(s) could not be read and are listed
-        as problems rather than counted as clean.
-      {% endif %}
     </p>
 
     {% if d.repo_risk.verify_queue %}
