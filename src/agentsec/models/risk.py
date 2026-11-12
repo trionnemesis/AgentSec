@@ -30,6 +30,8 @@ So a risk carries its own vocabulary:
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -79,10 +81,8 @@ class Verification(BaseModel):
 class RepoRisk(BaseModel):
     """One rule firing against one surface.
 
-    ``id`` is stable across runs of the same commit — rule id plus surface path
-    — so a dashboard can diff two scans without the rows shuffling, and so a
-    risk that was present yesterday and is absent today is visibly the *same*
-    risk having gone away.
+    ``id`` is the legacy rule/file grouping key and can identify multiple
+    rows. ``instance_id`` is the optional per-row structural identifier.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -96,10 +96,24 @@ class RepoRisk(BaseModel):
     detail: str = ""
     evidence: dict[str, Any] = Field(default_factory=dict)
     verification: Verification = Field(default_factory=Verification)
+    # Internal only. Direct/legacy callers may not supply a structural locator;
+    # in that case do not invent an instance identifier from the ambiguous id.
+    identity_source: tuple[str, ...] | None = Field(default=None, exclude=True, repr=False)
+    identity_file: str | None = Field(default=None, exclude=True, repr=False)
+    identity_occurrence: int = Field(default=0, exclude=True, repr=False, ge=0)
 
     @property
     def id(self) -> str:
         return f"{self.rule_id}:{self.file}"
+
+    @property
+    def instance_id(self) -> str | None:
+        if self.identity_source is None:
+            return None
+        identity = ["v1", self.rule_id, self.identity_file or self.file, self.surface_kind,
+                    *self.identity_source, self.identity_occurrence]
+        raw = json.dumps(identity, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+        return f"rinst-v1:{hashlib.sha256(raw).hexdigest()}"
 
     @property
     def should_verify(self) -> bool:
@@ -107,7 +121,7 @@ class RepoRisk(BaseModel):
         return self.severity in VERIFY_SEVERITIES and self.verification.state == "verifiable"
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "id": self.id,
             "rule_id": self.rule_id,
             "severity": self.severity,
@@ -119,6 +133,9 @@ class RepoRisk(BaseModel):
             "evidence": self.evidence,
             "verification": self.verification.to_dict(),
         }
+        if self.instance_id is not None:
+            document["instance_id"] = self.instance_id
+        return document
 
 
 def severity_counts(risks: list[RepoRisk]) -> dict[str, int]:

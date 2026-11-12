@@ -102,6 +102,10 @@ class Surface:
     description: str = ""
     content_digest: str = ""
     detail: dict[str, Any] = field(default_factory=dict)
+    # Internal structural locator; never emitted as part of the inventory.
+    # File surfaces use their kind and path. Mapping members need the full key,
+    # since display names are capped and legacy surface IDs are not unique.
+    identity_source: tuple[str, ...] = field(default=("file",), repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         out: dict[str, Any] = {
@@ -140,6 +144,8 @@ class Discovery:
     Carried here rather than re-read from the manifest so the harness's static
     posture plane needs only one parse of `.agentsec/project.yaml`. Not part of
     `to_dict()`: this document is an inventory of surfaces, not of reports."""
+    memory_root: str | None = None
+    """Declared memory-store root for internal risk identity, not inventory output."""
 
     @property
     def supported_skills(self) -> list[Surface]:
@@ -538,6 +544,7 @@ class _Walker:
                     kind="mcp_server",
                     path=rel,
                     name=str(server_name)[:120],
+                    identity_source=("mcpServers", str(server_name)),
                     detail={
                         "env_keys": sorted(env) if isinstance(env, dict) else [],
                         "transport": _mcp_transport(config),
@@ -661,6 +668,7 @@ def discover(workspace: str | Path | None = None) -> Discovery:
         mcp_servers=walker.mcp_servers(),
         tool_grants=walker.tool_grants(),
         memory=walker.memory(),
+        memory_root=manifest.surfaces.memory,
         static_posture_report=manifest.static_posture_report,
     )
     result.problems = sorted(walker.problems, key=lambda p: (p.kind, p.path))

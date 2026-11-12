@@ -301,6 +301,26 @@ enforced here:
   that does not match is refused. A consumer that pinned to the schema cannot
   see a silently-changed field; it can see an error.
 
+**Repository risk identifiers.** `id` remains the legacy `rule_id:file`
+grouping key and can repeat within a report. `instance_id` is an additive,
+versioned identifier for a risk row; use it with the project identity, as it
+is not globally unique across repositories. Historical exports without this
+field remain valid and cannot necessarily be backfilled unambiguously. Existing
+consumers that reject unknown fields or validate against a stricter old schema
+may need an upgrade before accepting the additive `instance_id` field.
+
+The identifier uses the rule, relative location and surface's structural key;
+it does not use secret values or evidence. A file path, MCP server mapping key,
+or memory-store root rename changes the respective identifier. It is a hash,
+not a way to hide a known or guessable structural name. Permission grants use
+the allow-list and the recognised tool category, not the permission rule text.
+Multiple equivalent grants, or multiple aliases resolving to the same file,
+are retained and distinguished by occurrence number. Adding unrelated entries
+does not change their identifiers, but individual members of an indistinguishable
+duplicate group have no stable correspondence after the group changes. The
+memory-store identifier represents the configured store root, even though its
+legacy `id` still names the first discovered entry.
+
 Raw evidence is a local capability on purpose. An investigator working an
 incident reads the bundle off the execution host — as a file, or through the
 report the CLI renders there. Nothing that crosses the MCP boundary carries it,

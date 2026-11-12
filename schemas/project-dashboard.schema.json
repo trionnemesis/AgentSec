@@ -182,6 +182,7 @@
             "required": ["id", "rule_id", "severity", "surface_kind", "file", "verification"],
             "properties": {
               "id": { "type": "string" },
+              "instance_id": { "type": "string", "pattern": "^rinst-v1:[0-9a-f]{64}$" },
               "rule_id": { "type": "string", "pattern": "^ASI-[A-Z0-9]+-[A-Z0-9-]+$" },
               "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
               "surface_kind": {

@@ -64,7 +64,8 @@ from agentsec.models.run import Run
 #: changed shape.
 #: 1.5.0 adds frozen package/catalogue identity; evidence provenance is unchanged.
 #: 1.6.0 adds evidence provenance to the published single-run shape (#42).
-PUBLISH_SCHEMA_VERSION = "1.6.0"
+#: 1.7.0 adds optional repo risk instance identifiers (#101).
+PUBLISH_SCHEMA_VERSION = "1.7.0"
 
 #: Names the ruleset, so a stored export says which policy produced it.
 PUBLISH_POLICY = "observed-data-v1"
@@ -653,6 +654,7 @@ def publish_repo_risk(document: dict[str, Any] | None) -> dict[str, Any]:
         body["risks"] = [
             {
                 "id": r.get("id"),
+                **({"instance_id": r["instance_id"]} if "instance_id" in r else {}),
                 "rule_id": r.get("rule_id"),
                 "severity": r.get("severity"),
                 "surface_kind": r.get("surface_kind"),

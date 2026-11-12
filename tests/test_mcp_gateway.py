@@ -196,6 +196,27 @@ def _stdio(workspace, uris, *, tool_calls=None, **extra):  # noqa: ANN001, ANN20
     return asyncio.run(asyncio.wait_for(_probe(env, uris, tool_calls), timeout=90))
 
 
+def test_project_risk_instance_ids_reach_the_wire(settings: Settings) -> None:
+    root = settings.workspace
+    (root / ".agentsec").mkdir(exist_ok=True)
+    (root / ".agentsec/project.yaml").write_text(
+        "apiVersion: agentsec.dev/v1alpha1\nkind: Project\n"
+        "project_id: instance-id-test\nname: Instance Test\n",
+        encoding="utf-8",
+    )
+    (root / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"FOO": {"url": "https://example.invalid"},
+                                   "foo": {"url": "https://example.invalid"}}}),
+        encoding="utf-8",
+    )
+    uris = ["agentsec://project/risks", "agentsec://dashboard/latest"]
+    reads = _stdio(root, uris)["reads"]
+    standalone = json.loads(reads[uris[0]])["repo_risk"]["risks"]
+    composed = json.loads(reads[uris[1]])["repo_risk"]["risks"]
+    assert standalone and standalone == composed
+    assert len({r["instance_id"] for r in standalone}) == len(standalone)
+
+
 def test_report_gateway_over_stdio_lists_and_reads_only_what_it_should(
     service: HarnessService,
 ) -> None:
