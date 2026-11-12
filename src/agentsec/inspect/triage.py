@@ -39,7 +39,7 @@ from agentsec.models.risk import (
 from agentsec.scenario.catalog import ScenarioCatalog
 from agentsec.scenario.surface_tags import scenario_surface_tags, scenarios_covering
 
-RISK_SCHEMA_VERSION = "1.0.0"
+RISK_SCHEMA_VERSION = "1.1.0"
 
 
 def triage(

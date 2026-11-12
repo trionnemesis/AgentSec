@@ -107,7 +107,7 @@ def test_published_run_validates_against_its_explicit_schema(service) -> None:  
         (REPO_ROOT / "schemas" / "published-run.schema.json").read_text(encoding="utf-8")
     )
 
-    assert body["schema_version"] == PUBLISH_SCHEMA_VERSION == "1.6.0"
+    assert body["schema_version"] == PUBLISH_SCHEMA_VERSION == "1.7.0"
     assert not list(Draft202012Validator(schema).iter_errors(body))
 
 

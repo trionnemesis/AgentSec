@@ -135,6 +135,12 @@ def test_each_named_attack_surface_produces_a_risk(report: RiskReport) -> None:
     }
 
 
+def test_each_production_risk_has_a_distinct_instance_id(report: RiskReport) -> None:
+    identifiers = [risk.instance_id for risk in report.risks]
+    assert identifiers and all(identifiers)
+    assert len(set(identifiers)) == len(identifiers)
+
+
 def test_surface_kinds_span_agents_hooks_tools_mcp_and_memory(report: RiskReport) -> None:
     assert {risk.surface_kind for risk in report.risks} >= {
         "agent", "hook", "settings", "mcp_server", "tool_grant", "memory", "instructions",
@@ -473,6 +479,7 @@ def test_the_composed_dashboard_validates_with_the_new_plane(
     assert plane["status"] == "inspected"
     assert plane["counts"]["total"] > 0
     assert "AGT-CONFIG-001" in plane["verify_queue"]
+    assert all(r["instance_id"].startswith("rinst-v1:") for r in plane["risks"])
 
 
 def test_risk_counts_never_reach_the_purple_plane(project: Path, settings: Settings) -> None:
@@ -501,6 +508,8 @@ def test_the_standalone_resource_names_its_project(
     document = publish("repo_risk_document", service.inspect_repository())
     assert document["project"]["project_id"] == "risky-project"
     assert document["repo_risk"]["counts"]["total"] > 0
+    assert all(r["instance_id"].startswith("rinst-v1:")
+               for r in document["repo_risk"]["risks"])
 
 
 # -- the rules hold their own line --------------------------------------------

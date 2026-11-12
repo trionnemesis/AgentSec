@@ -196,6 +196,7 @@ def hidden_bidi_directives(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="high",
             surface_kind=surface.kind,
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Instruction text carries bidi or Unicode tag characters",
             detail=(
@@ -221,6 +222,7 @@ def invisible_characters(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="medium",
             surface_kind=surface.kind,
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Instruction text carries zero-width or invisible characters",
             detail=(
@@ -305,6 +307,7 @@ def exfiltration_directive(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="high",
             surface_kind=surface.kind,
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Instruction pairs a secret source with an outbound sink",
             detail=(
@@ -341,6 +344,7 @@ def covert_directive(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="high",
             surface_kind=surface.kind,
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Instruction tells the agent to override or conceal",
             detail=(
@@ -452,6 +456,7 @@ def hook_shell_interpolation(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="critical",
             surface_kind="hook",
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Hook interpolates a value into a shell command",
             detail=(
@@ -477,6 +482,7 @@ def hook_network_egress(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="medium",
             surface_kind="hook",
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Hook performs network I/O",
             detail=(
@@ -516,6 +522,7 @@ def mcp_credential_env(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="high",
             surface_kind="mcp_server",
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="MCP server declares a credential-shaped environment key",
             detail=(
@@ -538,6 +545,7 @@ def mcp_remote_transport(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="medium",
             surface_kind="mcp_server",
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="MCP server is remote",
             detail=(
@@ -588,6 +596,7 @@ def broad_execution_grant(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity=severity,  # type: ignore[arg-type]
             surface_kind="tool_grant",
             surface_id=surface.id,
+            identity_source=("allow", tool),
             file=surface.path,
             title=f"{surface.name} is pre-approved without constraint",
             detail=(
@@ -618,6 +627,7 @@ def permission_mode_bypass(ctx: RuleContext) -> Iterator[RepoRisk]:
         severity=severity,  # type: ignore[arg-type]
         surface_kind="settings",
         surface_id=settings.id,
+        identity_source=settings.identity_source,
         file=settings.path,
         title=f"Permission mode is {mode}",
         detail=(
@@ -669,6 +679,7 @@ def instruction_import_escapes(ctx: RuleContext) -> Iterator[RepoRisk]:
             severity="medium",
             surface_kind=surface.kind,
             surface_id=surface.id,
+            identity_source=surface.identity_source,
             file=surface.path,
             title="Instruction imports context from outside the repository",
             detail=(
@@ -695,6 +706,8 @@ def unreviewed_memory_store(ctx: RuleContext) -> Iterator[RepoRisk]:
         severity="medium",
         surface_kind="memory",
         surface_id=store[0].id,
+        identity_source=("memory-store",) if ctx.discovery.memory_root else None,
+        identity_file=ctx.discovery.memory_root,
         file=store[0].path,
         title="Repository carries a memory store the agent reads",
         detail=(
@@ -711,4 +724,19 @@ def unreviewed_memory_store(ctx: RuleContext) -> Iterator[RepoRisk]:
 
 def evaluate(ctx: RuleContext) -> list[RepoRisk]:
     """Run every rule. Order of the result is the caller's concern, not ours."""
-    return [risk for fn in RULES for risk in fn(ctx)]
+    risks = [risk for fn in RULES for risk in fn(ctx)]
+    # Discovery can resolve multiple aliases to the same file, and permission
+    # arrays can contain indistinguishable duplicate grants. Preserve all rows
+    # and assign each occurrence a distinct ID without hashing content/evidence.
+    seen: dict[tuple[Any, ...], int] = {}
+    result: list[RepoRisk] = []
+    for risk in risks:
+        if risk.identity_source is None:
+            result.append(risk)
+            continue
+        key = (risk.rule_id, risk.identity_file or risk.file,
+               risk.surface_kind, risk.identity_source)
+        count = seen.get(key, 0)
+        seen[key] = count + 1
+        result.append(risk.model_copy(update={"identity_occurrence": count}))
+    return result
