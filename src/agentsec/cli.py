@@ -703,7 +703,7 @@ def _print_scan(document: dict) -> None:
 
     if plane.get("problems"):
         typer.secho(
-            f"\n{len(plane['problems'])} surface(s) could not be read:", fg=typer.colors.YELLOW
+            f"\n{len(plane['problems'])} inspection problem(s):", fg=typer.colors.YELLOW
         )
         for problem in plane["problems"][:10]:
             typer.echo(f"    [{problem['kind']}] {problem['path']}: {problem['detail']}")

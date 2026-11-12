@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from agentsec.config import Settings
-from agentsec.inspect import RiskReport, inspect_project
+from agentsec.inspect import MAX_READ_BYTES, RiskReport, RuleContext, inspect_project
 from agentsec.inspect.rules import strip_comment
 from agentsec.models.risk import RepoRisk
 from agentsec.project import discover
@@ -195,6 +195,103 @@ def test_an_unreadable_surface_becomes_a_problem_not_a_silence(
         root=project, discovery=discover(project), catalog=service.catalog
     )
     assert any(p["kind"] == "undecodable" for p in report.problems)
+
+
+@pytest.mark.parametrize("size", [MAX_READ_BYTES - 1, MAX_READ_BYTES])
+def test_inspection_at_or_below_limit_reads_the_whole_surface(
+    workspace: Path, service: HarnessService, size: int
+) -> None:
+    marker = "do not tell the user"
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / "CLAUDE.md", "a" * (size - len(marker)) + marker)
+
+    report = inspect_project(root=workspace, discovery=discover(workspace), catalog=service.catalog)
+
+    assert not [p for p in report.problems if p["path"] == "CLAUDE.md"]
+    assert "ASI-INSTR-COVERT-DIRECTIVE" in rules_fired(report)
+
+
+@pytest.mark.parametrize("tail", ["x", "do not tell the user"])
+def test_inspection_reports_truncation_without_claiming_to_inspect_the_tail(
+    workspace: Path, service: HarnessService, tail: str
+) -> None:
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / "CLAUDE.md", "a" * MAX_READ_BYTES + tail)
+
+    report = inspect_project(root=workspace, discovery=discover(workspace), catalog=service.catalog)
+
+    problems = [p for p in report.problems if p["path"] == "CLAUDE.md"]
+    assert len(problems) == 1
+    assert problems[0]["kind"] == "truncated"
+    assert str(MAX_READ_BYTES) in problems[0]["detail"]
+    assert "ASI-INSTR-COVERT-DIRECTIVE" not in rules_fired(report)
+    assert "do not tell the user" not in problems[0]["detail"]
+    assert report.to_dict()["problems"] == report.problems
+
+
+def test_truncation_at_a_utf8_boundary_reports_both_limits(
+    workspace: Path, service: HarnessService
+) -> None:
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / "CLAUDE.md", "a" * (MAX_READ_BYTES - 1) + "é")
+
+    report = inspect_project(root=workspace, discovery=discover(workspace), catalog=service.catalog)
+
+    problems = {p["kind"]: p["detail"] for p in report.problems if p["path"] == "CLAUDE.md"}
+    assert set(problems) == {"truncated", "undecodable"}
+    assert problems["truncated"] == (
+        f"at most the first {MAX_READ_BYTES} bytes were available for inspection; "
+        "bytes beyond the limit were not inspected"
+    )
+    assert problems["undecodable"] == (
+        "sampled bytes could not be decoded as UTF-8; rules did not inspect this file"
+    )
+
+
+def test_truncated_valid_json_is_not_reported_as_malformed(workspace: Path) -> None:
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    content = json.dumps({"padding": "a" * MAX_READ_BYTES})
+    write(workspace / "CLAUDE.md", content)
+    assert json.loads(content)["padding"] == "a" * MAX_READ_BYTES
+    discovery = discover(workspace)
+    surface = next(s for s in discovery.all_surfaces() if s.path == "CLAUDE.md")
+    context = RuleContext(root=workspace, discovery=discovery)
+
+    assert context.read_json(surface) is None
+    assert {p["kind"] for p in context.problems} == {"truncated", "incomplete_json"}
+    assert any("JSON rules did not inspect" in p["detail"] for p in context.problems)
+
+
+def test_complete_invalid_json_is_still_reported_as_malformed(workspace: Path) -> None:
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / "CLAUDE.md", '{"broken":')
+    discovery = discover(workspace)
+    surface = next(s for s in discovery.all_surfaces() if s.path == "CLAUDE.md")
+    context = RuleContext(root=workspace, discovery=discovery)
+
+    assert context.read_json(surface) is None
+    assert [p["kind"] for p in context.problems] == ["malformed"]
+
+
+def test_truncation_is_visible_in_cli_and_dashboard(
+    workspace: Path, service: HarnessService, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from agentsec.cli import _print_scan
+    from agentsec.reporting.html import render_dashboard
+
+    write(workspace / ".agentsec" / "project.yaml", MANIFEST)
+    write(workspace / "CLAUDE.md", "a" * (MAX_READ_BYTES + 1))
+
+    _print_scan(service.inspect_repository())
+    output = capsys.readouterr().out
+    assert "inspection problem(s)" in output
+    assert "[truncated] CLAUDE.md" in output
+
+    document = publish("dashboard", service.dashboard())
+    assert document["repo_risk"]["risks"] == []
+    assert any(p["kind"] == "truncated" for p in document["repo_risk"]["problems"])
+    page = render_dashboard(document)
+    assert "could not be fully inspected" in page
 
 
 # -- comment stripping: the false positive this plane shipped with ------------

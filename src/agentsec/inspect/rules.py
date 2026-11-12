@@ -58,6 +58,7 @@ class RuleContext:
     discovery: Discovery
     problems: list[dict[str, str]] = field(default_factory=list)
     _cache: dict[str, str | None] = field(default_factory=dict)
+    _truncated: set[str] = field(default_factory=set)
 
     def note(self, path: str, kind: str, detail: str) -> None:
         self.problems.append({"path": path, "kind": kind, "detail": detail})
@@ -76,15 +77,27 @@ class RuleContext:
         result: str | None = None
         target = self.root / surface.path
         try:
-            raw = target.read_bytes()[:MAX_READ_BYTES]
-            result = raw.decode("utf-8")
+            with target.open("rb") as source:
+                raw = source.read(MAX_READ_BYTES + 1)
+            if len(raw) > MAX_READ_BYTES:
+                self._truncated.add(surface.path)
+                self.note(
+                    surface.path,
+                    "truncated",
+                    f"at most the first {MAX_READ_BYTES} bytes were available for inspection; "
+                    "bytes beyond the limit were not inspected",
+                )
+            result = raw[:MAX_READ_BYTES].decode("utf-8")
         except OSError as exc:
             self.note(surface.path, "unreadable", str(exc))
         except UnicodeDecodeError:
-            # Binary, or text in an encoding this version does not read. Either
-            # way the rules below cannot speak about it, and saying so beats
-            # returning "" and reporting a clean file.
-            self.note(surface.path, "undecodable", "not valid UTF-8; rules did not inspect it")
+            # The sample may end in the middle of a UTF-8 character. The full
+            # file is not necessarily invalid, but rules cannot inspect it.
+            self.note(
+                surface.path,
+                "undecodable",
+                "sampled bytes could not be decoded as UTF-8; rules did not inspect this file",
+            )
 
         self._cache[surface.path] = result
         return result
@@ -96,7 +109,18 @@ class RuleContext:
         try:
             data = json.loads(text)
         except json.JSONDecodeError as exc:
-            self.note(surface.path, "malformed", f"not valid JSON: {exc}")
+            if surface.path in self._truncated:
+                if not any(
+                    p["path"] == surface.path and p["kind"] == "incomplete_json"
+                    for p in self.problems
+                ):
+                    self.note(
+                        surface.path,
+                        "incomplete_json",
+                        "truncated JSON sample could not be parsed; JSON rules did not inspect it",
+                    )
+            else:
+                self.note(surface.path, "malformed", f"not valid JSON: {exc}")
             return None
         return data if isinstance(data, dict) else None
 
